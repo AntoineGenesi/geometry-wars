@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import puppeteer from 'puppeteer-core';
 import { execFileSync, spawn } from 'child_process';
-import { dirname, relative, resolve } from 'path';
+import { delimiter, dirname, relative, resolve } from 'path';
 import { existsSync, mkdirSync, readdirSync, writeFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 
@@ -18,6 +18,17 @@ function commandPath(command) {
     return execFileSync('bash', ['-lc', `command -v ${command}`], { encoding: 'utf8' }).trim() || null;
   } catch {
     return null;
+  }
+}
+
+function findUp(relativePath, startDir = ROOT) {
+  let dir = startDir;
+  for (;;) {
+    const candidate = resolve(dir, relativePath);
+    if (existsSync(candidate)) return candidate;
+    const parent = dirname(dir);
+    if (parent === dir) return null;
+    dir = parent;
   }
 }
 
@@ -42,9 +53,17 @@ function findChrome() {
 }
 
 function startProcess(args, env, logs) {
-  const child = spawn(process.execPath, args, {
+  const resolvedArgs = [...args];
+  if (resolvedArgs[0]?.startsWith('node_modules/')) {
+    resolvedArgs[0] = findUp(resolvedArgs[0]) || resolvedArgs[0];
+  }
+  const child = spawn(process.execPath, resolvedArgs, {
     cwd: ROOT,
-    env: { ...process.env, ...env },
+    env: {
+      ...process.env,
+      ...env,
+      PATH: [dirname(process.execPath), process.env.PATH || ''].join(delimiter),
+    },
     stdio: ['ignore', 'pipe', 'pipe'],
     detached: process.platform !== 'win32',
   });
@@ -97,6 +116,17 @@ async function waitForPage(page, predicate, timeoutMs = 30000, arg = undefined) 
     await sleep(50);
   }
   return null;
+}
+
+async function sampleProofStates(page, durationMs = 1500, intervalMs = 100) {
+  const samples = [];
+  const started = Date.now();
+  while (Date.now() - started < durationMs) {
+    const state = await page.evaluate(() => window.__gameDebug?.getBlackHoleProofState?.() || null).catch(() => null);
+    if (state) samples.push({ t: Date.now() - started, state });
+    await sleep(intervalMs);
+  }
+  return samples;
 }
 
 function median(values) {
@@ -168,7 +198,11 @@ async function main() {
   const logs = [];
   const owned = [];
   const pageErrors = [];
+  const snapshots = [];
+  let flightSamples = [];
+  let lastProofState = null;
   let browser;
+  let page;
   let report;
   try {
     owned.push(startProcess(
@@ -202,7 +236,7 @@ async function main() {
         '--disable-renderer-backgrounding',
       ],
     });
-    const page = await browser.newPage();
+    page = await browser.newPage();
     await page.setViewport({ width: 960, height: 720 });
     page.on('pageerror', (error) => pageErrors.push(error.message));
     page.on('console', (message) => {
@@ -258,12 +292,29 @@ async function main() {
 
     const fired = await page.evaluate(() => window.__gameDebug?.fireBlackHoleProof?.() || false);
     if (!fired) throw new Error('Could not fire Black Hole proof shot');
+
+    const boltFlight = await waitForPage(page, () => {
+      const state = window.__gameDebug?.getBlackHoleProofState?.();
+      return state?.bolts?.length === 1 && state?.fields?.length === 0 ? state : null;
+    }, 5000);
+    if (!boltFlight) throw new Error('No synchronized travelling bolt phase observed before field formation');
+    snapshots.push(await capture(page, '00-bolt-flight', boltFlight));
+    if (process.env.BH_PROOF_SAMPLE_FLIGHT === '1') {
+      flightSamples = await sampleProofStates(page, 1400, 80);
+    }
+
     const formation = await waitForPage(page, () => {
       const state = window.__gameDebug?.getBlackHoleProofState?.();
-      return state?.fields?.length === 1 && state.fields[0].phase === 'formation' ? state : null;
+      const field = state?.fields?.[0];
+      return state?.bolts?.length === 0
+        && state?.fields?.length === 1
+        && field.phase === 'formation'
+        && field.visual?.rootChildren > 0
+        ? state
+        : null;
     }, 5000);
     if (!formation) throw new Error('No synchronized formation phase observed');
-    const snapshots = [await capture(page, '01-formation', formation)];
+    snapshots.push(await capture(page, '01-formation', formation));
 
     const sustain = await waitForPage(page, () => {
       const state = window.__gameDebug?.getBlackHoleProofState?.();
@@ -288,7 +339,8 @@ async function main() {
     if (!cleanup) throw new Error('Field or client visual did not clean up');
     snapshots.push(await capture(page, '04-cleanup', cleanup));
 
-    const activeSnapshots = snapshots.slice(0, 3).map((snapshot) => snapshot.state);
+    const fieldSnapshots = snapshots.filter((snapshot) => snapshot.state.fields?.length === 1);
+    const activeSnapshots = fieldSnapshots.slice(0, 3).map((snapshot) => snapshot.state);
     const centers = activeSnapshots.map((state) => state.fields[0].center);
     const centerDrift = Math.max(...centers.map((center) => distance(center, centers[0])));
     const baselineDistances = baseline.enemies.map((enemy) => distance(enemy.world, centers[0]));
@@ -304,6 +356,7 @@ async function main() {
       baseline.bulletCounts.black_hole || 0,
       ...snapshots.map((snapshot) => snapshot.state.bulletCounts.black_hole || 0),
     );
+    const boltVisualObserved = Boolean(boltFlight.bolts?.[0]?.visual?.rootChildren > 0);
     const visiblePhases = activeSnapshots.every((state) =>
       state.fields[0].visual?.rootChildren > 0
       && state.fields[0].visual?.boundaryScale > 0);
@@ -312,6 +365,9 @@ async function main() {
     const criticalServerErrors = logs.filter((line) => /\b(fatal|uncaught|unhandled|exception|error:)\b/i.test(line));
     const checks = {
       cubeWaves: cleanup.surface === 'cube' && cleanup.gameMode === 'waves',
+      travellingBoltBeforeField: boltFlight.bolts.length === 1 && boltFlight.fields.length === 0,
+      boltVisualRendered: boltFlight.boltVisualCount === 1 && boltVisualObserved,
+      fieldAfterBoltImpact: formation.bolts.length === 0 && formation.fields.length === 1,
       oneServerField: activeSnapshots.every((state) => state.fields.length === 1),
       zeroBlackHoleBullets: blackHoleBulletMaximum === 0,
       stationaryCanonicalCenter: centerDrift <= 1e-6
@@ -345,6 +401,12 @@ async function main() {
         initialHealth,
         sustainHealth,
         blackHoleBulletMaximum,
+        boltFlight: {
+          age: boltFlight.bolts?.[0]?.age ?? null,
+          maxAge: boltFlight.bolts?.[0]?.maxAge ?? null,
+          pullRadius: boltFlight.bolts?.[0]?.pullRadius ?? null,
+          visualCount: boltFlight.boltVisualCount,
+        },
         phases,
         finalOwner: cleanup.owner,
       },
@@ -354,11 +416,15 @@ async function main() {
       logTail: logs.slice(-80),
     };
   } catch (error) {
+    lastProofState = await page?.evaluate(() => window.__gameDebug?.getBlackHoleProofState?.() || null).catch(() => null) ?? null;
     report = {
       verdict: 'ERROR',
       runId,
       command: 'node tests/visual/mp-black-hole-live-proof.mjs',
       error: error instanceof Error ? error.stack : String(error),
+      lastProofState,
+      flightSamples,
+      snapshots,
       pageErrors,
       logTail: logs.slice(-100),
     };

@@ -210,6 +210,69 @@ defineTypes(BulletState, {
   weaponType: 'string',
 });
 
+/** Server-owned travelling Black Hole bolt synchronized to every client. */
+export class BlackHoleBoltState extends Schema {
+  declare id: string;
+  declare ownerId: string;
+  declare wx: number;
+  declare wy: number;
+  declare wz: number;
+  declare nx: number;
+  declare ny: number;
+  declare nz: number;
+  declare tx: number;
+  declare ty: number;
+  declare tz: number;
+  declare bx: number;
+  declare by: number;
+  declare bz: number;
+  declare walkerFaceIndex: number;
+  declare walkerBaryU: number;
+  declare walkerBaryV: number;
+  declare walkerBaryW: number;
+  declare dirX: number;
+  declare dirY: number;
+  declare dirZ: number;
+  declare age: number;
+  declare maxAge: number;
+  declare pullRadius: number;
+
+  constructor() {
+    super();
+    this.id = '';
+    this.ownerId = '';
+    this.wx = 0; this.wy = 0; this.wz = 0;
+    this.nx = 0; this.ny = 1; this.nz = 0;
+    this.tx = 1; this.ty = 0; this.tz = 0;
+    this.bx = 0; this.by = 0; this.bz = 1;
+    this.walkerFaceIndex = 0;
+    this.walkerBaryU = 1;
+    this.walkerBaryV = 0;
+    this.walkerBaryW = 0;
+    this.dirX = 1;
+    this.dirY = 0;
+    this.dirZ = 0;
+    this.age = 0;
+    this.maxAge = 0;
+    this.pullRadius = 0;
+  }
+}
+
+defineTypes(BlackHoleBoltState, {
+  id: 'string',
+  ownerId: 'string',
+  wx: 'number', wy: 'number', wz: 'number',
+  nx: 'number', ny: 'number', nz: 'number',
+  tx: 'number', ty: 'number', tz: 'number',
+  bx: 'number', by: 'number', bz: 'number',
+  walkerFaceIndex: 'number',
+  walkerBaryU: 'number', walkerBaryV: 'number', walkerBaryW: 'number',
+  dirX: 'number', dirY: 'number', dirZ: 'number',
+  age: 'number',
+  maxAge: 'number',
+  pullRadius: 'number',
+});
+
 /** Server-owned Black Hole field synchronized to every client. */
 export class BlackHoleFieldState extends Schema {
   declare id: string;
@@ -528,6 +591,7 @@ defineTypes(ShieldPickupState, {
 export class GameState extends Schema {
   declare players: MapSchema<PlayerState>;
   declare bullets: ArraySchema<BulletState>;
+  declare blackHoleBolts: ArraySchema<BlackHoleBoltState>;
   declare blackHoleFields: ArraySchema<BlackHoleFieldState>;
   declare enemies: ArraySchema<EnemyState>;
   declare geoms: ArraySchema<GeomState>;
@@ -634,6 +698,7 @@ export class GameState extends Schema {
     super();
     this.players = new MapSchema<PlayerState>();
     this.bullets = new ArraySchema<BulletState>();
+    this.blackHoleBolts = new ArraySchema<BlackHoleBoltState>();
     this.blackHoleFields = new ArraySchema<BlackHoleFieldState>();
     this.enemies = new ArraySchema<EnemyState>();
     this.geoms = new ArraySchema<GeomState>();
@@ -710,6 +775,7 @@ export class GameState extends Schema {
 defineTypes(GameState, {
   players: { map: PlayerState },
   bullets: [BulletState],
+  blackHoleBolts: [BlackHoleBoltState],
   blackHoleFields: [BlackHoleFieldState],
   enemies: [EnemyState],
   geoms: [GeomState],

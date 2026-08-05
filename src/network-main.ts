@@ -88,6 +88,7 @@ import {
   resolveAndApplyPickupVisibility,
 } from './pickups/PickupSurfaceVisual';
 import { BulletInstanceManager, BulletVisualType } from './rendering/BulletInstanceManager';
+import { SharedGeometries } from './rendering/GeometryCache';
 import { LODManager, DEFAULT_LOD_CONFIG } from './rendering/LODManager';
 import { computeDepthVisibility, BULLET_DEPTH_CURVE } from './rendering/DepthOpacity';
 import { OcclusionSurfaceMaterial } from './rendering/OcclusionSurfaceMaterial';
@@ -97,6 +98,7 @@ import {
   NetworkPlayerState,
   NetworkEnemyState,
   NetworkBulletState,
+  NetworkBlackHoleBoltState,
   NetworkBlackHoleFieldState,
   NetworkGeomState,
   NetworkWeaponPickupState,
@@ -1109,8 +1111,20 @@ async function main() {
     visual: BlackHoleVisual;
     affectedPositions: THREE.Vector3[];
   }>();
+  const networkBlackHoleBoltVisuals = new Map<string, THREE.Group>();
 
   const clearNetworkBlackHoleVisuals = (): void => {
+    networkBlackHoleBoltVisuals.forEach((visual) => {
+      scene.remove(visual);
+      visual.traverse((child) => {
+        if (child instanceof THREE.Mesh) {
+          const material = child.material;
+          if (Array.isArray(material)) material.forEach((m) => m.dispose());
+          else material.dispose();
+        }
+      });
+    });
+    networkBlackHoleBoltVisuals.clear();
     networkBlackHoleVisuals.forEach(({ visual }) => visual.dispose());
     networkBlackHoleVisuals.clear();
   };
@@ -4809,6 +4823,62 @@ async function main() {
           enemyTrail.dispose();
           enemyGlowTrails.delete(id);
         }
+      }
+    });
+
+    // ----- Sync authoritative travelling Black Hole bolts -----
+    const activeBlackHoleBoltIds = new Set<string>();
+    state.blackHoleBolts?.forEach((bolt: NetworkBlackHoleBoltState) => {
+      activeBlackHoleBoltIds.add(bolt.id);
+      let visual = networkBlackHoleBoltVisuals.get(bolt.id);
+      if (!visual) {
+        visual = new THREE.Group();
+        visual.name = 'NetworkBlackHoleBolt';
+        const core = new THREE.Mesh(
+          SharedGeometries.blackholeSphere(),
+          new THREE.MeshBasicMaterial({
+            color: 0x220044,
+            transparent: true,
+            opacity: 0.95,
+            depthWrite: false,
+          }),
+        );
+        core.scale.setScalar(0.58);
+        const halo = new THREE.Mesh(
+          SharedGeometries.gravityProjectile(),
+          new THREE.MeshBasicMaterial({
+            color: 0xaa44ff,
+            transparent: true,
+            opacity: 0.55,
+            depthWrite: false,
+          }),
+        );
+        halo.scale.setScalar(1.35);
+        visual.add(core, halo);
+        scene.add(visual);
+        networkBlackHoleBoltVisuals.set(bolt.id, visual);
+      }
+
+      visual.position.set(bolt.wx, bolt.wy, bolt.wz);
+      const direction = new THREE.Vector3(bolt.dirX, bolt.dirY, bolt.dirZ);
+      if (direction.lengthSq() > 0.000001) {
+        visual.lookAt(visual.position.clone().add(direction.normalize()));
+      }
+      const pulse = 1 + Math.sin(bolt.age * 18) * 0.08;
+      visual.scale.setScalar(pulse);
+    });
+
+    networkBlackHoleBoltVisuals.forEach((visual, boltId) => {
+      if (!activeBlackHoleBoltIds.has(boltId)) {
+        scene.remove(visual);
+        visual.traverse((child) => {
+          if (child instanceof THREE.Mesh) {
+            const material = child.material;
+            if (Array.isArray(material)) material.forEach((m) => m.dispose());
+            else material.dispose();
+          }
+        });
+        networkBlackHoleBoltVisuals.delete(boltId);
       }
     });
 
@@ -8876,6 +8946,26 @@ async function main() {
       },
       getBulletCount: () => bulletIdToIndex.size,
       getBlackHoleProofState: () => {
+        const bolts: Record<string, unknown>[] = [];
+        latestGameState?.blackHoleBolts?.forEach((bolt) => {
+          const visual = networkBlackHoleBoltVisuals.get(bolt.id);
+          bolts.push({
+            id: bolt.id,
+            ownerId: bolt.ownerId,
+            center: [bolt.wx, bolt.wy, bolt.wz],
+            normal: [bolt.nx, bolt.ny, bolt.nz],
+            direction: [bolt.dirX, bolt.dirY, bolt.dirZ],
+            faceIndex: bolt.walkerFaceIndex,
+            barycentric: [bolt.walkerBaryU, bolt.walkerBaryV, bolt.walkerBaryW],
+            age: bolt.age,
+            maxAge: bolt.maxAge,
+            pullRadius: bolt.pullRadius,
+            visual: visual ? {
+              rootChildren: visual.children.length,
+              scale: visual.scale.x,
+            } : null,
+          });
+        });
         const fields: Record<string, unknown>[] = [];
         latestGameState?.blackHoleFields?.forEach((field) => {
           const entry = networkBlackHoleVisuals.get(field.id);
@@ -8928,6 +9018,8 @@ async function main() {
           surface: lastCreatedSurfaceType,
           gameMode: latestGameMode,
           localPlayerId,
+          bolts,
+          boltVisualCount: networkBlackHoleBoltVisuals.size,
           fields,
           visualCount: networkBlackHoleVisuals.size,
           bulletCounts,
