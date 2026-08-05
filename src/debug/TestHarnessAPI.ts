@@ -121,6 +121,13 @@ export interface EnemyInfo {
   renderSlotDrawn: boolean;
   renderSlotIndex: number | null;
   renderDrawCount: number | null;
+  movementMode: 'walker' | 'uv';
+  commandedWorldSpeed: number;
+  actualWorldSpeed: number;
+  distanceToPlayer: number;
+  damageAggroActive: boolean;
+  ghostForPlayer: boolean;
+  walkerFaceIndex: number | null;
 }
 
 export interface PickupInfo {
@@ -289,6 +296,14 @@ export class TestHarnessAPI {
     return true;
   }
 
+  /** Apply production enemy damage by ID. Useful for proving hit/aggro behavior. */
+  damageEnemy(id: string, amount: number, attackerId = 0): boolean {
+    const enemy = this.findEnemyById(id);
+    if (!enemy || !enemy.alive) return false;
+    enemy.takeDamage(amount, attackerId);
+    return true;
+  }
+
   /** Project a world point onto the active walkable mesh and return both frames. */
   projectWorldPoint(worldPos: Vec3): { u: number; v: number; worldPos: Vec3 } | null {
     const projected = this.ctx.meshSurface.closestPointOnSurface(
@@ -431,6 +446,13 @@ export class TestHarnessAPI {
         renderSlotDrawn,
         renderSlotIndex,
         renderDrawCount,
+        movementMode: enemy.lastMovementMode,
+        commandedWorldSpeed: enemy.lastCommandedWorldSpeed,
+        actualWorldSpeed: enemy.lastActualWorldSpeed,
+        distanceToPlayer: enemy.lastDistanceToPlayer,
+        damageAggroActive: enemy.lastDamageAggroActive,
+        ghostForPlayer: enemy.isGhostForPlayer,
+        walkerFaceIndex: enemy.walker?.faceIndex ?? null,
       });
     }
     return result;

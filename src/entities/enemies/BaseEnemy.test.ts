@@ -121,6 +121,19 @@ class TestEnemy extends BaseEnemy {
   }
 }
 
+class AggroCapEnemy extends BaseEnemy {
+  constructor() {
+    super(0.5, 0.5, 2, 10, 1, 0.2);
+    this.baseTypeName = 'grunt';
+  }
+
+  updateBehavior(_dt: number, _pu: number, _pv: number): void {}
+
+  computeMovementDirection(): THREE.Vector3 {
+    return new THREE.Vector3(0.6, 0, 0);
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -257,6 +270,31 @@ describe('BaseEnemy.applySurfacePull', () => {
     expect(enemy.applySurfacePull(new THREE.Vector3(1, 0, 0), 3, 0.2, 0.25)).toBe(true);
     expect(moveOnSurface).toHaveBeenCalledOnce();
     expect(enemy.surfacePosition.u).toBeGreaterThan(0.2);
+  });
+});
+
+describe('BaseEnemy damage aggro movement', () => {
+  it('caps walker damage aggro to the enemy natural movement speed', () => {
+    const enemy = new AggroCapEnemy();
+    const walker = {
+      position: new THREE.Vector3(0, 0, 0),
+      normal: new THREE.Vector3(0, 1, 0),
+      speed: 0,
+      move(direction: THREE.Vector3, dt: number) {
+        this.position.addScaledVector(direction, this.speed * dt);
+      },
+    };
+    (enemy as any).walker = walker;
+    enemy.setPlayerWorldPosition(new THREE.Vector3(10, 0, 0));
+
+    enemy.takeDamage(1, 0);
+    enemy.update(1);
+
+    expect(enemy.lastDamageAggroActive).toBe(true);
+    expect(enemy.lastCommandedWorldSpeed).toBeCloseTo(0.6);
+    expect(enemy.lastActualWorldSpeed).toBeCloseTo(0.6);
+    expect(walker.speed).toBeCloseTo(0.6);
+    expect(walker.position.x).toBeCloseTo(0.6);
   });
 });
 
