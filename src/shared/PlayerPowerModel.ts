@@ -16,18 +16,30 @@ export interface CompanionPowerInput {
 }
 
 export interface PlayerPowerInput {
+  /** Display/current score. Historically this may include combo and geom multipliers. */
   score?: number;
+  /** Kill score before combo and score multipliers. Preferred DDA score basis. */
+  rawScore?: number;
+  /** Score after combo/score multipliers. Defaults to `score` for legacy callers. */
+  multipliedScore?: number;
   survivalSeconds?: number;
   streak?: number;
+  /** Raw kill count. Used as a stable dominance signal when score multipliers spike. */
+  totalKills?: number;
   blaster?: WeaponPowerInput;
   activeWeapon?: WeaponPowerInput;
   companions?: CompanionPowerInput;
 }
 
 export interface PlayerPowerBreakdown {
+  rawScore: number;
+  multipliedScore: number;
+  effectiveScore: number;
   scorePressure: number;
+  multiplierScorePressure: number;
   survivalPressure: number;
   streakPressure: number;
+  killPressure: number;
   blasterDps: number;
   activeWeaponDps: number;
   guardianDps: number;
@@ -57,6 +69,7 @@ export const HP_SCALING_DIFFICULTY_THRESHOLD = 0.25;
 const MAX_SCORE = 5_000_000;
 const MAX_SURVIVAL_SECONDS = 600;
 const MAX_STREAK = 250;
+const MAX_KILLS = 800;
 const MAX_COMPANIONS_PER_TYPE = 4;
 
 function finiteNonNegative(value: number | undefined): number {
@@ -88,16 +101,28 @@ function computeCompanionDps(count: number, damage: number | undefined, shotsPer
  * absent data as a baseline player and never consumes assistance state.
  */
 export function computePlayerPower(input: PlayerPowerInput = {}): PlayerPowerBreakdown {
-  const score = Math.min(MAX_SCORE, finiteNonNegative(input.score));
+  const fallbackScore = finiteNonNegative(input.score);
+  const rawScore = Math.min(MAX_SCORE, finiteNonNegative(input.rawScore ?? fallbackScore));
+  const multipliedScore = Math.min(MAX_SCORE, finiteNonNegative(input.multipliedScore ?? fallbackScore));
+  const multiplierExcess = Math.max(0, multipliedScore - rawScore);
+  const dampenedMultiplierScore = Math.min(multiplierExcess, Math.max(10_000, rawScore * 0.25));
+  const effectiveScore = Math.min(MAX_SCORE, rawScore + dampenedMultiplierScore);
   const survivalSeconds = Math.min(MAX_SURVIVAL_SECONDS, finiteNonNegative(input.survivalSeconds));
   const streak = Math.min(MAX_STREAK, finiteNonNegative(input.streak));
+  const totalKills = Math.min(MAX_KILLS, finiteNonNegative(input.totalKills));
 
-  const scorePressure = score <= 5_000
+  const scorePressure = effectiveScore <= 5_000
     ? 0
-    : 1.5 * Math.log10(1 + (score - 5_000) / 25_000)
+    : 1.5 * Math.log10(1 + (effectiveScore - 5_000) / 25_000)
       / Math.log10(1 + (MAX_SCORE - 5_000) / 25_000);
+  const rawScorePressure = rawScore <= 5_000
+    ? 0
+    : 1.5 * Math.log10(1 + (rawScore - 5_000) / 25_000)
+      / Math.log10(1 + (MAX_SCORE - 5_000) / 25_000);
+  const multiplierScorePressure = Math.max(0, scorePressure - rawScorePressure);
   const survivalPressure = survivalSeconds / MAX_SURVIVAL_SECONDS;
   const streakPressure = streak / MAX_STREAK;
+  const killPressure = Math.min(1, totalKills / MAX_KILLS);
 
   const blasterDps = weaponDps(input.blaster);
   const activeWeaponDps = weaponDps(input.activeWeapon);
@@ -120,16 +145,21 @@ export function computePlayerPower(input: PlayerPowerInput = {}): PlayerPowerBre
   const totalOffenseDps = blasterDps + activeWeaponDps + companionDps;
   const offenseRatio = totalOffenseDps / BASELINE_BLASTER_DPS;
   const offensePressure = clamp(Math.log2(Math.max(1, offenseRatio)) * 1.35, 0, 3.5);
-  const powerScore = scorePressure + survivalPressure + streakPressure + offensePressure + protectorValue;
+  const powerScore = scorePressure + survivalPressure + streakPressure + killPressure + offensePressure + protectorValue;
   const difficultyBonus = clamp(powerScore, 0, MAX_POWER_DIFFICULTY_BONUS);
   const hpMultiplier = difficultyBonus >= HP_SCALING_DIFFICULTY_THRESHOLD
     ? 1 + difficultyBonus * 0.25
     : 1;
 
   return {
+    rawScore,
+    multipliedScore,
+    effectiveScore,
     scorePressure,
+    multiplierScorePressure,
     survivalPressure,
     streakPressure,
+    killPressure,
     blasterDps,
     activeWeaponDps,
     guardianDps,

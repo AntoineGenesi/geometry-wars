@@ -72,6 +72,7 @@ import {
   type PlayerPowerBreakdown,
   type PlayerPowerInput,
 } from '../../src/shared/PlayerPowerModel';
+import { computeEntityPressurePlan } from '../../src/core/DifficultyScaling';
 import {
   createBlackHoleConfig,
   getBlackHoleDamageTickCount,
@@ -6786,11 +6787,11 @@ export class GameRoom extends Room<GameState> {
     const entries: WaveEntry[] = [];
     const isClaustrophobia = this.state.gameMode === 'claustrophobia';
 
-    // Entity count soft brake (mirrors DifficultyScaling entityBrake)
-    const brakeFloor = difficultyLevel >= 8 ? 0.60 : 0.40;
-    const entityBrake = activeCount > 200
-      ? Math.max(brakeFloor, 200 / activeCount)
-      : 1.0;
+    const pressurePlan = computeEntityPressurePlan(activeCount, difficultyLevel);
+    const entityBrake = pressurePlan.baseBrake;
+    const fodderBrake = pressurePlan.fodderBrake;
+    const specialistBrake = pressurePlan.specialistBrake;
+    const eliteBrake = pressurePlan.eliteBrake;
 
     // DDA wave size reduction: if any player is struggling (ddaLevel >= 2),
     // reduce base wave count by 20% to give them a chance to recover.
@@ -6828,13 +6829,13 @@ export class GameRoom extends Room<GameState> {
     // Mid-tier from wave 2+
     if (waveNum >= 2) {
       const midType = MID_TYPES_WAVE[(waveNum - 2) % MID_TYPES_WAVE.length];
-      entries.push({ type: midType, count: Math.min(Math.floor(baseCount * 0.7), 15) });
+      entries.push({ type: midType, count: Math.min(Math.floor(baseCount * 0.7 * fodderBrake), 15) });
     }
 
     // Hard enemies (earlier in Claustrophobia: wave 3 vs 4)
     if (waveNum >= hardWaveThreshold) {
       const hardType = HARD_TYPES_WAVE[(waveNum - hardWaveThreshold) % HARD_TYPES_WAVE.length];
-      entries.push({ type: hardType, count: Math.min(Math.floor(baseCount * 0.5), 10) });
+      entries.push({ type: hardType, count: Math.min(Math.floor(baseCount * 0.5 * specialistBrake), 10) });
     }
 
     // Splitting enemies (earlier in Claustrophobia: wave 4 vs 5) and difficulty 0.8+
@@ -6842,14 +6843,14 @@ export class GameRoom extends Room<GameState> {
       const splitType = SPLITTING_TYPES_WAVE[(waveNum - splittingWaveThreshold) % SPLITTING_TYPES_WAVE.length];
       entries.push({
         type: splitType,
-        count: Math.min(Math.round((1 + Math.floor(difficultyLevel * 0.7)) * entityBrake), 7),
+        count: Math.min(Math.round((1 + Math.floor(difficultyLevel * 0.7)) * fodderBrake), 7),
       });
     }
 
     // Elite enemies (earlier in Claustrophobia: wave 5 vs 6)
     if (waveNum >= eliteWaveThreshold) {
       const eliteType = ELITE_TYPES_WAVE[(waveNum - eliteWaveThreshold) % ELITE_TYPES_WAVE.length];
-      entries.push({ type: eliteType, count: Math.min(Math.floor(baseCount * 0.4), 6) });
+      entries.push({ type: eliteType, count: Math.min(Math.floor(baseCount * 0.4 * eliteBrake), 6) });
     }
 
     // At difficulty 1.5+: tiered color-variant basic enemies
@@ -6857,14 +6858,14 @@ export class GameRoom extends Room<GameState> {
       const variantType = BASIC_TYPES_WAVE[(waveNum + 1) % BASIC_TYPES_WAVE.length];
       entries.push({
         type: variantType,
-        count: Math.min(Math.round((6 + Math.floor(difficultyLevel * 1.5)) * entityBrake), 20),
+        count: Math.min(Math.round((6 + Math.floor(difficultyLevel * 1.5)) * fodderBrake), 20),
       });
     }
 
     // At difficulty 2.5+: second hard group
     if (difficultyLevel >= 2.5) {
       const hardType2 = HARD_TYPES_WAVE[(waveNum + 3) % HARD_TYPES_WAVE.length];
-      entries.push({ type: hardType2, count: Math.min(Math.floor(baseCount * 0.4), 8) });
+      entries.push({ type: hardType2, count: Math.min(Math.floor(baseCount * 0.4 * specialistBrake), 8) });
     }
 
     // At difficulty 3.0+: splitting swarm
@@ -6872,7 +6873,7 @@ export class GameRoom extends Room<GameState> {
       const swarmType = SPLITTING_TYPES_WAVE[(waveNum + 2) % SPLITTING_TYPES_WAVE.length];
       entries.push({
         type: swarmType,
-        count: Math.min(Math.round((2 + Math.floor(difficultyLevel - 2.5)) * entityBrake), 8),
+        count: Math.min(Math.round((2 + Math.floor(difficultyLevel - 2.5)) * fodderBrake), 8),
       });
     }
 
@@ -6881,7 +6882,7 @@ export class GameRoom extends Room<GameState> {
       const eliteType2 = ELITE_TYPES_WAVE[(waveNum + 1) % ELITE_TYPES_WAVE.length];
       entries.push({
         type: eliteType2,
-        count: Math.min(Math.round((3 + Math.floor(difficultyLevel - 4)) * entityBrake), 6),
+        count: Math.min(Math.round((3 + Math.floor(difficultyLevel - 4)) * eliteBrake), 6),
       });
     }
 
@@ -6890,16 +6891,16 @@ export class GameRoom extends Room<GameState> {
     if (waveNum >= 8 && difficultyLevel >= 1.5) {
       entries.push({
         type: 'orbiter',
-        count: Math.min(Math.round((1 + Math.floor((difficultyLevel - 1.5) * 0.5)) * entityBrake), 4),
+        count: Math.min(Math.round((1 + Math.floor((difficultyLevel - 1.5) * 0.5)) * specialistBrake), 4),
       });
     }
 
     // At difficulty 6.0+: third hard group + boss-like splitting
     if (difficultyLevel >= 6.0) {
       const hardType3 = HARD_TYPES_WAVE[(waveNum + 5) % HARD_TYPES_WAVE.length];
-      entries.push({ type: hardType3, count: Math.min(Math.round((4 + Math.floor(difficultyLevel - 6)) * entityBrake), 8) });
+      entries.push({ type: hardType3, count: Math.min(Math.round((4 + Math.floor(difficultyLevel - 6)) * specialistBrake), 8) });
       const megaSplit = SPLITTING_TYPES_WAVE[(waveNum + 4) % SPLITTING_TYPES_WAVE.length];
-      entries.push({ type: megaSplit, count: Math.min(Math.round(Math.floor(difficultyLevel - 5) * entityBrake), 5) });
+      entries.push({ type: megaSplit, count: Math.min(Math.round(Math.floor(difficultyLevel - 5) * fodderBrake), 5) });
     }
 
     // s44r22-14: HIGH-WAVE ESCALATION — new brackets that only unlock past the old 8.0 cap.
@@ -6910,12 +6911,12 @@ export class GameRoom extends Room<GameState> {
       const eliteSwarm = ELITE_TYPES_WAVE[(waveNum + 2) % ELITE_TYPES_WAVE.length];
       entries.push({
         type: eliteSwarm,
-        count: Math.min(Math.round((2 + Math.floor((difficultyLevel - 8) * 0.5)) * entityBrake), 8),
+        count: Math.min(Math.round((2 + Math.floor((difficultyLevel - 8) * 0.5)) * eliteBrake), 8),
       });
       // Extra orbiters — fast and aggressive
       entries.push({
         type: 'orbiter',
-        count: Math.min(Math.round((2 + Math.floor((difficultyLevel - 8) * 0.3)) * entityBrake), 6),
+        count: Math.min(Math.round((2 + Math.floor((difficultyLevel - 8) * 0.3)) * specialistBrake), 6),
       });
     }
 
@@ -6924,12 +6925,12 @@ export class GameRoom extends Room<GameState> {
       const splitType2 = SPLITTING_TYPES_WAVE[(waveNum + 6) % SPLITTING_TYPES_WAVE.length];
       entries.push({
         type: splitType2,
-        count: Math.min(Math.round((4 + Math.floor((difficultyLevel - 12) * 0.6)) * entityBrake), 12),
+        count: Math.min(Math.round((4 + Math.floor((difficultyLevel - 12) * 0.6)) * fodderBrake), 12),
       });
       const hardReinforce = HARD_TYPES_WAVE[(waveNum + 7) % HARD_TYPES_WAVE.length];
       entries.push({
         type: hardReinforce,
-        count: Math.min(Math.round((5 + Math.floor((difficultyLevel - 12) * 0.4)) * entityBrake), 10),
+        count: Math.min(Math.round((5 + Math.floor((difficultyLevel - 12) * 0.4)) * specialistBrake), 10),
       });
     }
 
@@ -6938,12 +6939,12 @@ export class GameRoom extends Room<GameState> {
       const eliteFlood = ELITE_TYPES_WAVE[(waveNum + 3) % ELITE_TYPES_WAVE.length];
       entries.push({
         type: eliteFlood,
-        count: Math.min(Math.round((4 + Math.floor((difficultyLevel - 16) * 0.5)) * entityBrake), 10),
+        count: Math.min(Math.round((4 + Math.floor((difficultyLevel - 16) * 0.5)) * eliteBrake), 10),
       });
       const splitFlood = SPLITTING_TYPES_WAVE[(waveNum + 8) % SPLITTING_TYPES_WAVE.length];
       entries.push({
         type: splitFlood,
-        count: Math.min(Math.round((3 + Math.floor((difficultyLevel - 16) * 0.4)) * entityBrake), 8),
+        count: Math.min(Math.round((3 + Math.floor((difficultyLevel - 16) * 0.4)) * fodderBrake), 8),
       });
     }
 
@@ -6952,16 +6953,16 @@ export class GameRoom extends Room<GameState> {
       const hardMax = HARD_TYPES_WAVE[(waveNum + 9) % HARD_TYPES_WAVE.length];
       entries.push({
         type: hardMax,
-        count: Math.min(Math.round((6 + Math.floor((difficultyLevel - 20) * 0.5)) * entityBrake), 12),
+        count: Math.min(Math.round((6 + Math.floor((difficultyLevel - 20) * 0.5)) * specialistBrake), 12),
       });
       entries.push({
         type: 'orbiter',
-        count: Math.min(Math.round((3 + Math.floor((difficultyLevel - 20) * 0.3)) * entityBrake), 8),
+        count: Math.min(Math.round((3 + Math.floor((difficultyLevel - 20) * 0.3)) * specialistBrake), 8),
       });
       const eliteMax = ELITE_TYPES_WAVE[(waveNum + 4) % ELITE_TYPES_WAVE.length];
       entries.push({
         type: eliteMax,
-        count: Math.min(Math.round((3 + Math.floor((difficultyLevel - 20) * 0.4)) * entityBrake), 8),
+        count: Math.min(Math.round((3 + Math.floor((difficultyLevel - 20) * 0.4)) * eliteBrake), 8),
       });
     }
 

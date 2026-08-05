@@ -33,6 +33,7 @@ import {
   createPickupVisualProofDebug,
   type PickupVisualProofRecord,
 } from './PickupVisualProofDebug';
+import { computeEntityPressurePlan } from '../core/DifficultyScaling';
 
 // ---------------------------------------------------------------------------
 // Serializable types (JSON-safe, no THREE objects)
@@ -739,6 +740,7 @@ export class TestHarnessAPI {
       dominanceBonus,
       finalDifficulty: difficultyLevel,
       enemyCap: this.ctx.enemySpawner.getMaxActiveEnemies(),
+      pressurePlan: computeEntityPressurePlan(activeEnemies.length, difficultyLevel),
       spawnInterval: Math.max(0, Number(waveScheduler?.endlessNextSpawn ?? 0)
         - Number(waveScheduler?.getElapsed?.() ?? 0)),
       enemyCount: activeEnemies.length,
@@ -766,6 +768,9 @@ export class TestHarnessAPI {
       pressure,
       player: {
         score: this.ctx.player.score,
+        rawScore: this.ctx.scoreManager.getRawKillScore(),
+        comboAdjustedScore: this.ctx.scoreManager.getComboAdjustedKillScore(),
+        multipliedKillScore: this.ctx.scoreManager.getMultipliedKillScore(),
         lives: this.ctx.player.lives,
         alive: this.ctx.player.alive,
         powerLevel: this.ctx.playerLevel.level,
@@ -1560,6 +1565,7 @@ export class TestHarnessAPI {
         'standard_b_1', 'standard_b_2', 'standard_b_3',
       ]);
       this.ctx.player.addScore(Math.max(0, 1_000_000 - this.ctx.player.score));
+      this.ctx.scoreManager.seedScoreTotalsForProof(250_000, 350_000, 1_000_000);
       while (this.ctx.playerLevel.totalKills < 250) this.ctx.playerLevel.addKill();
       if (this.ctx.playerPowerRuntime) {
         this.ctx.playerPowerRuntime.proofOverride = { survivalSeconds: 600, streak: 250 };

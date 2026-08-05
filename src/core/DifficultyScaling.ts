@@ -169,6 +169,10 @@ export function getContinuousScaleMultiplier(difficultyLevel: number): number {
 export interface DifficultyInput {
   /** Player's current score */
   score: number;
+  /** Kill score before combo/score multipliers. Preferred for surge detection when available. */
+  rawScore?: number;
+  /** Score after combo/score multipliers. Useful for telemetry and legacy callers. */
+  multipliedScore?: number;
   /** Elapsed game time in seconds */
   elapsedTime: number;
   /** Current combo count */
@@ -194,6 +198,35 @@ export interface DifficultyInput {
   companionCount?: number;
   /** Shared authoritative capability snapshot. Replaces overlapping legacy bonuses when present. */
   playerPower?: PlayerPowerBreakdown;
+}
+
+export interface EntityPressurePlan {
+  activeEntityCount: number;
+  crowding: number;
+  baseBrake: number;
+  fodderBrake: number;
+  specialistBrake: number;
+  eliteBrake: number;
+}
+
+export function computeEntityPressurePlan(
+  activeEntityCount: number,
+  difficultyLevel: number,
+): EntityPressurePlan {
+  const active = Math.max(0, activeEntityCount);
+  const crowding = Math.max(0, Math.min(1, (active - 80) / 40));
+  const endgameFloor = difficultyLevel >= 8 ? 0.68 : 0.52;
+  const baseBrake = active > 200
+    ? Math.max(endgameFloor, 200 / active)
+    : Math.max(endgameFloor, 1 - crowding * 0.34);
+  return {
+    activeEntityCount: active,
+    crowding,
+    baseBrake,
+    fodderBrake: Math.max(endgameFloor * 0.85, baseBrake - crowding * 0.18),
+    specialistBrake: Math.max(endgameFloor, baseBrake - crowding * 0.06),
+    eliteBrake: Math.max(endgameFloor, baseBrake),
+  };
 }
 
 /**
@@ -352,17 +385,11 @@ export function generateScaledEndlessWave(
   // Mirrors server-side GameRoom.ts spawnWave() formula for cross-system consistency.
   const playerCountMultiplier = 1.0 + (Math.max(1, playerCount) - 1) * 0.5;
 
-  // Entity count soft brake: reduces per-wave spawn counts when screen is crowded.
-  // Below 200 entities: factor = 1.0 (no effect — early game unchanged).
-  // At 300 entities: factor ≈ 0.67 (33% fewer per wave).
-  // At 400 entities: factor ≈ 0.50 (50% fewer per wave).
-  // At difficulty < 8: floor = 0.40 (game still escalates via types/tiers).
-  // At difficulty 8+: floor raised to 0.60 — endgame quality enemies must
-  //   still spawn in meaningful numbers even when the screen is crowded.
-  const brakeFloor = difficultyLevel >= 8 ? 0.60 : 0.40;
-  const entityBrake = activeEntityCount > 200
-    ? Math.max(brakeFloor, 200 / activeEntityCount)
-    : 1.0;
+  const pressurePlan = computeEntityPressurePlan(activeEntityCount, difficultyLevel);
+  const entityBrake = pressurePlan.baseBrake;
+  const fodderBrake = pressurePlan.fodderBrake;
+  const specialistBrake = pressurePlan.specialistBrake;
+  const eliteBrake = pressurePlan.eliteBrake;
 
   // Base count grows with wave number AND difficulty level
   // At difficulty 4+, each wave has substantially more enemies
@@ -389,7 +416,7 @@ export function generateScaledEndlessWave(
     const midTier = Math.min(maxTier, Math.max(0, maxTier - 1));
     enemies.push({
       type: midType,
-      count: Math.min(Math.floor(baseCount * 0.7), 15),
+      count: Math.min(Math.floor(baseCount * 0.7 * fodderBrake), 15),
       tier: midTier,
     });
   }
@@ -400,7 +427,7 @@ export function generateScaledEndlessWave(
     const hardTier = maxTier;
     enemies.push({
       type: hardType,
-      count: Math.min(Math.floor(baseCount * 0.5), 10),
+      count: Math.min(Math.floor(baseCount * 0.5 * specialistBrake), 10),
       tier: hardTier,
     });
   }
@@ -410,7 +437,7 @@ export function generateScaledEndlessWave(
     const splitType = SPLITTING_TYPES[(waveNum - 5) % SPLITTING_TYPES.length];
     enemies.push({
       type: splitType,
-      count: Math.min(Math.round((1 + Math.floor(difficultyLevel * 0.7)) * entityBrake), 7),
+      count: Math.min(Math.round((1 + Math.floor(difficultyLevel * 0.7)) * fodderBrake), 7),
       tier: Math.min(maxTier, 1),
     });
   }
@@ -420,7 +447,7 @@ export function generateScaledEndlessWave(
     const eliteType = ELITE_TYPES[(waveNum - 6) % ELITE_TYPES.length];
     enemies.push({
       type: eliteType,
-      count: Math.min(Math.floor(baseCount * 0.4), 6),
+      count: Math.min(Math.floor(baseCount * 0.4 * eliteBrake), 6),
       tier: maxTier,
     });
   }
@@ -430,7 +457,7 @@ export function generateScaledEndlessWave(
     const variantType = BASIC_TYPES[(waveNum + 1) % BASIC_TYPES.length];
     enemies.push({
       type: variantType,
-      count: Math.min(Math.round((6 + Math.floor(difficultyLevel * 1.5)) * entityBrake), 20),
+      count: Math.min(Math.round((6 + Math.floor(difficultyLevel * 1.5)) * fodderBrake), 20),
       tier: maxTier,
     });
   }
@@ -440,7 +467,7 @@ export function generateScaledEndlessWave(
     const hardType2 = HARD_TYPES[(waveNum + 3) % HARD_TYPES.length];
     enemies.push({
       type: hardType2,
-      count: Math.min(Math.floor(baseCount * 0.4), 8),
+      count: Math.min(Math.floor(baseCount * 0.4 * specialistBrake), 8),
       tier: maxTier,
     });
   }
@@ -450,7 +477,7 @@ export function generateScaledEndlessWave(
     const swarmType = SPLITTING_TYPES[(waveNum + 2) % SPLITTING_TYPES.length];
     enemies.push({
       type: swarmType,
-      count: Math.min(Math.round((2 + Math.floor(difficultyLevel - 2.5)) * entityBrake), 8),
+      count: Math.min(Math.round((2 + Math.floor(difficultyLevel - 2.5)) * fodderBrake), 8),
       tier: Math.min(maxTier, 2),
     });
   }
@@ -460,7 +487,7 @@ export function generateScaledEndlessWave(
     const eliteType2 = ELITE_TYPES[(waveNum + 1) % ELITE_TYPES.length];
     enemies.push({
       type: eliteType2,
-      count: Math.min(Math.round((3 + Math.floor(difficultyLevel - 4)) * entityBrake), 6),
+      count: Math.min(Math.round((3 + Math.floor(difficultyLevel - 4)) * eliteBrake), 6),
       tier: maxTier,
     });
   }
@@ -471,7 +498,7 @@ export function generateScaledEndlessWave(
   if (waveNum >= 8 && difficultyLevel >= 1.5) {
     enemies.push({
       type: 'orbiter',
-      count: Math.min(Math.round((1 + Math.floor((difficultyLevel - 1.5) * 0.5)) * entityBrake), 4),
+      count: Math.min(Math.round((1 + Math.floor((difficultyLevel - 1.5) * 0.5)) * specialistBrake), 4),
       tier: Math.min(maxTier, Math.max(0, maxTier - 1)),
     });
   }
@@ -480,21 +507,21 @@ export function generateScaledEndlessWave(
   if (waveNum >= 6 && difficultyLevel >= 1.2) {
     enemies.push({
       type: 'prism_lancer',
-      count: Math.min(Math.round((1 + Math.floor((difficultyLevel - 1.2) * 0.5)) * entityBrake), 5),
+      count: Math.min(Math.round((1 + Math.floor((difficultyLevel - 1.2) * 0.5)) * specialistBrake), 5),
       tier: Math.min(maxTier, Math.max(0, maxTier - 1)),
     });
   }
   if (waveNum >= 8 && difficultyLevel >= 1.8) {
     enemies.push({
       type: 'sentinel_orb',
-      count: Math.min(Math.round((1 + Math.floor((difficultyLevel - 1.8) * 0.4)) * entityBrake), 4),
+      count: Math.min(Math.round((1 + Math.floor((difficultyLevel - 1.8) * 0.4)) * specialistBrake), 4),
       tier: Math.min(maxTier, Math.max(0, maxTier - 1)),
     });
   }
   if (waveNum >= 10 && difficultyLevel >= 2.5) {
     enemies.push({
       type: 'shatter_bloom',
-      count: Math.min(Math.round((1 + Math.floor((difficultyLevel - 2.5) * 0.35)) * entityBrake), 3),
+      count: Math.min(Math.round((1 + Math.floor((difficultyLevel - 2.5) * 0.35)) * eliteBrake), 3),
       tier: maxTier,
     });
   }
@@ -516,13 +543,13 @@ export function generateScaledEndlessWave(
     const hardType3 = HARD_TYPES[(waveNum + 5) % HARD_TYPES.length];
     enemies.push({
       type: hardType3,
-      count: Math.min(Math.round((4 + Math.floor(difficultyLevel - 6)) * entityBrake), 8),
+      count: Math.min(Math.round((4 + Math.floor(difficultyLevel - 6)) * specialistBrake), 8),
       tier: maxTier,
     });
     const megaSplit = SPLITTING_TYPES[(waveNum + 4) % SPLITTING_TYPES.length];
     enemies.push({
       type: megaSplit,
-      count: Math.min(Math.round(Math.floor(difficultyLevel - 5) * entityBrake), 5),
+      count: Math.min(Math.round(Math.floor(difficultyLevel - 5) * fodderBrake), 5),
       tier: Math.min(maxTier, 3),
     });
   }

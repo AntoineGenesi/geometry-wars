@@ -11,6 +11,7 @@
  */
 
 import type { GameContext } from '../core/GameContext';
+import { computeEntityPressurePlan } from '../core/DifficultyScaling';
 
 export class GameTelemetryExporter {
   private frameCount = 0;
@@ -194,6 +195,8 @@ export class GameTelemetryExporter {
     });
 
     this.frameCount++;
+    const difficultyLevel = Number((ctx.waveScheduler as any)?.currentDifficultyLevel ?? 0);
+    const pressurePlan = computeEntityPressurePlan(enemyData.length, difficultyLevel);
 
     // Death detection: track alive→dead transitions
     const currentlyAlive = player.alive;
@@ -231,6 +234,9 @@ export class GameTelemetryExporter {
         worldPos: { x: pPos.x, y: pPos.y, z: pPos.z },
         lives: player.lives,
         score: player.score,
+        rawScore: ctx.scoreManager.getRawKillScore(),
+        comboAdjustedScore: ctx.scoreManager.getComboAdjustedKillScore(),
+        multipliedKillScore: ctx.scoreManager.getMultipliedKillScore(),
         alive: player.alive,
         collisionRadius: playerRadius,
       },
@@ -250,8 +256,8 @@ export class GameTelemetryExporter {
       time: game.clock.totalTime,
       fps: 1 / game.clock.fixedDeltaTime,
       difficulty: {
-        level: Number((ctx.waveScheduler as any)?.currentDifficultyLevel ?? 0),
-        tier: Math.floor(Number((ctx.waveScheduler as any)?.currentDifficultyLevel ?? 0)),
+        level: difficultyLevel,
+        tier: Math.floor(difficultyLevel),
         wave: typeof (ctx.waveScheduler as any)?.getCurrentWave === 'function'
           ? (ctx.waveScheduler as any).getCurrentWave()
           : 0,
@@ -279,11 +285,13 @@ export class GameTelemetryExporter {
       dominance: ctx.playerPowerRuntime?.breakdown,
       pressure: {
         baseDifficulty: Math.max(0,
-          Number((ctx.waveScheduler as any)?.currentDifficultyLevel ?? 0)
+          difficultyLevel
             - Number(ctx.playerPowerRuntime?.breakdown.difficultyBonus ?? 0)),
         dominanceBonus: Number(ctx.playerPowerRuntime?.breakdown.difficultyBonus ?? 0),
-        finalDifficulty: Number((ctx.waveScheduler as any)?.currentDifficultyLevel ?? 0),
+        finalDifficulty: difficultyLevel,
         enemyCap: ctx.enemySpawner.getMaxActiveEnemies(),
+        enemyCount: enemyData.length,
+        pressurePlan,
         spawnInterval: Math.max(0,
           Number((ctx.waveScheduler as any)?.endlessNextSpawn ?? 0)
             - Number((ctx.waveScheduler as any)?.getElapsed?.() ?? 0)),
