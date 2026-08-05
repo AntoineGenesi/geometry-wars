@@ -461,8 +461,15 @@ export class TestHarnessAPI {
     // Multiply by scaleFactor to match real game: player.mesh.position comes from matrixWorld
     // which includes surface.group.scale. Without this, zone check (world-space) mismatches.
     const worldPos = sp.position.clone().applyQuaternion(surface.worldRotation).multiplyScalar(scaleFactor);
-    playerWalker.position.copy(worldPos);
-    player.mesh.position.copy(worldPos);
+    const projected = this.ctx.meshSurface.closestPointOnSurface(worldPos);
+    if (projected) {
+      playerWalker.teleportTo(projected.point, projected.faceIndex, projected.normal);
+    } else {
+      playerWalker.position.copy(worldPos);
+    }
+    player.mesh.position.copy(playerWalker.position);
+    const frame = playerWalker.getTangentFrame();
+    this.ctx.cameraController.snapToFrame(playerWalker.position, playerWalker.normal, frame);
   }
 
   /** Get player position. */

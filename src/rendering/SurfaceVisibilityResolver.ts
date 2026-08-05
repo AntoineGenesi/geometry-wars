@@ -9,6 +9,8 @@ export const SURFACE_VISIBILITY_DEFAULT_MIN_BRIGHTNESS = 0.35;
 
 const HARD_EDGE_COSINE = Math.cos(THREE.MathUtils.degToRad(50));
 const LONG_PATH_RATIO = 0.52;
+const OPAQUE_BACKSIDE_RATIO = 0.45;
+const OPAQUE_BACKSIDE_NORMAL_DOT = -0.45;
 const MAX_CACHED_FIELDS = 6;
 const LARGE_ENEMY_RADIUS = 1.1;
 const DISTANCE_EPSILON = 1e-7;
@@ -139,6 +141,7 @@ function edgeKey(a: number, b: number): string {
 export class SurfaceVisibilityResolver {
   private readonly meshSurface: MeshSurface;
   private readonly adjacency: GraphEdge[][];
+  private readonly faceNormals: THREE.Vector3[];
   private readonly fields = new Map<number, DistanceField>();
   private readonly entityFaces = new WeakMap<object, { face: number; position: THREE.Vector3 }>();
   private readonly entityFaceRequeryDistanceSq: number;
@@ -150,6 +153,7 @@ export class SurfaceVisibilityResolver {
     const startedAt = performance.now();
     const graph = this.buildGraph(meshSurface.mesh.geometry);
     this.adjacency = graph.adjacency;
+    this.faceNormals = graph.normals;
     this.entityFaceRequeryDistanceSq = Math.pow(
       graph.meanEdgeDistance * ENTITY_FACE_REQUERY_EDGE_RATIO,
       2,
@@ -182,13 +186,24 @@ export class SurfaceVisibilityResolver {
     const blocked = hardEdgeCrossings > 0;
     const longPath = !reachable || ratio >= LONG_PATH_RATIO;
 
-    if (!blocked && !longPath) {
+    if (options.opaqueSurfaces) {
+      const normalDot = reachable
+        ? this.faceNormals[playerFace]?.dot(this.faceNormals[entityFace]) ?? 1
+        : -1;
+      const backSide = !reachable
+        || (ratio >= OPAQUE_BACKSIDE_RATIO && normalDot <= OPAQUE_BACKSIDE_NORMAL_DOT);
+
+      if (backSide) {
+        return this.result('opaque-hidden', 0, true, playerFace, entityFace,
+          topologyDistance, ratio, hardEdgeCrossings);
+      }
+
       return this.result('direct', SURFACE_VISIBILITY_DIRECT, false, playerFace, entityFace,
         topologyDistance, ratio, hardEdgeCrossings);
     }
 
-    if (options.opaqueSurfaces) {
-      return this.result('opaque-hidden', 0, true, playerFace, entityFace,
+    if (!blocked && !longPath) {
+      return this.result('direct', SURFACE_VISIBILITY_DIRECT, false, playerFace, entityFace,
         topologyDistance, ratio, hardEdgeCrossings);
     }
 
@@ -340,6 +355,7 @@ export class SurfaceVisibilityResolver {
 
   private buildGraph(geometry: THREE.BufferGeometry): {
     adjacency: GraphEdge[][];
+    normals: THREE.Vector3[];
     edgeCount: number;
     meanEdgeDistance: number;
   } {
@@ -407,6 +423,7 @@ export class SurfaceVisibilityResolver {
 
     return {
       adjacency,
+      normals,
       edgeCount,
       meanEdgeDistance: edgeCount > 0 ? totalEdgeDistance / edgeCount : 1,
     };

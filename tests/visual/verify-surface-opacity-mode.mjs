@@ -4,7 +4,8 @@
  *
  * Verifies the real single-player path:
  * - default/legacy graphics settings make surfaces opaque;
- * - far-side enemies are intentionally hidden in opaque mode;
+ * - cube opaque mode keeps same/adjacent/top/bottom face enemies visible;
+ * - the opposite/back face is intentionally hidden in opaque mode;
  * - explicit see-through mode keeps far-side enemies dim/readable.
  */
 
@@ -53,17 +54,34 @@ async function runMode(page, mode) {
     const api = window.__TEST_API;
     api.clearEnemies();
     api.setPlayerPosition(0.125, 0.5);
-    return {
-      firstId: api.spawnEnemy('grunt', 0.125, 0.62),
-      secondId: api.spawnEnemy('grunt', 0.625, 0.5),
-    };
+    const roles = [
+      { role: 'same-face-near', u: 0.125, v: 0.62 },
+      { role: 'same-face-high', u: 0.125, v: 0.8 },
+      { role: 'adjacent-right', u: 0.375, v: 0.5 },
+      { role: 'adjacent-left', u: 0.875, v: 0.5 },
+      { role: 'top-face', u: 0.125, v: 0.95 },
+      { role: 'bottom-face', u: 0.125, v: 0.05 },
+      { role: 'opposite-face', u: 0.625, v: 0.5 },
+    ];
+    const spawned = roles.map((entry) => ({
+      ...entry,
+      id: api.spawnEnemy('grunt', entry.u, entry.v),
+    }));
+    const spawnedIds = new Set(spawned.map((entry) => entry.id));
+    for (const enemy of api.ctx.enemySpawner.getEnemies()) {
+      if (!spawnedIds.has(enemy.__testId)) continue;
+      enemy.update = () => {};
+      if (enemy.walker) enemy.walker.speed = 0;
+    }
+    return spawned;
   });
   await sleep(2000);
 
-  return page.evaluate(({ firstId, secondId, selectedMode }) => {
+  const summary = await page.evaluate(({ spawnedRoles, selectedMode }) => {
     const api = window.__TEST_API;
     const ctx = api.ctx;
     const material = ctx.surface.mesh.material;
+    const occlusionFadeEnabled = material?._uniforms?.uOcclusionEnabled?.value ?? null;
     const enemies = api.getEnemies();
     const rawEnemies = ctx.enemySpawner.getEnemies().map((enemy) => ({
       id: enemy.__testId,
@@ -71,9 +89,11 @@ async function runMode(page, mode) {
       visibility: enemy.__surfaceVisibility?.visibility ?? null,
       occluded: enemy.__surfaceVisibility?.occluded ?? null,
     }));
-    const spawnedIds = [firstId, secondId];
-    const spawned = spawnedIds.map((id) => ({
+    const spawned = spawnedRoles.map(({ role, id, u, v }) => ({
+      role,
       id,
+      u,
+      v,
       enemy: enemies.find((candidate) => candidate.id === id) ?? null,
       raw: rawEnemies.find((candidate) => candidate.id === id) ?? null,
     }));
@@ -84,9 +104,13 @@ async function runMode(page, mode) {
       isWebGPU: ctx.game.isWebGPU,
       surfaceOpacity: material.opacity,
       surfaceTransparent: material.transparent,
+      occlusionFadeEnabled,
       spawned,
     };
-  }, { ...ids, selectedMode: mode });
+  }, { spawnedRoles: ids, selectedMode: mode });
+  const screenshotPath = resolve(REPORTS_DIR, `surface-opacity-mode-${surface}-${mode}-${runDate}.png`);
+  await page.screenshot({ path: screenshotPath });
+  return { ...summary, screenshotPath };
 }
 
 async function main() {
@@ -126,13 +150,19 @@ async function main() {
     const criticalPageErrors = pageErrors.filter((error) => !/Failed to load resource: the server responded with a status of 404/.test(error));
     const checks = {
       defaultSurfaceOpaque: defaultMode.surfaceOpacity === 1,
-      defaultDirectEnemyVisible: defaultMode.spawned.some(({ enemy, raw }) => (
-        raw?.className === 'direct'
-        && (enemy?.opacity ?? 0) > 0
-        && (enemy?.instanceColorBrightness ?? 0) > 0.3
-      )),
-      defaultOccludedEnemyHidden: defaultMode.spawned.some(({ enemy, raw }) => (
-        raw?.className === 'opaque-hidden'
+      defaultOcclusionFadeDisabledOnVisibleCubeFace: defaultMode.occlusionFadeEnabled === false,
+      defaultVisibleCubeFacesRendered: defaultMode.spawned
+        .filter(({ role }) => role !== 'opposite-face')
+        .every(({ enemy, raw }) => (
+          raw?.className === 'direct'
+          && raw?.visibility === 1
+          && (enemy?.opacity ?? 0) > 0
+          && (enemy?.instanceColorBrightness ?? 0) > 0.3
+          && (enemy?.instanceMatrixScale ?? 0) > 0
+        )),
+      defaultOppositeEnemyHidden: defaultMode.spawned.some(({ role, enemy, raw }) => (
+        role === 'opposite-face'
+        && raw?.className === 'opaque-hidden'
         && (enemy?.opacity ?? 1) === 0
       )),
       seeThroughSurfaceReadable: seeThroughMode.surfaceOpacity === 0.05,

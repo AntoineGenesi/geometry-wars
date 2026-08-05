@@ -57,7 +57,8 @@ export class RenderLoop {
     // The old THREE.Raycaster path collected every triangle hit. On concave tunnel
     // views this consumed ~12ms per rendered frame. MeshSurface already owns a BVH,
     // so stop at the first hit inside the camera-to-player segment.
-    ctx.state.isCurrentlyBlocked = ctx.meshSurface.intersectsSegment(
+    const isTunnelSurface = ctx.surfaceType === 'sphere-tunnel' || ctx.surfaceType === 'cube-tunnel';
+    ctx.state.isCurrentlyBlocked = isTunnelSurface && ctx.meshSurface.intersectsSegment(
       camPos,
       this._renderTempToPlayerDir,
       distToPlayer,
@@ -73,9 +74,11 @@ export class RenderLoop {
     ctx.shockwaveEffect.update(frameDt, ctx.game.clock.totalTime);
 
     ctx.state.currentGridOpacity += (targetGridOpacity - ctx.state.currentGridOpacity) * Math.min(1, ctx.state.fadeSpeed * frameDt);
-    // Surface uses depth-fade shader — pass camera+player positions each frame (shader handles the fade)
+    // Surface uses depth-fade shader only when the surface is actually between
+    // camera and player. Leaving this enabled on visible opaque faces creates a
+    // dark corridor patch around the player.
     const occlusionMat = ctx.surface.mesh.material as OcclusionSurfaceMaterial;
-    occlusionMat.setOcclusionParams(camPos, playerPos, true);
+    occlusionMat.setOcclusionParams(camPos, playerPos, ctx.state.isCurrentlyBlocked);
     const gridMat = ctx.surface.gridMesh.material as THREE.LineBasicMaterial;
     gridMat.opacity = ctx.state.currentGridOpacity;
 

@@ -115,11 +115,36 @@ describe('SurfaceVisibilityResolver policy', () => {
     expect(result.visibility).toBe(SURFACE_VISIBILITY_IMPORTANT_FLOOR);
   });
 
-  it('explicitly classifies blocked enemies as opaque-hidden', () => {
-    const { surface, resolver } = createFixture('cube-ring');
+  it('keeps the five non-opposite cube faces visible in opaque mode', () => {
+    const { surface, resolver } = createFixture('cube');
+    const player = surface.getPoint(0.125, 0.5).position;
+    const visiblePoints = [
+      surface.getPoint(0.125, 0.8).position,
+      surface.getPoint(0.125, 0.2).position,
+      surface.getPoint(0.375, 0.5).position,
+      surface.getPoint(0.875, 0.5).position,
+      surface.getPoint(0.125, 0.95).position,
+      surface.getPoint(0.125, 0.05).position,
+    ];
+
+    for (const entityWorldPosition of visiblePoints) {
+      const result = resolver.resolve({
+        playerWorldPosition: player,
+        entityWorldPosition,
+        opaqueSurfaces: true,
+      });
+
+      expect(result.className).toBe('direct');
+      expect(result.visibility).toBe(1);
+      expect(result.minColorBrightness).toBe(1);
+    }
+  });
+
+  it('hides the opposite cube face in opaque mode', () => {
+    const { surface, resolver } = createFixture('cube');
     const result = resolver.resolve({
       playerWorldPosition: surface.getPoint(0.125, 0.5).position,
-      entityWorldPosition: surface.getPoint(0, 0).position,
+      entityWorldPosition: surface.getPoint(0.625, 0.5).position,
       opaqueSurfaces: true,
     });
 

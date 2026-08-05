@@ -8641,6 +8641,7 @@ async function main() {
         const camPos = camera.position;
         const playerPos = localPlayer.mesh.position;
         const baseGridOpacity = (savedStyle?.gridOpacity ?? 0.10);
+        let isBlocked = false;
 
         // Only surfaces where the player is INSIDE the mesh need tunnel transparency.
         const isTunnelSurface = lastCreatedSurfaceType === 'sphere-tunnel'
@@ -8654,7 +8655,7 @@ async function main() {
           _tunnelRaycaster.set(camPos, _tunnelToPlayerDir);
           _tunnelRaycaster.far = distToPlayer;
           const hits = _tunnelRaycaster.intersectObject(surf.mesh, false);
-          const isBlocked = hits.length > 0;
+          isBlocked = hits.length > 0;
 
           // Grid opacity: fade when blocked (matches SP behavior)
           const targetGridOpacity = isBlocked ? baseGridOpacity * 0.08 : baseGridOpacity;
@@ -8670,9 +8671,10 @@ async function main() {
           gridMat.opacity = _currentGridOpacity;
         }
 
-        // Surface occlusion shader: fade surface between camera and player
+        // Surface occlusion shader: fade surface between camera and player only
+        // when the surface actually blocks that segment.
         if (surf.mesh.material instanceof OcclusionSurfaceMaterial) {
-          surf.mesh.material.setOcclusionParams(camPos, playerPos, true);
+          surf.mesh.material.setOcclusionParams(camPos, playerPos, isBlocked);
         }
       }
     }
