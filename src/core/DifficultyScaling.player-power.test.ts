@@ -28,7 +28,7 @@ function waveCount(wave: number, difficulty: number): number {
 describe('SP player-power pressure integration', () => {
   it('bypasses overlapping legacy level, buff, combo, kill, and companion bonuses', () => {
     const playerPower = computePlayerPower({
-      blaster: { damage: 1, shotsPerSecond: 6, projectilesPerShot: 2 },
+      blaster: { damage: 1, shotsPerSecond: 6, projectilesPerShot: 1 },
     });
     const clean = computeDifficultyLevel({ ...legacyBase, playerPower });
     const inflatedLegacy = computeDifficultyLevel({
@@ -45,7 +45,7 @@ describe('SP player-power pressure integration', () => {
 
   it('moves final difficulty, aggregate health, and wave count for the reported case', () => {
     const baselinePower = computePlayerPower({
-      blaster: { damage: 1, shotsPerSecond: 6, projectilesPerShot: 2 },
+      blaster: { damage: 1, shotsPerSecond: 6, projectilesPerShot: 1 },
     });
     const highPower = computePlayerPower({
       score: 1_000_000,
@@ -118,7 +118,7 @@ describe('SP player-power pressure integration', () => {
       score: 1_000,
       survivalSeconds: 5,
       streak: 0,
-      blaster: { damage: 1, shotsPerSecond: 6, projectilesPerShot: 2 },
+      blaster: { damage: 1, shotsPerSecond: 6, projectilesPerShot: 1 },
     });
     expect(struggling.difficultyBonus).toBeLessThan(0.05);
     expect(struggling.hpMultiplier).toBe(1);

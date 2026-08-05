@@ -16,13 +16,13 @@ vi.stubGlobal('document', {
 });
 
 describe('WeaponManager player-power collector', () => {
-  it('reports the live dual-barrel baseline as 12 DPS', () => {
+  it('reports the live one-bolt baseline as 6 DPS', () => {
     const manager = new WeaponManager();
     const snapshot = manager.getPlayerPowerWeapons(1);
     expect(snapshot.blaster).toEqual({
       damage: 1,
       shotsPerSecond: 6,
-      projectilesPerShot: 2,
+      projectilesPerShot: 1,
       multiHitPotential: 1,
     });
     manager.dispose();
@@ -40,7 +40,7 @@ describe('WeaponManager player-power collector', () => {
 
     const snapshot = manager.getPlayerPowerWeapons(2.2);
     expect(snapshot.blaster.damage).toBeCloseTo(2.2);
-    expect(snapshot.blaster.shotsPerSecond).toBeCloseTo(11.7);
+    expect(snapshot.blaster.shotsPerSecond).toBeCloseTo(10.8);
     expect(snapshot.blaster.projectilesPerShot).toBe(8);
     manager.dispose();
   });
