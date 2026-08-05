@@ -46,8 +46,10 @@ export interface GraphicsSettings {
   surfaceOpacity: number;
   /** Surface fill color as a 24-bit hex number (e.g. 0xa8d8f0 for Ice Blue). */
   surfaceColor: number;
-  /** When true, entities >90° from player are hidden (old behavior). When false (default), they are dimmed to 0.3 opacity. */
+  /** Legacy setting name; normalized into surfaceOpaque and then saved false. */
   enable90DegreeHide: boolean;
+  /** Migration marker for the opaque-by-default surface visibility policy. */
+  surfaceVisibilityPreferenceVersion?: number;
 }
 
 export interface AudioSettings {
@@ -68,6 +70,7 @@ export interface DebugSettings {
 const GRAPHICS_STORAGE_KEY = 'gw3d-graphics-settings';
 const AUDIO_STORAGE_KEY = 'gw3d-audio-settings';
 const DEBUG_STORAGE_KEY = 'gw3d-debug-settings';
+const SURFACE_VISIBILITY_PREFERENCE_VERSION = 2;
 
 const DEFAULT_GRAPHICS: GraphicsSettings = {
   qualityPreset: 'high',
@@ -77,10 +80,11 @@ const DEFAULT_GRAPHICS: GraphicsSettings = {
   trailEffects: true,
   maxEnemies: 500,
   resolutionScale: 1.0,
-  surfaceOpaque: false,
+  surfaceOpaque: true,
   surfaceOpacity: 0.05,
   surfaceColor: 0x141440,
   enable90DegreeHide: false,
+  surfaceVisibilityPreferenceVersion: SURFACE_VISIBILITY_PREFERENCE_VERSION,
 };
 
 const DEFAULT_AUDIO: AudioSettings = {
@@ -103,10 +107,11 @@ const QUALITY_PRESET_VALUES: Record<string, Omit<GraphicsSettings, 'qualityPrese
     trailEffects: true,
     maxEnemies: 5000,
     resolutionScale: 1.0,
-    surfaceOpaque: false,
+    surfaceOpaque: true,
     surfaceOpacity: 0.05,
     surfaceColor: 0x141440,
     enable90DegreeHide: false,
+    surfaceVisibilityPreferenceVersion: SURFACE_VISIBILITY_PREFERENCE_VERSION,
   },
   high: {
     bloomEnabled: true,
@@ -115,10 +120,11 @@ const QUALITY_PRESET_VALUES: Record<string, Omit<GraphicsSettings, 'qualityPrese
     trailEffects: true,
     maxEnemies: 500,
     resolutionScale: 1.0,
-    surfaceOpaque: false,
+    surfaceOpaque: true,
     surfaceOpacity: 0.05,
     surfaceColor: 0x141440,
     enable90DegreeHide: false,
+    surfaceVisibilityPreferenceVersion: SURFACE_VISIBILITY_PREFERENCE_VERSION,
   },
   medium: {
     bloomEnabled: true,
@@ -127,10 +133,11 @@ const QUALITY_PRESET_VALUES: Record<string, Omit<GraphicsSettings, 'qualityPrese
     trailEffects: true,
     maxEnemies: 200,
     resolutionScale: 0.75,
-    surfaceOpaque: false,
+    surfaceOpaque: true,
     surfaceOpacity: 0.05,
     surfaceColor: 0x141440,
     enable90DegreeHide: false,
+    surfaceVisibilityPreferenceVersion: SURFACE_VISIBILITY_PREFERENCE_VERSION,
   },
   low: {
     bloomEnabled: false,
@@ -139,10 +146,11 @@ const QUALITY_PRESET_VALUES: Record<string, Omit<GraphicsSettings, 'qualityPrese
     trailEffects: false,
     maxEnemies: 100,
     resolutionScale: 0.5,
-    surfaceOpaque: false,
+    surfaceOpaque: true,
     surfaceOpacity: 0.05,
     surfaceColor: 0x141440,
     enable90DegreeHide: false,
+    surfaceVisibilityPreferenceVersion: SURFACE_VISIBILITY_PREFERENCE_VERSION,
   },
   minimal: {
     bloomEnabled: false,
@@ -151,10 +159,11 @@ const QUALITY_PRESET_VALUES: Record<string, Omit<GraphicsSettings, 'qualityPrese
     trailEffects: false,
     maxEnemies: 50,
     resolutionScale: 0.25,
-    surfaceOpaque: false,
+    surfaceOpaque: true,
     surfaceOpacity: 0.05,
     surfaceColor: 0x141440,
     enable90DegreeHide: false,
+    surfaceVisibilityPreferenceVersion: SURFACE_VISIBILITY_PREFERENCE_VERSION,
   },
 };
 
@@ -167,8 +176,12 @@ export function loadGraphicsSettings(): GraphicsSettings {
     const raw = localStorage.getItem(GRAPHICS_STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      const loaded = normalizeLoadedGraphicsSettings({ ...DEFAULT_GRAPHICS, ...parsed });
-      if (loaded.surfaceOpaque !== parsed.surfaceOpaque || parsed.enable90DegreeHide === true) {
+      const loaded = normalizeLoadedGraphicsSettings({ ...DEFAULT_GRAPHICS, ...parsed }, parsed);
+      if (
+        loaded.surfaceOpaque !== parsed.surfaceOpaque
+        || parsed.enable90DegreeHide === true
+        || parsed.surfaceVisibilityPreferenceVersion !== SURFACE_VISIBILITY_PREFERENCE_VERSION
+      ) {
         saveGraphicsSettings(loaded);
       }
       return loaded;
@@ -241,11 +254,16 @@ export function areOpaqueSurfacesEnabled(settings: GraphicsSettings): boolean {
   return settings.surfaceOpaque;
 }
 
-function normalizeLoadedGraphicsSettings(settings: GraphicsSettings): GraphicsSettings {
+function normalizeLoadedGraphicsSettings(settings: GraphicsSettings, rawSettings: Partial<GraphicsSettings> = {}): GraphicsSettings {
+  const legacySurfaceVisibilitySave =
+    rawSettings.surfaceVisibilityPreferenceVersion !== SURFACE_VISIBILITY_PREFERENCE_VERSION;
   return {
     ...settings,
-    surfaceOpaque: settings.surfaceOpaque || settings.enable90DegreeHide,
+    surfaceOpaque: legacySurfaceVisibilitySave
+      ? true
+      : settings.surfaceOpaque || settings.enable90DegreeHide,
     enable90DegreeHide: false,
+    surfaceVisibilityPreferenceVersion: SURFACE_VISIBILITY_PREFERENCE_VERSION,
   };
 }
 
@@ -253,6 +271,7 @@ function normalizeSavedGraphicsSettings(settings: GraphicsSettings): GraphicsSet
   return {
     ...settings,
     enable90DegreeHide: false,
+    surfaceVisibilityPreferenceVersion: SURFACE_VISIBILITY_PREFERENCE_VERSION,
   };
 }
 

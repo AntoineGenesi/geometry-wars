@@ -99,6 +99,7 @@ describe('GraphicsSettings', () => {
         surfaceOpacity: 0.05,
         surfaceColor: 0x141440,
         enable90DegreeHide: false,
+        surfaceVisibilityPreferenceVersion: 2,
       };
 
       saveGraphicsSettings(custom);
@@ -145,6 +146,46 @@ describe('GraphicsSettings', () => {
 
       expect(loaded.surfaceOpaque).toBe(false);
       expect(loaded.enable90DegreeHide).toBe(false);
+      expect(areOpaqueSurfacesEnabled(loaded)).toBe(false);
+      expect(getEffectiveSurfaceOpacity(loaded)).toBe(0.05);
+    });
+
+    it('migrates legacy saved defaults to the new opaque default', () => {
+      store['gw3d-graphics-settings'] = JSON.stringify({
+        qualityPreset: 'high',
+        bloomEnabled: true,
+        bloomStrength: 1,
+        particleCount: 2000,
+        trailEffects: true,
+        maxEnemies: 500,
+        resolutionScale: 1,
+        surfaceOpaque: false,
+        surfaceOpacity: 0.05,
+        surfaceColor: 0x141440,
+        enable90DegreeHide: false,
+      });
+
+      const loaded = loadGraphicsSettings();
+
+      expect(loaded.surfaceOpaque).toBe(true);
+      expect(areOpaqueSurfacesEnabled(loaded)).toBe(true);
+      expect(getEffectiveSurfaceOpacity(loaded)).toBe(1.0);
+      expect(JSON.parse(store['gw3d-graphics-settings'])).toMatchObject({
+        surfaceOpaque: true,
+        surfaceVisibilityPreferenceVersion: 2,
+      });
+    });
+
+    it('preserves an explicit see-through choice after migration has run', () => {
+      store['gw3d-graphics-settings'] = JSON.stringify({
+        ...getDefaultGraphics(),
+        surfaceOpaque: false,
+        surfaceVisibilityPreferenceVersion: 2,
+      });
+
+      const loaded = loadGraphicsSettings();
+
+      expect(loaded.surfaceOpaque).toBe(false);
       expect(areOpaqueSurfacesEnabled(loaded)).toBe(false);
       expect(getEffectiveSurfaceOpacity(loaded)).toBe(0.05);
     });
@@ -372,6 +413,7 @@ describe('Settings round-trip', () => {
       surfaceOpacity: 0.15,
       surfaceColor: 0xa8d8f0,
       enable90DegreeHide: false,
+      surfaceVisibilityPreferenceVersion: 2,
     };
     saveGraphicsSettings(original);
     expect(loadGraphicsSettings()).toEqual(original);
@@ -483,11 +525,12 @@ describe('Surface appearance settings', () => {
     expect(getEffectiveSurfaceOpacity(opaque)).toBe(1.0);
   });
 
-  it('fresh settings keep readable dim mode as the effective opaque default', () => {
+  it('fresh settings use opaque surfaces by default', () => {
     const defaults = getDefaultGraphics();
-    expect(defaults.surfaceOpaque).toBe(false);
+    expect(defaults.surfaceOpaque).toBe(true);
     expect(defaults.enable90DegreeHide).toBe(false);
-    expect(areOpaqueSurfacesEnabled(defaults)).toBe(false);
+    expect(areOpaqueSurfacesEnabled(defaults)).toBe(true);
+    expect(getEffectiveSurfaceOpacity(defaults)).toBe(1.0);
   });
 
   it('old saves without surfaceOpacity/surfaceColor fall back to defaults', () => {
@@ -506,6 +549,7 @@ describe('Surface appearance settings', () => {
     const loaded = loadGraphicsSettings();
     expect(loaded.surfaceOpacity).toBe(0.05);
     expect(loaded.surfaceColor).toBe(0x141440);
+    expect(loaded.surfaceOpaque).toBe(true);
   });
 
   it('SURFACE_OPACITY_PRESETS includes required presets', () => {

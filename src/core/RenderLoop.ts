@@ -104,9 +104,7 @@ export class RenderLoop {
         playerFaceIndex: ctx.playerWalker.faceIndex,
         entityWorldPosition: enemy.mesh.position,
         entityFaceIndex: enemy.walker?.faceIndex,
-        // Enemy bodies are gameplay-critical. Even when the user chooses opaque
-        // surfaces for the map/pickups, alive enemies must dim rather than vanish.
-        opaqueSurfaces: false,
+        opaqueSurfaces: this._opaqueSurfaces,
         enemyRadius: enemy.radius,
         important: enemy instanceof Boss,
       });

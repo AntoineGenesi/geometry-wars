@@ -642,7 +642,7 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
     if (game.bloomPass && preset.bloomRadius !== undefined) {
       game.bloomPass.radius = preset.bloomRadius;
     }
-    surface.setSurfaceOpacity(preset.surfaceOpacity);
+    surface.setSurfaceOpacity(getEffectiveSurfaceOpacity(loadGraphicsSettings()));
     surface.setSurfaceColor(preset.surfaceColor);
   });
 
@@ -1724,7 +1724,7 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
       // CRT mode: apply CRT Arcade preset (green bloom, dark surface)
       game.setBloomSettings(1.4, 0.82);
       if (game.bloomPass) game.bloomPass.radius = 0.8;
-      surface.setSurfaceOpacity(0.3);
+      surface.setSurfaceOpacity(getEffectiveSurfaceOpacity(loadGraphicsSettings()));
       surface.setSurfaceColor(0x001a08);
     } else {
       // Re-apply bloom settings adjusted for new visual mode

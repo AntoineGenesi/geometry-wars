@@ -16,7 +16,7 @@ describe('surface visibility live-path integration', () => {
     expect(source).toContain("from '../rendering/SurfaceVisibilityResolver'");
     expect(enemySection).toContain('new SurfaceVisibilityResolver(ctx.meshSurface)');
     expect(enemySection).toContain('visibilityResolver.resolve({');
-    expect(enemySection).toContain('opaqueSurfaces: false');
+    expect(enemySection).toContain('opaqueSurfaces: this._opaqueSurfaces');
     expect(enemySection).not.toContain('setInstanceVisibility(enemy, 0)');
     expect(enemySection).not.toMatch(/SURFACE_NEAR_UV|depthOcclusion|areOnOppositeWallSides/);
     expect(enemySection).not.toMatch(/FAR_SIDE_ENTITY|_isTunnelSurface|computeEnemyOcclusionVisibility/);

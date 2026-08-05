@@ -141,6 +141,11 @@ async function testSurface(surface) {
       try {
         localStorage.removeItem('masteryOverlayShown');
         localStorage.removeItem('weaponMastery');
+        localStorage.setItem('gw3d-graphics-settings', JSON.stringify({
+          surfaceOpaque: false,
+          surfaceOpacity: 0.05,
+          surfaceVisibilityPreferenceVersion: 2,
+        }));
       } catch (_) {}
     });
 

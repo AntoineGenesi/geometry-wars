@@ -1765,6 +1765,7 @@ async function main() {
   // Created when 'pre_spawn' message arrives; cleaned up when enemy appears or times out.
   interface SpawnWarningRing {
     mesh: THREE.Mesh;
+    enemyId?: string;
     u: number;
     v: number;
     spawnedAt: number; // performance.now() timestamp when created (ms)
@@ -2797,7 +2798,7 @@ async function main() {
       game.setBloomSettings(1.4, 0.82);
       if (game.bloomPass) game.bloomPass.radius = 0.8;
       if (surface) {
-        surface.setSurfaceOpacity(0.3);
+        surface.setSurfaceOpacity(getEffectiveSurfaceOpacity(loadGraphicsSettings()));
         surface.setSurfaceColor(0x001a08);
       }
     } else {
@@ -2832,7 +2833,7 @@ async function main() {
       game.bloomPass.radius = preset.bloomRadius;
     }
     if (surface) {
-      surface.setSurfaceOpacity(preset.surfaceOpacity);
+      surface.setSurfaceOpacity(getEffectiveSurfaceOpacity(loadGraphicsSettings()));
       surface.setSurfaceColor(preset.surfaceColor);
     }
   });
@@ -4641,13 +4642,14 @@ async function main() {
           targetLocation.bitangent,
         );
 
-        // Remove any matching spawn warning ring at this UV position.
+        // Remove the matching spawn warning ring. New servers include the enemy
+        // id in pre_spawn; keep the UV fallback for older local servers.
         // The ring was created 1.5s ago by the 'pre_spawn' message.
         for (let i = spawnWarningRings.length - 1; i >= 0; i--) {
           const w = spawnWarningRings[i];
           const du = Math.abs(w.u - netEnemy.surfaceU);
           const dv = Math.abs(w.v - netEnemy.surfaceV);
-          if (du < 0.02 && dv < 0.02) {
+          if (w.enemyId === netEnemy.id || (!w.enemyId && du < 0.02 && dv < 0.02)) {
             scene.remove(w.mesh);
             (w.mesh.material as THREE.MeshBasicMaterial).dispose();
             spawnWarningRings.splice(i, 1);
@@ -6269,7 +6271,7 @@ async function main() {
         }
         spawnWarningRings.length = 0;
       },
-      onPreSpawn: (data: { type: string; u: number; v: number }) => {
+      onPreSpawn: (data: { id?: string; type: string; u: number; v: number }) => {
         // Create a standalone pulsing red ring at the spawn position.
         // Does NOT require enemySpawner.update() — animated independently in onRender.
         if (!getTransform) return;
@@ -6279,7 +6281,7 @@ async function main() {
         mesh.position.copy(t.position).addScaledVector(t.normal, 0.05);
         mesh.lookAt(mesh.position.clone().add(t.normal));
         scene.add(mesh);
-        spawnWarningRings.push({ mesh, u: data.u, v: data.v, spawnedAt: performance.now() });
+        spawnWarningRings.push({ mesh, enemyId: data.id, u: data.u, v: data.v, spawnedAt: performance.now() });
       },
       onError: (err) => {
         updateStatusText(`Error: ${err.message}`);

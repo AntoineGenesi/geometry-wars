@@ -7169,7 +7169,7 @@ export class GameRoom extends Room<GameState> {
 
     // Broadcast pre-spawn warning to all clients so they can show a pulsing
     // red ring at this UV position before the enemy actually appears.
-    this.broadcast('pre_spawn', { type, u: enemy.surfaceU, v: enemy.surfaceV });
+    this.broadcast('pre_spawn', { id: enemy.id, type, u: enemy.surfaceU, v: enemy.surfaceV });
 
     // Delay adding to state so clients have PRE_SPAWN_WARNING_MS to show
     // the warning ring before the enemy materialises.
