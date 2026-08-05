@@ -18,6 +18,19 @@ const mockTransform = {
 
 const mockGetTransform = () => mockTransform as any;
 
+function collectMeshColors(root: any): number[] {
+  const colors: number[] = [];
+  root.traverse((child: any) => {
+    const material = child.material;
+    if (!material) return;
+    const materials = Array.isArray(material) ? material : [material];
+    for (const item of materials) {
+      if (item?.color?.getHex) colors.push(item.color.getHex());
+    }
+  });
+  return colors;
+}
+
 describe('Snake enemy', () => {
   let snake: Snake;
 
@@ -66,6 +79,22 @@ describe('Snake enemy', () => {
     expect(snake.segmentRoot).toBeDefined();
     // segmentRoot has children for each segment (default 2)
     expect(snake.segmentRoot.children.length).toBe(2);
+  });
+
+  it('attached segments use recognizable grunt-colored enemy bodies, not green placeholders', () => {
+    const colors = collectMeshColors(snake.segmentRoot);
+
+    expect(colors.length).toBeGreaterThan(0);
+    expect(colors).toContain(0x4444ff);
+    expect(colors).not.toContain(0x44ff88);
+    expect(snake.getSegmentData()[0].radius).toBeCloseTo(0.22, 4);
+  });
+
+  it('starts with a tighter attached body line behind the head', () => {
+    const segs = snake.getSegmentData();
+
+    expect(Math.abs(snake.surfacePosition.u - segs[0].surfaceU)).toBeCloseTo(0.055, 4);
+    expect(Math.abs(segs[0].surfaceU - segs[1].surfaceU)).toBeCloseTo(0.055, 4);
   });
 
   it('starts alive', () => {
@@ -166,6 +195,7 @@ describe('Snake enemy', () => {
     expect(data.map((s) => s.queueIndex)).toEqual([0, 1, 2]);
     expect(data.map((s) => s.health)).toEqual([3, 4, 2]);
     expect(snake.segmentRoot.children.length).toBe(3);
+    expect(data.every((s) => s.radius === 0.22)).toBe(true);
   });
 
   // ──────────────────── movement ────────────────────
