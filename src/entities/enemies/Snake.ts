@@ -19,7 +19,8 @@ interface SnakeSegData extends SnakeQueuedSegment {
 }
 
 const DEFAULT_HISTORY_SIZE = 80;
-const SEGMENT_HISTORY_STEP = 8;  // frames between segments in history
+const SEGMENT_HISTORY_STEP = 5;  // frames between segments in history
+const INITIAL_SEGMENT_U_OFFSET = 0.055;
 const DEFAULT_INITIAL_SEGMENTS = 2;
 const GROW_INTERVAL = 7;         // seconds between new segment spawns
 /** Default max segments — overridable per-instance for late-game scaling (up to 50). */
@@ -30,6 +31,10 @@ const ORBIT_SHRINK_RATE = 0.002; // UV/sec — slowly tightens orbit
 const ORBIT_RADIUS_MIN = 0.10;   // minimum orbit radius
 const DEFAULT_SEGMENT_TYPE: SnakeQueuedSegment['type'] = 'grunt';
 const DEFAULT_SEGMENT_MAX_HEALTH = 2;
+const GRUNT_SEGMENT_COLOR = 0x4444ff;
+const GRUNT_SEGMENT_RADIUS = 0.22;
+const GRUNT_SEGMENT_DEPTH = GRUNT_SEGMENT_RADIUS * 0.7;
+const GRUNT_SEGMENT_TUBE_RADIUS = 0.025;
 
 /**
  * Snake enemy — a chained series of segments led by a large triangle head.
@@ -46,7 +51,7 @@ const DEFAULT_SEGMENT_MAX_HEALTH = 2;
  *
  * Visual:
  * - Head: large yellow-green triangle (buildTriangle3D)
- * - Segments: smaller green diamonds (buildDiamond3D)
+ * - Segments: grunt-like blue diamond bodies (buildDiamond3D)
  * - Segment meshes live in `segmentRoot` (a THREE.Group added to scene by EnemySpawner)
  */
 export class Snake extends BaseEnemy {
@@ -106,18 +111,21 @@ export class Snake extends BaseEnemy {
     this.mesh = buildTriangle3D(0.40, 0xffdd00, 0.26, 0.025);
   }
 
-  private createSegmentMesh(): THREE.Group {
-    // Slightly smaller green diamond body segment
-    return buildDiamond3D(0.16, 0x44ff88, 0.11, 0.016);
+  private createSegmentMesh(type: SnakeQueuedSegment['type'] = DEFAULT_SEGMENT_TYPE): THREE.Group {
+    switch (type) {
+      case 'grunt':
+      default:
+        return buildDiamond3D(GRUNT_SEGMENT_RADIUS, GRUNT_SEGMENT_COLOR, GRUNT_SEGMENT_DEPTH, GRUNT_SEGMENT_TUBE_RADIUS);
+    }
   }
 
   private initSegments(count: number): void {
     for (let i = 0; i < count; i++) {
-      const mesh = this.createSegmentMesh();
+      const mesh = this.createSegmentMesh(DEFAULT_SEGMENT_TYPE);
       this.segmentRoot.add(mesh);
       this.segs.push({
         type: DEFAULT_SEGMENT_TYPE,
-        surfaceU: (((this.surfacePosition.u - (i + 1) * 0.09) % 1) + 1) % 1,
+        surfaceU: (((this.surfacePosition.u - (i + 1) * INITIAL_SEGMENT_U_OFFSET) % 1) + 1) % 1,
         surfaceV: this.surfacePosition.v,
         health: DEFAULT_SEGMENT_MAX_HEALTH,
         maxHealth: DEFAULT_SEGMENT_MAX_HEALTH,
@@ -130,7 +138,7 @@ export class Snake extends BaseEnemy {
   private addSegment(): void {
     if (this.segs.length >= this.maxSegments) return;
     const last = this.segs[this.segs.length - 1];
-    const mesh = this.createSegmentMesh();
+    const mesh = this.createSegmentMesh(DEFAULT_SEGMENT_TYPE);
     this.segmentRoot.add(mesh);
     this.segs.push({
       type: DEFAULT_SEGMENT_TYPE,
@@ -204,7 +212,7 @@ export class Snake extends BaseEnemy {
       if (seg) this.disposeSegmentMesh(seg);
     }
     while (this.segs.length < sorted.length) {
-      const mesh = this.createSegmentMesh();
+      const mesh = this.createSegmentMesh(DEFAULT_SEGMENT_TYPE);
       this.segmentRoot.add(mesh);
       this.segs.push({
         type: DEFAULT_SEGMENT_TYPE,
@@ -383,7 +391,7 @@ export class Snake extends BaseEnemy {
       queueIndex: s.queueIndex,
       u: s.surfaceU,
       v: s.surfaceV,
-      radius: 0.16,
+      radius: GRUNT_SEGMENT_RADIUS,
     }));
   }
 }
