@@ -90,9 +90,6 @@ export class RenderLoop {
     profiler.end('transparency_and_occlusion');
 
     profiler.begin('enemy_visibility');
-    const qualitySettings = ctx.adaptiveQuality.getSettings();
-    const maxVisible = qualitySettings.maxVisibleEnemies;
-    let visibleEnemyCount = 0;
     if (this._surfaceVisibilityMesh !== ctx.meshSurface) {
       this._surfaceVisibilityMesh = ctx.meshSurface;
       this._surfaceVisibilityResolver = new SurfaceVisibilityResolver(ctx.meshSurface);
@@ -102,23 +99,14 @@ export class RenderLoop {
     for (const enemy of allEnemies) {
       if (!enemy.alive || !enemy.mesh) continue;
 
-      // Adaptive quality: cap visible enemies when quality is reduced
-      if (maxVisible > 0 && visibleEnemyCount >= maxVisible) {
-        // Hide excess enemies by zeroing visibility
-        if (enemy.isInstanced) {
-          ctx.enemyInstanceManager.setInstanceVisibility(enemy, 0);
-        } else {
-          applyNonInstancedEnemyVisibility(enemy, 0);
-        }
-        continue;
-      }
-
       const surfaceVisibility = visibilityResolver.resolve({
         playerWorldPosition: ctx.playerWalker.position,
         playerFaceIndex: ctx.playerWalker.faceIndex,
         entityWorldPosition: enemy.mesh.position,
         entityFaceIndex: enemy.walker?.faceIndex,
-        opaqueSurfaces: this._opaqueSurfaces,
+        // Enemy bodies are gameplay-critical. Even when the user chooses opaque
+        // surfaces for the map/pickups, alive enemies must dim rather than vanish.
+        opaqueSurfaces: false,
         enemyRadius: enemy.radius,
         important: enemy instanceof Boss,
       });
@@ -131,8 +119,6 @@ export class RenderLoop {
         visibility = 1.0;
         minColorBrightness = 1.0;
       }
-
-      visibleEnemyCount++;
 
       // Instanced enemies: set visibility on the correct batch (type-specific or LOD shared)
       if (enemy.isInstanced) {

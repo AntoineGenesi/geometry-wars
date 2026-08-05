@@ -7,7 +7,7 @@
  */
 
 import puppeteer from 'puppeteer';
-import { mkdirSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, writeFileSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
@@ -16,6 +16,7 @@ const SCREENSHOT_DIR = resolve(__dirname, 'screenshots');
 const PORT = process.env.PORT || '3032';
 const BASE_URL = `http://localhost:${PORT}`;
 const SURFACE = process.argv.find(a => a.startsWith('--surface='))?.split('=')[1] || 'sphere';
+const CHROME_PATH = process.env.CHROME_PATH || process.env.PUPPETEER_EXECUTABLE_PATH;
 
 mkdirSync(SCREENSHOT_DIR, { recursive: true });
 
@@ -27,16 +28,25 @@ async function run() {
   console.log(`=== Spawn Timing Test — ${SURFACE} ===`);
   console.log(`URL: ${BASE_URL}`);
 
-  const browser = await puppeteer.launch({
+  const launchOptions = {
     headless: 'new',
     args: [
       '--no-sandbox',
       '--disable-setuid-sandbox',
-      '--use-gl=swiftshader',
+      '--ignore-gpu-blocklist',
+      '--enable-webgl',
+      '--enable-webgl2',
+      '--use-angle=swiftshader',
+      '--enable-unsafe-swiftshader',
+      '--disable-dev-shm-usage',
       '--disable-web-security',
       '--window-size=1280,720',
     ],
-  });
+  };
+  if (CHROME_PATH && existsSync(CHROME_PATH)) {
+    launchOptions.executablePath = CHROME_PATH;
+  }
+  const browser = await puppeteer.launch(launchOptions);
 
   const page = await browser.newPage();
   await page.setViewport({ width: 1280, height: 720 });
@@ -54,13 +64,20 @@ async function run() {
 
   // Wait for game to initialize (SwiftShader is slow)
   console.log('Waiting for game to load (up to 30s)...');
+  let loaded = false;
   for (let i = 0; i < 60; i++) {
     const hasApi = await page.evaluate(() => !!window.__TEST_API);
     if (hasApi) {
       console.log(`Game loaded after ${i * 0.5}s`);
+      loaded = true;
       break;
     }
     await sleep(500);
+  }
+  if (!loaded) {
+    console.error('FAIL: __TEST_API never became available; game did not initialize.');
+    await browser.close();
+    process.exit(1);
   }
   // Extra wait for first wave to spawn
   await sleep(3000);
@@ -116,7 +133,8 @@ async function run() {
     // Log details for enemies that just finished materializing (low ICB or scale)
     if (state.details) {
       for (const e of state.details) {
-        if (e.alive && !e.isMaterializing && (e.icb < 0.10 || e.scale < 0.1)) {
+        const hasMeshScale = e.scale >= 0;
+        if (e.alive && !e.isMaterializing && (e.icb < 0.10 || (hasMeshScale && e.scale < 0.1))) {
           console.log(`  WARNING: ${e.type} alive+visible but icb=${e.icb?.toFixed(3)} scale=${e.scale?.toFixed(3)}`);
         }
       }
@@ -133,8 +151,13 @@ async function run() {
   const invisibleFrames = results.filter(r =>
     r.details?.some(e => e.alive && !e.isMaterializing && e.icb < 0.10)
   );
-  if (invisibleFrames.length > 0) {
+  const framesWithEnemies = results.filter(r => (r.alive ?? 0) > 0);
+  if (framesWithEnemies.length === 0) {
+    console.log('FAIL: No materialized alive enemies were observed');
+    process.exitCode = 1;
+  } else if (invisibleFrames.length > 0) {
     console.log(`FAIL: Found ${invisibleFrames.length} frames with invisible alive enemies`);
+    process.exitCode = 1;
   } else {
     console.log('PASS: No invisible alive enemies detected');
   }

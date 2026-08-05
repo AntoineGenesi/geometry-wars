@@ -633,6 +633,14 @@ export class GameLoop {
       if (!enemy.alive) continue;
 
       const enemyTypeName = enemy.constructor.name;
+      const enemyMesh = enemy.mesh;
+      const bodyCanLeaveTrail = !!enemyMesh
+        && !enemy.isMaterializing
+        && (enemy.isInstanced || enemyMesh.visible !== false);
+      if (!bodyCanLeaveTrail) {
+        this.enemyGlowTrails.get(enemy)?.clear();
+        continue;
+      }
 
       // Check if this is a fast enemy type
       if (this.FAST_ENEMY_TYPES.includes(enemyTypeName)) {
@@ -642,15 +650,14 @@ export class GameLoop {
         if (!trail) {
           const color = this.ENEMY_TRAIL_COLORS[enemyTypeName] || 0xff0000;
           trail = new GlowTrail(new THREE.Color(color), 40, 0.3);
+          trail.root.name = 'sp-enemy-glow-trail';
           ctx.game.scene.add(trail.root);
           this.enemyGlowTrails.set(enemy, trail);
         }
 
         // Add point at enemy position
         // s44r22-02: pass position directly — GlowTrail.addPoint() copies values internally
-        if (enemy.mesh) {
-          trail.addPoint(enemy.mesh.position);
-        }
+        trail.addPoint(enemyMesh.position);
         trail.update(dt);
       }
     }

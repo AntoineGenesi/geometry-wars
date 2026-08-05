@@ -3,8 +3,8 @@ import type { MeshSurface } from '../surfaces/MeshSurface';
 
 export const SURFACE_VISIBILITY_DIRECT = 1;
 export const SURFACE_VISIBILITY_EDGE_BLOCKED = 0.34;
-export const SURFACE_VISIBILITY_LONG_PATH = 0.06;
-export const SURFACE_VISIBILITY_IMPORTANT_FLOOR = 0.22;
+export const SURFACE_VISIBILITY_LONG_PATH = 0.35;
+export const SURFACE_VISIBILITY_IMPORTANT_FLOOR = 0.35;
 export const SURFACE_VISIBILITY_DEFAULT_MIN_BRIGHTNESS = 0.35;
 
 const HARD_EDGE_COSINE = Math.cos(THREE.MathUtils.degToRad(50));

@@ -707,6 +707,55 @@ describe('EnemyInstanceManager', () => {
       expect(manager.getLODStats()).toEqual({ mediumCount: 0, lowCount: 0 });
     });
 
+    it('falls back to HIGH when stale LOD ownership has no drawable slot', () => {
+      const grunt = new TestGrunt();
+      manager.register(grunt);
+      grunt.mesh!.position.set(4, 0, 0);
+      grunt.mesh!.updateMatrixWorld(true);
+
+      const assignments = new Map<BaseEnemy, LODLevel>([[grunt, LODLevel.HIGH]]);
+      manager.updateInstancesWithLOD([grunt], assignments, camera);
+
+      const lowBatch = getLODBatch('lodLowBatch') as any;
+      lowBatch.enemyToIndex.delete(grunt);
+      lowBatch.nextFreeIndex = lowBatch.indexToEnemy.length;
+      lowBatch.highWaterMark = lowBatch.indexToEnemy.length - 1;
+      for (let i = 0; i < lowBatch.indexToEnemy.length; i++) {
+        lowBatch.indexToEnemy[i] = new TestGrunt();
+      }
+      (manager as any).enemyLODPlacement.set(grunt, LODLevel.LOW);
+
+      assignments.set(grunt, LODLevel.LOW);
+      manager.updateInstancesWithLOD([grunt], assignments, camera);
+
+      expect(manager.isInLODBatch(grunt)).toBe(false);
+      const highBatch = scene.getObjectByName('instanced-Grunt') as THREE.InstancedMesh;
+      const matrix = new THREE.Matrix4();
+      highBatch.getMatrixAt((grunt as any)._instanceIndex, matrix);
+      const scale = new THREE.Vector3().setFromMatrixScale(matrix);
+      expect(Math.max(scale.x, scale.y, scale.z)).toBeGreaterThan(0.01);
+    });
+
+    it('repairs LOD draw count when highWaterMark drifts below an occupied slot', () => {
+      const grunt = new TestGrunt();
+      manager.register(grunt);
+      grunt.mesh!.position.set(5, 0, 0);
+      grunt.mesh!.updateMatrixWorld(true);
+
+      const assignments = new Map<BaseEnemy, LODLevel>([[grunt, LODLevel.MEDIUM]]);
+      manager.updateInstancesWithLOD([grunt], assignments, camera);
+
+      const mediumBatch = getLODBatch('lodMediumBatch');
+      const slot = mediumBatch.enemyToIndex.get(grunt)!;
+      mediumBatch.highWaterMark = -1;
+      mediumBatch.instancedMesh.count = 0;
+
+      manager.ensureMinimumVisibility();
+
+      expect(mediumBatch.highWaterMark).toBe(slot);
+      expect(mediumBatch.instancedMesh.count).toBeGreaterThan(slot);
+    });
+
     it('handles mixed LOD levels across multiple enemies', () => {
       const highGrunt = new TestGrunt();
       const medGrunt = new TestGrunt(0.3, 0.7);
@@ -963,7 +1012,7 @@ describe('EnemyInstanceManager', () => {
       expect(Math.min(firstScale.x, firstScale.y, firstScale.z)).toBeGreaterThan(0);
     });
 
-    it('enables depth testing and writes for HIGH, MEDIUM, and LOW batches', () => {
+    it('enables depth testing/writes while leaving grid overlay above enemy batches', () => {
       const grunt = new TestGrunt();
       manager.register(grunt);
       grunt.mesh!.updateMatrixWorld(true);
@@ -981,7 +1030,7 @@ describe('EnemyInstanceManager', () => {
         const material = batch.material as THREE.MeshBasicMaterial;
         expect(material.depthTest).toBe(true);
         expect(material.depthWrite).toBe(true);
-        expect(batch.renderOrder).toBe(2);
+        expect(batch.renderOrder).toBeLessThan(1);
       }
     });
   });

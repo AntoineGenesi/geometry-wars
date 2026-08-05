@@ -3,8 +3,8 @@
  * on detected GPU capabilities and URL parameters.
  *
  * Supports two rendering backends:
- *   - WebGPU (default when available): Uses WebGPURenderer + TSL PostProcessing
- *   - WebGL2 (fallback): Uses THREE.WebGLRenderer + EffectComposer + UnrealBloomPass
+ *   - WebGL2 (default): Uses THREE.WebGLRenderer + EffectComposer + UnrealBloomPass
+ *   - WebGPU (explicit opt-in): Uses WebGPURenderer + TSL PostProcessing
  *
  * URL parameters:
  *   ?renderer=webgpu  - Force WebGPU renderer
@@ -48,15 +48,10 @@ export function resolveRendererPreference(
   if (pref === 'webgl') return 'webgl2';
   if (pref === 'webgpu' && capabilities.webgpu) return 'webgpu';
 
-  // Multiplayer/LAN stays on the proven WebGL2 path by default. WebGPU can
-  // still be opted into with ?renderer=webgpu for diagnostics and future proof.
-  if (params.get('mode') === 'network') return 'webgl2';
-
-  // Auto-select: prefer WebGPU when available
-  if (capabilities.webgpu) {
-    return 'webgpu';
-  }
-
+  // Keep the playable default on the proven WebGL2 path. Windows Chrome can
+  // expose WebGPU for SP, while MP already avoids it; that split has repeatedly
+  // hidden enemy-body regressions from Linux/WebGL2 proof. WebGPU stays
+  // available as an explicit diagnostic opt-in via ?renderer=webgpu.
   return 'webgl2';
 }
 

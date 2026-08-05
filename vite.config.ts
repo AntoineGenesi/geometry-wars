@@ -33,6 +33,7 @@ export default defineConfig({
       usePolling: process.platform === 'win32',
       ignored: [
         '**/v3_LAN_working/**',
+        '**/worktrees/**',
         '**/.claude/worktrees/**',
         '**/.claude/worker-logs/**',
         '**/dist/**',
@@ -80,7 +81,7 @@ export default defineConfig({
   },
   test: {
     include: ['src/**/*.test.ts', 'server/**/*.test.ts', 'tests/**/*.test.ts'],
-    exclude: ['**/*.spec.js', '**/*.spec.ts', 'node_modules/**'],
+    exclude: ['**/*.spec.js', '**/*.spec.ts', 'node_modules/**', 'worktrees/**', '**/worktrees/**'],
     // Use forks pool to isolate PlaygroundGame WebGL/timer state between test files.
     // Without this, RAF loops and setInterval handles from one file bleed into others.
     pool: 'forks',

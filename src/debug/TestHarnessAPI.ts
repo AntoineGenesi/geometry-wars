@@ -115,6 +115,12 @@ export interface EnemyInfo {
   /** s44r29-05: Which batch the enemy is actually rendered from.
    *  'high' = type-specific batch, 'lod-medium'/'lod-low' = shared LOD batch. */
   renderBatch: 'high' | 'lod-medium' | 'lod-low';
+  /** Whether the routed render batch actually has a slot for this enemy. */
+  renderSlotFound: boolean;
+  /** Whether the routed slot is inside InstancedMesh.count and can be drawn by the GPU. */
+  renderSlotDrawn: boolean;
+  renderSlotIndex: number | null;
+  renderDrawCount: number | null;
 }
 
 export interface PickupInfo {
@@ -335,6 +341,10 @@ export class TestHarnessAPI {
       let instanceColorBrightness = 1.0;
       let instanceMatrixScale = 1.0;
       let renderBatch: 'high' | 'lod-medium' | 'lod-low' = 'high';
+      let renderSlotFound = !enemy.isInstanced;
+      let renderSlotDrawn = !enemy.isInstanced;
+      let renderSlotIndex: number | null = null;
+      let renderDrawCount: number | null = null;
       const instanceIndex = (enemy as any)._instanceIndex as number | undefined;
       const instanceType = (enemy as any)._instanceType as string | undefined;
       if (instanceIndex !== undefined && instanceType && this.ctx.enemyInstanceManager) {
@@ -347,6 +357,10 @@ export class TestHarnessAPI {
           const lodBatch = lodLevel === 1 /* MEDIUM */ ? mgr.lodMediumBatch : mgr.lodLowBatch;
           const lodSlot = lodBatch?.enemyToIndex?.get(enemy);
           renderBatch = lodLevel === 1 ? 'lod-medium' : 'lod-low';
+          renderSlotFound = lodSlot !== undefined && !!lodBatch;
+          renderSlotIndex = lodSlot ?? null;
+          renderDrawCount = lodBatch?.instancedMesh?.count ?? null;
+          renderSlotDrawn = renderSlotFound && renderDrawCount !== null && lodSlot! < renderDrawCount;
           if (lodSlot !== undefined && lodBatch) {
             if (lodBatch.opacityAttribute) {
               opacity = lodBatch.opacityAttribute.getX(lodSlot);
@@ -362,10 +376,18 @@ export class TestHarnessAPI {
             lodBatch.instancedMesh.getMatrixAt(lodSlot, _m);
             _s.setFromMatrixScale(_m);
             instanceMatrixScale = Math.max(_s.x, _s.y, _s.z);
+          } else {
+            opacity = 0;
+            instanceColorBrightness = 0;
+            instanceMatrixScale = 0;
           }
         } else {
           // Enemy renders from the HIGH (type-specific) batch
           const batch = mgr.batches?.get(instanceType);
+          renderSlotFound = !!batch;
+          renderSlotIndex = instanceIndex;
+          renderDrawCount = batch?.instancedMesh?.count ?? null;
+          renderSlotDrawn = renderSlotFound && renderDrawCount !== null && instanceIndex < renderDrawCount;
           if (batch?.opacityAttribute) {
             opacity = batch.opacityAttribute.getX(instanceIndex);
           }
@@ -381,6 +403,10 @@ export class TestHarnessAPI {
             batch.instancedMesh.getMatrixAt(instanceIndex, _m);
             _s.setFromMatrixScale(_m);
             instanceMatrixScale = Math.max(_s.x, _s.y, _s.z);
+          } else {
+            opacity = 0;
+            instanceColorBrightness = 0;
+            instanceMatrixScale = 0;
           }
         }
       }
@@ -401,6 +427,10 @@ export class TestHarnessAPI {
         instanceColorBrightness,
         instanceMatrixScale,
         renderBatch,
+        renderSlotFound,
+        renderSlotDrawn,
+        renderSlotIndex,
+        renderDrawCount,
       });
     }
     return result;
@@ -1509,7 +1539,7 @@ export class TestHarnessAPI {
       waveScheduler.endlessWave = 49;
       waveScheduler.elapsed = 600;
       waveScheduler.endlessNextSpawn = 602;
-      globalThis.__GOD_MODE = true;
+      (globalThis as any).__GOD_MODE = true;
       this.ctx.player.lives = 3;
     }
 

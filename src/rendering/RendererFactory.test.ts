@@ -77,13 +77,13 @@ describe('RendererFactory', () => {
       vi.unstubAllGlobals();
     });
 
-    it('auto-selects webgpu when available and no URL params', () => {
+    it('defaults SP to webgl2 even when WebGPU is available', () => {
       const mockLocation = { search: '' } as Location;
       vi.stubGlobal('window', { location: mockLocation });
 
       const caps = mockCapabilities({ webgpu: true });
       const result = resolveRendererPreference(caps);
-      expect(result).toBe('webgpu');
+      expect(result).toBe('webgl2');
 
       vi.unstubAllGlobals();
     });
@@ -121,24 +121,19 @@ describe('RendererFactory', () => {
       vi.unstubAllGlobals();
     });
 
-    it('returns webgl2 when window is undefined (Node/test env)', () => {
-      // In this test environment, window may or may not be defined
-      // The function should handle both cases gracefully
+    it('returns webgl2 when window is undefined or no explicit renderer is set', () => {
       const caps = mockCapabilities({ webgpu: true });
-      // When window IS defined (jsdom), it should use the actual URL params
-      // When window is NOT defined, it should return 'webgl2'
       const result = resolveRendererPreference(caps);
-      expect(['webgl2', 'webgpu']).toContain(result);
+      expect(result).toBe('webgl2');
     });
 
-    it('ignores unknown ?renderer values and auto-selects based on capability', () => {
+    it('ignores unknown ?renderer values and uses the safe webgl2 default', () => {
       const mockLocation = { search: '?renderer=vulkan' } as Location;
       vi.stubGlobal('window', { location: mockLocation });
 
-      // WebGPU available → auto-selects webgpu
       const caps = mockCapabilities({ webgpu: true });
       const result = resolveRendererPreference(caps);
-      expect(result).toBe('webgpu');
+      expect(result).toBe('webgl2');
 
       vi.unstubAllGlobals();
     });
@@ -274,14 +269,13 @@ describe('RendererFactory', () => {
       vi.unstubAllGlobals();
     });
 
-    it('auto-selects webgpu even without URL param when capabilities.webgpu is true', () => {
+    it('does not auto-select webgpu without an explicit renderer URL param', () => {
       const mockLocation = { search: '' } as Location;
       vi.stubGlobal('window', { location: mockLocation });
 
       const caps = mockCapabilities({ webgpu: true });
       const result = resolveRendererPreference(caps);
-      // WebGPU should be auto-selected when available, no URL param needed
-      expect(result).toBe('webgpu');
+      expect(result).toBe('webgl2');
 
       vi.unstubAllGlobals();
     });

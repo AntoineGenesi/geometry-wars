@@ -97,6 +97,7 @@ const _tempColor = new THREE.Color();
 const _zeroScale = new THREE.Vector3(0, 0, 0);
 const _lodScale = new THREE.Vector3();
 const _tempScale = new THREE.Vector3();
+const ENEMY_BODY_RENDER_ORDER = 0;
 
 /**
  * Enemy types that support instancing.
@@ -475,14 +476,14 @@ export class EnemyInstanceManager {
         // Show in the shared LOD batch
         const lodBatch = lodLevel === LODLevel.MEDIUM ? this.lodMediumBatch : this.lodLowBatch;
         enemy.mesh.updateWorldMatrix(false, false);
-        this.placeLODInstance(enemy, typeKey, lodBatch, lodLevel);
+        const placedInLOD = this.placeLODInstance(enemy, typeKey, lodBatch, lodLevel);
 
         // s44r29-02: Only hide HIGH batch if LOD placement succeeded.
         // If LOD slot allocation failed (batch full), fall back to HIGH batch
         // so the enemy remains visible. Previously, the HIGH batch was zero-scaled
         // BEFORE LOD placement — if placement failed, the enemy was invisible in
         // both batches (zero-scale HIGH + not in LOD = rendered nowhere).
-        if (this.enemyLODPlacement.has(enemy)) {
+        if (placedInLOD) {
           // LOD placement succeeded — hide in HIGH batch
           _tempMatrix.compose(_tempPosition.set(0, 0, 0), _tempQuaternion.identity(), _zeroScale);
           batch.instancedMesh.setMatrixAt(highIndex, _tempMatrix);
@@ -786,6 +787,7 @@ export class EnemyInstanceManager {
     const lodBatches = [this.lodMediumBatch, this.lodLowBatch];
     for (const lodBatch of lodBatches) {
       if (!lodBatch?.instancedMesh.instanceColor) continue;
+      this.repairLODBatchDrawRange(lodBatch);
       for (const [enemy, slotIndex] of lodBatch.enemyToIndex) {
         // --- Color check ---
         lodBatch.instancedMesh.getColorAt(slotIndex, _tempColor);
@@ -962,9 +964,9 @@ export class EnemyInstanceManager {
     instancedMesh.count = 0;
     instancedMesh.frustumCulled = false;
     instancedMesh.name = name;
-    // Surface/grid do not write depth; player bodies do. Rendering after the
-    // grid while respecting depth keeps readable ghosts behind player pixels.
-    instancedMesh.renderOrder = 2;
+    // Keep bodies in the surface pass and let the grid overlay render after
+    // them. Otherwise far-side enemies can draw on top of grid lines.
+    instancedMesh.renderOrder = ENEMY_BODY_RENDER_ORDER;
 
     // Initialize all slots to zero-scale
     for (let i = 0; i < LOD_BATCH_MAX_INSTANCES; i++) {
@@ -1006,7 +1008,7 @@ export class EnemyInstanceManager {
     typeKey: string,
     lodBatch: LODSharedBatch,
     lodLevel: LODLevel,
-  ): void {
+  ): boolean {
     const currentLOD = this.enemyLODPlacement.get(enemy);
     if (currentLOD !== undefined && currentLOD !== lodLevel) {
       this.removeLODPlacement(enemy);
@@ -1022,7 +1024,11 @@ export class EnemyInstanceManager {
     let allocated = false;
     if (slotIndex === undefined) {
       slotIndex = this.allocateLODSlot(lodBatch);
-      if (slotIndex < 0) return; // No free slots
+      if (slotIndex < 0) {
+        // Stale placement markers must not make callers hide the HIGH slot.
+        this.enemyLODPlacement.delete(enemy);
+        return false;
+      }
       lodBatch.enemyToIndex.set(enemy, slotIndex);
       lodBatch.indexToEnemy[slotIndex] = enemy;
       allocated = true;
@@ -1052,6 +1058,7 @@ export class EnemyInstanceManager {
 
     // Track placement
     this.enemyLODPlacement.set(enemy, lodLevel);
+    return true;
   }
 
   /**
@@ -1165,8 +1172,15 @@ export class EnemyInstanceManager {
    */
   private finalizeLODBatch(lodBatch: LODSharedBatch): void {
     lodBatch.instancedMesh.instanceMatrix.needsUpdate = true;
-    // highWaterMark is O(1) — maintained incrementally in allocateLODSlot/removeLODPlacement.
-    lodBatch.instancedMesh.count = lodBatch.highWaterMark + 1;
+    this.repairLODBatchDrawRange(lodBatch);
+  }
+
+  private repairLODBatchDrawRange(lodBatch: LODSharedBatch): void {
+    const trueMax = this.getMaxUsedLODIndex(lodBatch);
+    if (lodBatch.highWaterMark !== trueMax) {
+      lodBatch.highWaterMark = trueMax;
+    }
+    lodBatch.instancedMesh.count = trueMax + 1;
   }
 
   /**
@@ -1355,7 +1369,7 @@ export class EnemyInstanceManager {
     instancedMesh.count = 0; // Start with 0 visible instances
     instancedMesh.frustumCulled = false; // Enemies are on curved surfaces; bbox culling is unreliable
     instancedMesh.name = `instanced-${typeKey}`;
-    instancedMesh.renderOrder = 2;
+    instancedMesh.renderOrder = ENEMY_BODY_RENDER_ORDER;
 
     // Initialize all instance matrices to zero-scale (hidden)
     for (let i = 0; i < this.maxInstances; i++) {

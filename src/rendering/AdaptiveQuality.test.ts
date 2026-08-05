@@ -133,18 +133,19 @@ describe('AdaptiveQuality', () => {
       }
     });
 
-    it('HIGH level has 2000 particles, 0.5 bloom scale, 500 max enemies', () => {
+    it('HIGH level has 2000 particles, 0.5 bloom scale, no enemy visibility cap', () => {
       const s = AdaptiveQuality.getSettingsForLevel(QualityLevel.HIGH);
       expect(s.particleCount).toBe(2000);
       expect(s.bloomResolutionScale).toBe(0.5);
-      expect(s.maxVisibleEnemies).toBe(500);
+      expect(s.maxVisibleEnemies).toBe(0);
     });
 
-    it('MEDIUM level has 500 particles, LOD enemies, simplified trails', () => {
+    it('MEDIUM level has 500 particles, LOD enemies, simplified trails, no enemy visibility cap', () => {
       const s = AdaptiveQuality.getSettingsForLevel(QualityLevel.MEDIUM);
       expect(s.particleCount).toBe(500);
       expect(s.enemyDetail).toBe(EnemyDetail.LOD);
       expect(s.trailDetail).toBe(TrailDetail.SIMPLIFIED);
+      expect(s.maxVisibleEnemies).toBe(0);
     });
 
     it('LOW level disables bloom and trails', () => {
@@ -616,13 +617,14 @@ describe('AdaptiveQuality', () => {
       expect(low.trailDetail).toBe(TrailDetail.DISABLED);
     });
 
-    it('enemy detail reduces before max enemies are capped low', () => {
+    it('enemy detail reduces without capping visible enemies', () => {
       const high = AdaptiveQuality.getSettingsForLevel(QualityLevel.HIGH);
       const medium = AdaptiveQuality.getSettingsForLevel(QualityLevel.MEDIUM);
 
       expect(high.enemyDetail).toBe(EnemyDetail.FULL);
       expect(medium.enemyDetail).toBe(EnemyDetail.LOD);
-      expect(medium.maxVisibleEnemies).toBeLessThan(high.maxVisibleEnemies);
+      expect(high.maxVisibleEnemies).toBe(0);
+      expect(medium.maxVisibleEnemies).toBe(0);
     });
 
     it('post-processing disabled at LOW', () => {

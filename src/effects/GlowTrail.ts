@@ -76,10 +76,12 @@ export class GlowTrail {
       vertexColors: true,
       transparent: true,
       blending: THREE.NormalBlending,
+      depthTest: true,
       depthWrite: false,
     });
 
     this.coreLine = new THREE.Line(this.coreGeometry, this.coreMaterial);
+    this.coreLine.renderOrder = 0;
     this.root.add(this.coreLine);
 
     // Create glow layers (progressively wider and more transparent)
@@ -101,10 +103,12 @@ export class GlowTrail {
         transparent: true,
         opacity: layerOpacity,
         blending: THREE.NormalBlending,
+        depthTest: true,
         depthWrite: false,
       });
 
       const glowLine = new THREE.Line(glowGeom, glowMat);
+      glowLine.renderOrder = 0;
       // Glow layers share the same world-space positions as the core line.
       // Do NOT scale from world origin — on curved surfaces (torus, etc.) scaling from origin
       // shifts glow layers away from the player proportionally to their world-space distance

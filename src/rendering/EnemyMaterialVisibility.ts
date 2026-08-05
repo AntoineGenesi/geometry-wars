@@ -14,6 +14,7 @@ export function applyNonInstancedEnemyVisibility(
     ? THREE.MathUtils.clamp(visibility, 0, 1)
     : 1;
   const cached = enemy.cachedMaterials;
+  const materials = new Set<THREE.Material>();
   let applied = 0;
 
   const apply = (material: THREE.Material): void => {
@@ -26,14 +27,15 @@ export function applyNonInstancedEnemyVisibility(
   };
 
   if (cached && cached.length > 0) {
-    cached.forEach(apply);
-    return applied;
+    cached.filter(Boolean).forEach((material) => materials.add(material));
   }
 
   enemy.mesh?.traverse((child) => {
-    if (!(child instanceof THREE.Mesh)) return;
-    const materials = Array.isArray(child.material) ? child.material : [child.material];
-    materials.filter(Boolean).forEach(apply);
+    const materialOrMaterials = (child as { material?: THREE.Material | THREE.Material[] }).material;
+    if (!materialOrMaterials) return;
+    const childMaterials = Array.isArray(materialOrMaterials) ? materialOrMaterials : [materialOrMaterials];
+    childMaterials.filter(Boolean).forEach((material) => materials.add(material));
   });
+  materials.forEach(apply);
   return applied;
 }

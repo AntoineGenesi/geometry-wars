@@ -367,6 +367,7 @@ export abstract class Surface {
       color: this.config.gridColor,
       transparent: true,
       opacity: this.config.gridOpacity,
+      depthTest: false,
       depthWrite: false, // Grid lines should not write depth (prevents flicker with surface)
     })
   }

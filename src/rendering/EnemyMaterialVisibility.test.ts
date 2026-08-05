@@ -40,4 +40,26 @@ describe('applyNonInstancedEnemyVisibility', () => {
     expect(applyNonInstancedEnemyVisibility({ mesh, cachedMaterials: [material] }, 0)).toBe(1);
     expect(material.opacity).toBe(0);
   });
+
+  it('also applies visibility to line materials that are not in cached mesh materials', () => {
+    const meshMaterial = new THREE.MeshBasicMaterial({ opacity: 1 });
+    const lineMaterial = new THREE.LineBasicMaterial({ opacity: 1 });
+    const group = new THREE.Group();
+    group.add(new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), meshMaterial));
+    group.add(new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(0, 0, 0),
+        new THREE.Vector3(1, 0, 0),
+      ]),
+      lineMaterial,
+    ));
+
+    expect(applyNonInstancedEnemyVisibility({
+      mesh: group,
+      cachedMaterials: [meshMaterial],
+    }, 0.25)).toBe(2);
+    expect(meshMaterial.opacity).toBeCloseTo(0.25);
+    expect(lineMaterial.transparent).toBe(true);
+    expect(lineMaterial.opacity).toBeCloseTo(0.25);
+  });
 });
