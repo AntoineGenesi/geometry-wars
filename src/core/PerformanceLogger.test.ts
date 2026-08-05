@@ -662,6 +662,36 @@ describe('PerformanceLogger', () => {
       expect(events.some(e => e.type === 'combo')).toBe(false);
     });
 
+    it('tracks continuous PvE streaks across sparse kills and resets them on death', () => {
+      [0, 2, 4, 6, 8].forEach((elapsed, index) => {
+        logger.recordEventAtElapsedForReview(elapsed, 'kill', index % 2 === 0 ? 'wanderer' : 'grunt');
+      });
+      logger.recordEventAtElapsedForReview(9, 'player_death', 'Death');
+      [10, 12, 14, 16, 18].forEach((elapsed, index) => {
+        logger.recordEventAtElapsedForReview(elapsed, 'kill', index % 2 === 0 ? 'rocket' : 'spinner');
+      });
+
+      const events = logger.getEvents();
+      const streaks = events.filter(e => e.type === 'kill_streak');
+
+      expect(events.some(e => e.type === 'combo')).toBe(false);
+      expect(streaks.map(e => e.value)).toEqual([5, 5]);
+      expect(streaks.map(e => e.time)).toEqual([8, 18]);
+      expect(events.filter(e => e.type === 'player_death')).toHaveLength(1);
+    });
+
+    it('does not derive graph kill streak markers from a 500ms sample burst', () => {
+      logger.setFrameData(60, 8, 4);
+      logger.setGameplayData(300, 3, 0, 'Standard', '', 1);
+      logger.recordFrame(0.5);
+
+      const points = logger.getDataPoints();
+      const events = logger.getEvents();
+
+      expect(points[0].killsThisSample).toBe(3);
+      expect(events.some(e => e.type === 'kill_streak')).toBe(false);
+    });
+
     it('keeps PvP kills explicit and outside PvE combo aggregation', () => {
       logger.recordEvent('kill', 'wanderer');
       vi.advanceTimersByTime(200);

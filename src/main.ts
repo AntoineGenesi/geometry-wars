@@ -153,12 +153,14 @@ function isEndgameReviewDebugMode(): boolean {
 function createEndgameReviewDebugLogger(): PerformanceLogger {
   const logger = new PerformanceLogger('debug-endgame-review');
   const enemyTotals: Array<[EnemyType, number]> = [
-    ['wanderer', 3],
+    ['wanderer', 4],
     ['prism_lancer', 2],
     ['shatter_bloom', 2],
     ['sentinel_orb', 1],
     ['grunt', 1],
     ['rocket', 1],
+    ['spinner', 1],
+    ['titan_grunt', 1],
   ];
 
   const enemyCountsAt = (entries: Array<[EnemyType, number]>) => new Map<EnemyType, number>(entries);
@@ -167,8 +169,9 @@ function createEndgameReviewDebugLogger(): PerformanceLogger {
     { time: 1.0, score: 450, kills: 3, enemyTypes: [['wanderer', 2], ['prism_lancer', 1]] as Array<[EnemyType, number]> },
     { time: 2.0, score: 980, kills: 5, enemyTypes: [['wanderer', 3], ['prism_lancer', 1], ['sentinel_orb', 1]] as Array<[EnemyType, number]> },
     { time: 3.0, score: 1850, kills: 7, enemyTypes: [['wanderer', 2], ['prism_lancer', 2], ['sentinel_orb', 1], ['shatter_bloom', 2]] as Array<[EnemyType, number]> },
-    { time: 4.0, score: 2600, kills: 7, enemyTypes: [['wanderer', 2], ['prism_lancer', 2], ['sentinel_orb', 1], ['shatter_bloom', 2]] as Array<[EnemyType, number]> },
-    { time: 5.0, score: 3920, kills: 10, enemyTypes: enemyTotals },
+    { time: 4.0, score: 2600, kills: 7, deaths: 1, enemyTypes: [['wanderer', 2], ['prism_lancer', 2], ['sentinel_orb', 1], ['shatter_bloom', 2]] as Array<[EnemyType, number]> },
+    { time: 5.0, score: 3920, kills: 10, deaths: 1, enemyTypes: [['wanderer', 3], ['prism_lancer', 2], ['sentinel_orb', 1], ['shatter_bloom', 2], ['grunt', 1], ['rocket', 1]] as Array<[EnemyType, number]> },
+    { time: 6.0, score: 5400, kills: 13, deaths: 1, enemyTypes: enemyTotals },
   ];
 
   logger.recordEventAtElapsedForReview(0.2, 'wave_start', 'Wave 1', 1);
@@ -187,9 +190,13 @@ function createEndgameReviewDebugLogger(): PerformanceLogger {
   logger.recordEventAtElapsedForReview(2.8, 'kill', 'prism_lancer');
   logger.recordEventAtElapsedForReview(3.0, 'kill', 'shatter_bloom');
   logger.recordEventAtElapsedForReview(3.4, 'wave_start', 'Wave 2', 2);
+  logger.recordEventAtElapsedForReview(3.6, 'player_death', 'Death');
   logger.recordEventAtElapsedForReview(4.1, 'kill', 'grunt');
   logger.recordEventAtElapsedForReview(4.4, 'kill', 'rocket');
   logger.recordEventAtElapsedForReview(4.7, 'kill', 'wanderer');
+  logger.recordEventAtElapsedForReview(5.0, 'kill', 'spinner');
+  logger.recordEventAtElapsedForReview(5.3, 'kill', 'titan_grunt');
+  logger.recordEventAtElapsedForReview(5.6, 'kill', 'wanderer');
 
   for (const sample of samples) {
     logger.recordReviewSampleAtElapsed(sample.time, {
@@ -198,7 +205,7 @@ function createEndgameReviewDebugLogger(): PerformanceLogger {
       bulletCount: 12 + sample.kills,
       score: sample.score,
       kills: sample.kills,
-      deaths: 0,
+      deaths: 'deaths' in sample ? sample.deaths : 0,
       activeWeapon: sample.time < 3 ? 'Standard' : 'laser_beam',
       activeBuffs: sample.time >= 3 ? 'hot_hands:2' : '',
       activeEffects: 2,

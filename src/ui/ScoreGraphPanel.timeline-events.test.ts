@@ -33,11 +33,12 @@ describe('ScoreGraphPanel timeline event semantics', () => {
         },
       },
       { time: 3, type: 'wave_start', label: 'Wave 2', value: 2 },
+      { time: 4, type: 'kill_streak', label: '5-kill streak', value: 5 },
     ];
 
     const filtered = filterScoreGraphEvents(events, 10);
 
-    expect(filtered.map(e => e.type)).toEqual(['combo', 'pvp_kill', 'wave_start']);
+    expect(filtered.map(e => e.type)).toEqual(['combo', 'pvp_kill', 'wave_start', 'kill_streak']);
   });
 
   it('formats combo and PvP tooltip labels distinctly', () => {

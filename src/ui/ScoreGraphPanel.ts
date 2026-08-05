@@ -17,7 +17,8 @@
 
 import type { PerformanceLogger, GameEvent } from '../core/PerformanceLogger';
 import type { PerformanceDataPoint } from '../core/PerformanceLogger';
-import { ENEMY_TYPE_COLORS } from './AnalyticsPanel';
+import { ENEMY_DISPLAY, ENEMY_TYPE_COLORS } from './AnalyticsPanel';
+import { createEnemyModelPreviewElement } from './EnemyModelPreview';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -133,11 +134,16 @@ export class ScoreGraphPanel {
 
   // Hover state
   private hoverFraction: number | null = null; // fraction of visible range
+  private dragStartFraction: number | null = null;
+  private dragEndFraction: number | null = null;
+  private isDraggingRange = false;
 
   // Bound event handlers (for cleanup)
   private _onWheel: ((e: WheelEvent) => void) | null = null;
   private _onMouseMove: ((e: MouseEvent) => void) | null = null;
   private _onMouseLeave: (() => void) | null = null;
+  private _onMouseDown: ((e: MouseEvent) => void) | null = null;
+  private _onWindowMouseUp: ((e: MouseEvent) => void) | null = null;
 
   // Legend element ref for dynamic updates
   private legendEl: HTMLElement | null = null;
@@ -176,6 +182,9 @@ export class ScoreGraphPanel {
     this.zoomStart = 0;
     this.zoomEnd   = 1;
     this.hoverFraction = null;
+    this.dragStartFraction = null;
+    this.dragEndFraction = null;
+    this.isDraggingRange = false;
     this.viewMode = 'score';
     this.killsSubMode = 'total';
 
@@ -196,6 +205,7 @@ export class ScoreGraphPanel {
     const wrapper = document.createElement('div');
     wrapper.className = 'sgp-wrapper';
     this.wrapper = wrapper;
+    this.updateZoomStateAttrs();
 
     if (this.dataPoints.length < MIN_DATA_POINTS) {
       const msg = document.createElement('div');
@@ -314,6 +324,7 @@ export class ScoreGraphPanel {
     resetBtn.addEventListener('click', () => {
       this.zoomStart = 0;
       this.zoomEnd   = 1;
+      this.updateZoomStateAttrs();
       this.updateZoomResetVisibility(resetBtn);
       this.redraw();
     });
@@ -393,10 +404,23 @@ export class ScoreGraphPanel {
     if (this.viewMode === 'kills' && this.killsSubMode === 'byType' && this.killTimeline) {
       for (const typeName of this.killTimeline.types) {
         const color = ENEMY_TYPE_COLORS[typeName] ?? '#666688';
-        const displayName = typeName === 'other' ? 'Other' : (typeName.charAt(0).toUpperCase() + typeName.slice(1).replace(/_/g, ' '));
+        const displayName = typeName === 'other'
+          ? 'Other'
+          : (ENEMY_DISPLAY[typeName] ?? (typeName.charAt(0).toUpperCase() + typeName.slice(1).replace(/_/g, ' ')));
         const entry = document.createElement('div');
-        entry.className = 'sgp-legend-entry';
-        entry.innerHTML = `<span class="sgp-legend-icon" style="color: ${color}; font-size: 16px;">■</span><span class="sgp-legend-text">${displayName}</span>`;
+        entry.className = 'sgp-legend-entry sgp-legend-entry-by-type';
+        if (typeName !== 'other') {
+          entry.appendChild(createEnemyModelPreviewElement(typeName, displayName, color));
+        }
+        const swatch = document.createElement('span');
+        swatch.className = 'sgp-legend-swatch';
+        swatch.style.background = color;
+        swatch.style.boxShadow = `0 0 8px ${color}`;
+        entry.appendChild(swatch);
+        const text = document.createElement('span');
+        text.className = 'sgp-legend-text';
+        text.textContent = displayName;
+        entry.appendChild(text);
         this.legendEl.appendChild(entry);
       }
     } else {
@@ -435,13 +459,11 @@ export class ScoreGraphPanel {
 
     this._onMouseMove = (e: MouseEvent) => {
       const rect = this.canvas!.getBoundingClientRect();
-      // Fraction within visible plot area
-      const logW = rect.width;
-      const plotX = GRAPH_PADDING.left;
-      const plotW = logW - GRAPH_PADDING.left - GRAPH_PADDING.right;
-      const relX = e.clientX - rect.left - plotX;
-      const plotFraction = Math.max(0, Math.min(1, relX / plotW));
+      const plotFraction = this.getPlotFractionFromMouse(e, rect);
       this.hoverFraction = plotFraction;
+      if (this.isDraggingRange) {
+        this.dragEndFraction = plotFraction;
+      }
       this.redraw();
       this.updateTooltip(e.clientX - rect.left, e.clientY - rect.top, plotFraction, rect);
     };
@@ -452,9 +474,31 @@ export class ScoreGraphPanel {
       this.redraw();
     };
 
+    this._onMouseDown = (e: MouseEvent) => {
+      if (e.button !== 0) return;
+      const rect = this.canvas!.getBoundingClientRect();
+      const plotFraction = this.getPlotFractionFromMouse(e, rect);
+      this.isDraggingRange = true;
+      this.wrapper?.classList.add('sgp-range-selecting');
+      this.dragStartFraction = plotFraction;
+      this.dragEndFraction = plotFraction;
+      this.hoverFraction = plotFraction;
+      if (this.tooltipEl) this.tooltipEl.style.display = 'none';
+      this.redraw();
+    };
+
+    this._onWindowMouseUp = (e: MouseEvent) => {
+      if (!this.isDraggingRange || !this.canvas || this.dragStartFraction === null) return;
+      const rect = this.canvas.getBoundingClientRect();
+      this.dragEndFraction = this.getPlotFractionFromMouse(e, rect);
+      this.applyDragSelection();
+    };
+
     this.canvas.addEventListener('wheel', this._onWheel, { passive: false });
     this.canvas.addEventListener('mousemove', this._onMouseMove);
     this.canvas.addEventListener('mouseleave', this._onMouseLeave);
+    this.canvas.addEventListener('mousedown', this._onMouseDown);
+    window.addEventListener('mouseup', this._onWindowMouseUp);
   }
 
   private detachCanvasListeners(): void {
@@ -462,6 +506,48 @@ export class ScoreGraphPanel {
     if (this._onWheel) this.canvas.removeEventListener('wheel', this._onWheel);
     if (this._onMouseMove) this.canvas.removeEventListener('mousemove', this._onMouseMove);
     if (this._onMouseLeave) this.canvas.removeEventListener('mouseleave', this._onMouseLeave);
+    if (this._onMouseDown) this.canvas.removeEventListener('mousedown', this._onMouseDown);
+    if (this._onWindowMouseUp) window.removeEventListener('mouseup', this._onWindowMouseUp);
+  }
+
+  private getPlotFractionFromMouse(e: MouseEvent, rect: DOMRect): number {
+    const plotX = GRAPH_PADDING.left;
+    const plotW = rect.width - GRAPH_PADDING.left - GRAPH_PADDING.right;
+    const relX = e.clientX - rect.left - plotX;
+    return Math.max(0, Math.min(1, relX / plotW));
+  }
+
+  private applyDragSelection(): void {
+    const start = this.dragStartFraction;
+    const end = this.dragEndFraction;
+    this.isDraggingRange = false;
+    this.wrapper?.classList.remove('sgp-range-selecting');
+    this.dragStartFraction = null;
+    this.dragEndFraction = null;
+
+    if (start === null || end === null || Math.abs(end - start) < MIN_ZOOM_FRACTION) {
+      this.redraw();
+      return;
+    }
+
+    const range = this.zoomEnd - this.zoomStart;
+    const nextStart = this.zoomStart + Math.min(start, end) * range;
+    const nextEnd = this.zoomStart + Math.max(start, end) * range;
+    this.zoomStart = Math.max(0, Math.min(0.999, nextStart));
+    this.zoomEnd = Math.min(1, Math.max(this.zoomStart + MIN_ZOOM_FRACTION, nextEnd));
+    this.updateZoomStateAttrs();
+
+    const controlsRow = this.wrapper?.querySelector('.sgp-controls-row') as (HTMLElement & { _zoomResetBtn?: HTMLButtonElement }) | null;
+    if (controlsRow?._zoomResetBtn) {
+      this.updateZoomResetVisibility(controlsRow._zoomResetBtn);
+    }
+    this.redraw();
+  }
+
+  private updateZoomStateAttrs(): void {
+    if (!this.wrapper) return;
+    this.wrapper.dataset.zoomStart = this.zoomStart.toFixed(4);
+    this.wrapper.dataset.zoomEnd = this.zoomEnd.toFixed(4);
   }
 
   private handleZoom(factor: number, centerFraction: number): void {
@@ -479,6 +565,7 @@ export class ScoreGraphPanel {
 
     this.zoomStart = newStart;
     this.zoomEnd   = newEnd;
+    this.updateZoomStateAttrs();
 
     // Update reset button visibility
     const controlsRow = this.wrapper?.querySelector('.sgp-controls-row') as (HTMLElement & { _zoomResetBtn?: HTMLButtonElement }) | null;
@@ -759,6 +846,19 @@ export class ScoreGraphPanel {
         ctx.textBaseline = 'top';
         ctx.fillText(`W${ev.value}`, x, plotY + plotH + 4);
       }
+    }
+
+    // --- Drag selection preview ---
+    if (this.isDraggingRange && this.dragStartFraction !== null && this.dragEndFraction !== null && progress >= 1) {
+      const startX = plotX + Math.min(this.dragStartFraction, this.dragEndFraction) * plotW;
+      const endX = plotX + Math.max(this.dragStartFraction, this.dragEndFraction) * plotW;
+      ctx.save();
+      ctx.fillStyle = 'rgba(0, 255, 255, 0.12)';
+      ctx.strokeStyle = 'rgba(0, 255, 255, 0.75)';
+      ctx.lineWidth = 1;
+      ctx.fillRect(startX, plotY, Math.max(1, endX - startX), plotH);
+      ctx.strokeRect(startX, plotY, Math.max(1, endX - startX), plotH);
+      ctx.restore();
     }
 
     // --- Hover crosshair ---
@@ -1063,6 +1163,9 @@ export function injectScoreGraphStyles(): void {
       border: 1px solid rgba(0, 80, 100, 0.4);
       cursor: crosshair;
     }
+    .sgp-wrapper.sgp-range-selecting .sgp-canvas {
+      cursor: ew-resize;
+    }
     .sgp-insufficient {
       text-align: center;
       color: #334455;
@@ -1216,6 +1319,25 @@ export function injectScoreGraphStyles(): void {
       display: flex;
       align-items: center;
       gap: 5px;
+    }
+    .sgp-legend-entry-by-type {
+      gap: 7px;
+      min-height: 34px;
+    }
+    .sgp-legend-entry-by-type .ap-enemy-preview,
+    .sgp-legend-entry-by-type .ap-enemy-preview-img {
+      width: 30px;
+      height: 30px;
+    }
+    .sgp-legend-entry-by-type .ap-enemy-preview-fallback {
+      width: 18px;
+      height: 18px;
+    }
+    .sgp-legend-swatch {
+      width: 9px;
+      height: 9px;
+      border-radius: 2px;
+      flex: 0 0 auto;
     }
     .sgp-legend-icon {
       font-size: 13px;

@@ -6,7 +6,8 @@ import {
 } from '../entities/enemies/EnemyPreviewFactory';
 
 const PREVIEW_SIZE = 72;
-const thumbnailCache = new Map<string, string>();
+const PREVIEW_FRAME_COUNT = 8;
+const thumbnailCache = new Map<string, string[]>();
 
 let renderer: THREE.WebGLRenderer | null = null;
 let scene: THREE.Scene | null = null;
@@ -48,7 +49,7 @@ function ensurePreviewRenderer(): boolean {
   }
 }
 
-export function renderEnemyPreviewDataUrl(enemyType: string): string | null {
+export function renderEnemyPreviewFrames(enemyType: string): string[] | null {
   const normalizedType = isPreviewEnemyType(enemyType) ? enemyType : null;
   if (!normalizedType) return null;
 
@@ -60,13 +61,21 @@ export function renderEnemyPreviewDataUrl(enemyType: string): string | null {
   if (!object) return null;
 
   scene.add(object);
-  renderer.render(scene, camera);
-  const dataUrl = renderer.domElement.toDataURL('image/png');
+  const frames: string[] = [];
+  for (let i = 0; i < PREVIEW_FRAME_COUNT; i++) {
+    object.rotation.y = (i / PREVIEW_FRAME_COUNT) * Math.PI * 2;
+    renderer.render(scene, camera);
+    frames.push(renderer.domElement.toDataURL('image/png'));
+  }
   scene.remove(object);
   disposePreviewObject(object);
 
-  thumbnailCache.set(normalizedType, dataUrl);
-  return dataUrl;
+  thumbnailCache.set(normalizedType, frames);
+  return frames;
+}
+
+export function renderEnemyPreviewDataUrl(enemyType: string): string | null {
+  return renderEnemyPreviewFrames(enemyType)?.[0] ?? null;
 }
 
 export function createEnemyModelPreviewElement(
@@ -79,13 +88,18 @@ export function createEnemyModelPreviewElement(
   preview.dataset.enemyPreview = enemyType;
   preview.title = `${label} model preview`;
 
-  const dataUrl = renderEnemyPreviewDataUrl(enemyType);
-  if (dataUrl) {
-    const img = document.createElement('img');
-    img.className = 'ap-enemy-preview-img';
-    img.alt = `${label} model`;
-    img.src = dataUrl;
-    preview.appendChild(img);
+  const frames = renderEnemyPreviewFrames(enemyType);
+  if (frames?.length) {
+    preview.classList.add('ap-enemy-preview-rotating');
+    preview.dataset.enemyPreviewFrames = String(frames.length);
+    frames.forEach((dataUrl, index) => {
+      const img = document.createElement('img');
+      img.className = 'ap-enemy-preview-img ap-enemy-preview-frame';
+      img.alt = `${label} model frame ${index + 1}`;
+      img.src = dataUrl;
+      img.style.animationDelay = `${-(index / frames.length) * 2.4}s`;
+      preview.appendChild(img);
+    });
   } else {
     const fallback = document.createElement('div');
     fallback.className = 'ap-enemy-preview-fallback';
