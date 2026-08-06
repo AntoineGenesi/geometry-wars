@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 
 import { Game } from './core/Game';
+import { parseQuickStartConfig } from './core/QuickStartConfig';
 import { Surface, SurfacePoint } from './surfaces/Surface';
 import { SurfaceFactory, SurfaceType } from './surfaces/SurfaceFactory';
 import { InputManager } from './input/InputManager';
@@ -475,7 +476,17 @@ async function waitForLandscape(sessionGameCount: number): Promise<void> {
   });
 }
 
-async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMeshFile?: File, mapSize?: MapSize, quickGameModeType?: LanGameMode): Promise<void> {
+function showCustomMeshLoadError(message: string): void {
+  console.error(`[CustomMesh] ${message}`);
+  (window as any).__customMeshLoadError = message;
+  const errorDiv = document.createElement('div');
+  errorDiv.id = 'custom-mesh-load-error';
+  errorDiv.textContent = message;
+  errorDiv.style.cssText = 'position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); color: #ff6688; font-size: 18px; z-index: 10000; background: rgba(0,0,0,0.9); padding: 18px; border: 1px solid #ff6688; max-width: 640px;';
+  document.body.appendChild(errorDiv);
+}
+
+async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMeshSource?: File | string, mapSize?: MapSize, quickGameModeType?: LanGameMode): Promise<void> {
   // Show loading overlay during game initialization (black screen phase after StartMenu)
   showGameLoading('STARTING GAME...');
 
@@ -667,7 +678,7 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
 
   // Create surface (async for custom meshes, sync for built-in)
   let surface: Surface;
-  if (surfaceType === 'custom' && customMeshFile) {
+  if (surfaceType === 'custom' && customMeshSource) {
     // Show loading indicator while mesh loads
     const loadingDiv = document.createElement('div');
     loadingDiv.textContent = 'Loading custom mesh...';
@@ -679,7 +690,7 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
       // (4× segment density, brightness floor) as built-in surfaces.
       const customSurfaceConfig = createStandardSurfaceConfig('sphere', level.surfaceScale || 8, savedStyle);
       surface = await SurfaceFactory.createCustom({
-        meshSource: customMeshFile,
+        meshSource: customMeshSource,
         targetRadius: level.surfaceScale || 8,
         gridColor: (customSurfaceConfig.gridColor as number) ?? 0x2a2aaa,
         surfaceColor: (customSurfaceConfig.surfaceColor as number) ?? 0x141440,
@@ -690,14 +701,16 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
       });
     } catch (err) {
       document.body.removeChild(loadingDiv);
-      alert(`Failed to load custom mesh: ${(err as Error).message}`);
-      // Fallback to sphere
-      surface = SurfaceFactory.create('sphere', surfaceConfig as any);
+      showCustomMeshLoadError(`Failed to load custom mesh: ${(err as Error).message}`);
+      return;
     } finally {
       if (loadingDiv.parentElement) {
         document.body.removeChild(loadingDiv);
       }
     }
+  } else if (surfaceType === 'custom') {
+    showCustomMeshLoadError('Failed to load custom mesh: no mesh source was provided.');
+    return;
   } else {
     surface = SurfaceFactory.create(surfaceType, surfaceConfig as any);
   }
@@ -2671,17 +2684,8 @@ function isBenchmarkMode(): boolean {
   return params.get('mode') === 'benchmark';
 }
 
-function isQuickStartMode(): { enabled: boolean; surface?: SurfaceType; seed?: number; gameMode?: LanGameMode } {
-  const params = new URLSearchParams(window.location.search);
-  const quickStart = params.get('quickStart') === 'true';
-  if (!quickStart) return { enabled: false };
-
-  const surface = params.get('surface') as SurfaceType || 'sphere';
-  const seedParam = params.get('seed');
-  const seed = seedParam ? parseInt(seedParam, 10) : undefined;
-  const gameMode = (params.get('gameMode') ?? undefined) as LanGameMode | undefined;
-
-  return { enabled: true, surface, seed, gameMode };
+function isQuickStartMode() {
+  return parseQuickStartConfig(window.location.search);
 }
 
 function isTestArenaMode(): boolean {
@@ -2701,14 +2705,18 @@ if (isTestArenaMode()) {
   main(testSurface, -1);
 } else if (quickStartConfig.enabled) {
   // Quick start mode: skip menu, start game immediately with seed
-  console.log(`[Main] Quick start mode: ${quickStartConfig.surface}, mode=${quickStartConfig.gameMode ?? 'waves'}, seed=${quickStartConfig.seed ?? 'random'}`);
-  if (quickStartConfig.seed !== undefined) {
-    import('./core/SeededRandom').then(({ setGameSeed }) => {
-      setGameSeed(quickStartConfig.seed!);
-      main(quickStartConfig.surface, -1, undefined, undefined, quickStartConfig.gameMode); // -1 = endless mode
-    });
+  if (quickStartConfig.error) {
+    showCustomMeshLoadError(quickStartConfig.error);
   } else {
-    main(quickStartConfig.surface, -1, undefined, undefined, quickStartConfig.gameMode);
+    console.log(`[Main] Quick start mode: ${quickStartConfig.surface}, mode=${quickStartConfig.gameMode ?? 'waves'}, seed=${quickStartConfig.seed ?? 'random'}`);
+    if (quickStartConfig.seed !== undefined) {
+      import('./core/SeededRandom').then(({ setGameSeed }) => {
+        setGameSeed(quickStartConfig.seed!);
+        main(quickStartConfig.surface, -1, quickStartConfig.customMeshSource, undefined, quickStartConfig.gameMode); // -1 = endless mode
+      });
+    } else {
+      main(quickStartConfig.surface, -1, quickStartConfig.customMeshSource, undefined, quickStartConfig.gameMode);
+    }
   }
 } else if (isBenchmarkMode()) {
   import('./benchmark').then(({ runBenchmark }) => {
