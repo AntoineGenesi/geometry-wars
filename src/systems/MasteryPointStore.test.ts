@@ -52,7 +52,7 @@ describe('MasteryPointStore', () => {
     expect(debugStore.getTotalPoints()).toBe(DEBUG_MASTERY_POINTS_PER_WEAPON * Object.values(WeaponType).length);
   });
 
-  it('debug point mode can spend virtual points but still enforces maxPoints', () => {
+  it('debug point mode can spend virtual points but still enforces explicit maxPoints', () => {
     const debugStore = new MasteryPointStore({ debugPointMode: true });
 
     expect(debugStore.spendPoint('black_hole_a_1', 3)).toBe(true);
@@ -68,9 +68,7 @@ describe('MasteryPointStore', () => {
     const debugStore = new MasteryPointStore({ debugPointMode: true });
     const tree = UPGRADE_TREES[WeaponType.BlackHole];
 
-    debugStore.spendPoint('black_hole_a_1', 3, 1, tree);
-    debugStore.spendPoint('black_hole_a_1', 3, 1, tree);
-    debugStore.spendPoint('black_hole_a_1', 3, 1, tree);
+    debugStore.spendPoint('black_hole_a_1', 1, 1, tree);
     debugStore.spendPoint('black_hole_a_2', 1, 1, tree);
     debugStore.spendPoint('black_hole_a_3', 1, 1, tree);
     expect(debugStore.spendPoint('black_hole_al_4', 1, 1, tree)).toBe(true);
@@ -382,16 +380,16 @@ describe('MasteryPointStore', () => {
     expect(store.getNodePoints('nonexistent_a_1')).toBe(0);
   });
 
-  it('multi-level node points persist across instances', () => {
+  it('persisted multi-rank investments clamp to the rebuilt one-rank tree', () => {
     store.earnPoint(WeaponType.BlackHole);
     store.earnPoint(WeaponType.BlackHole);
     store.spendPoint('black_hole_a_1', 3);
     store.spendPoint('black_hole_a_1', 3);
 
     const store2 = new MasteryPointStore();
-    expect(store2.getNodePoints('black_hole_a_1')).toBe(2);
+    expect(store2.getNodePoints('black_hole_a_1')).toBe(1);
     expect(store2.isUnlocked('black_hole_a_1')).toBe(true);
-    expect(store2.getSpentPoints(WeaponType.BlackHole)).toBe(2);
+    expect(store2.getSpentPoints(WeaponType.BlackHole)).toBe(1);
   });
 
   it('drops stale v2 node ids and refunds their spent points on load', () => {
@@ -414,7 +412,37 @@ describe('MasteryPointStore', () => {
     expect(migrated.getAvailablePoints(WeaponType.Standard)).toBe(3);
   });
 
-  it('clamps stale over-ranked v2 node points to current maxPoints', () => {
+  it('refunds real node ids removed by the tree-content rebuild', () => {
+    localStorageMock.setItem('gw_mastery_points', JSON.stringify({
+      version: 2,
+      weaponPoints: {
+        [WeaponType.Standard]: { total: 8, spent: 4 },
+        [WeaponType.Homing]: { total: 5, spent: 2 },
+      },
+      nodePoints: {
+        standard_a_1: 1,
+        standard_al_7: 1,
+        standard_ar_10: 1,
+        standard_br_10: 1,
+        homing_a_10: 1,
+        homing_b_1: 1,
+      },
+    }));
+
+    const migrated = new MasteryPointStore();
+    expect(migrated.isUnlocked('standard_a_1')).toBe(true);
+    expect(migrated.isUnlocked('standard_br_10')).toBe(true);
+    expect(migrated.isUnlocked('standard_al_7')).toBe(false);
+    expect(migrated.isUnlocked('standard_ar_10')).toBe(false);
+    expect(migrated.isUnlocked('homing_a_10')).toBe(false);
+    expect(migrated.isUnlocked('homing_b_1')).toBe(true);
+    expect(migrated.getSpentPoints(WeaponType.Standard)).toBe(3);
+    expect(migrated.getAvailablePoints(WeaponType.Standard)).toBe(5);
+    expect(migrated.getSpentPoints(WeaponType.Homing)).toBe(1);
+    expect(migrated.getAvailablePoints(WeaponType.Homing)).toBe(4);
+  });
+
+  it('clamps stale over-ranked v2 node points to current tree maxPoints', () => {
     localStorageMock.setItem('gw_mastery_points', JSON.stringify({
       version: 2,
       weaponPoints: {
@@ -426,9 +454,9 @@ describe('MasteryPointStore', () => {
     }));
 
     const migrated = new MasteryPointStore();
-    expect(migrated.getNodePoints('black_hole_a_1')).toBe(3);
-    expect(migrated.getSpentPoints(WeaponType.BlackHole)).toBe(3);
-    expect(migrated.getAvailablePoints(WeaponType.BlackHole)).toBe(7);
+    expect(migrated.getNodePoints('black_hole_a_1')).toBe(1);
+    expect(migrated.getSpentPoints(WeaponType.BlackHole)).toBe(1);
+    expect(migrated.getAvailablePoints(WeaponType.BlackHole)).toBe(9);
   });
 
   // -------------------------------------------------------------------------
