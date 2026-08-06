@@ -12,7 +12,11 @@ import { MasteryPointStore } from '../systems/MasteryPointStore';
 import { MatchUpgradeTracker } from '../systems/MatchUpgradeTracker';
 import { GameSettingsPanel } from './GameSettingsPanel';
 import type { GameSettings } from '../../server/shared/GameSettings';
-import type { VisualMode } from './VisualStyleSettings';
+import {
+  getNextVisualMode,
+  getVisualModeDefinition,
+  type VisualMode,
+} from './VisualStyleSettings';
 import { VisualPlayground } from './VisualPlayground';
 
 /**
@@ -1006,10 +1010,7 @@ export class PauseMenu {
 
     const visualModeBtn = this.container.querySelector('[data-action="visual-mode"]');
     visualModeBtn?.addEventListener('click', () => {
-      if (this.visualMode === 'pixelated') this.visualMode = 'modern';
-      else if (this.visualMode === 'modern') this.visualMode = 'crt';
-      else if (this.visualMode === 'crt') this.visualMode = 'desktop-defender';
-      else this.visualMode = 'pixelated';
+      this.visualMode = getNextVisualMode(this.visualMode);
       this.updateVisualModeLabel();
       this.onVisualModeChangeCallback?.(this.visualMode);
     });
@@ -1206,10 +1207,7 @@ export class PauseMenu {
   private updateVisualModeLabel(): void {
     const label = this.container.querySelector('.visual-mode-label');
     if (label) {
-      if (this.visualMode === 'pixelated') label.textContent = t('pauseMenu.stylePixelated');
-      else if (this.visualMode === 'modern') label.textContent = t('pauseMenu.styleModern');
-      else if (this.visualMode === 'crt') label.textContent = 'CRT';
-      else label.textContent = t('pauseMenu.styleDesktopDefender');
+      label.textContent = getVisualModeDefinition(this.visualMode).label;
     }
   }
 

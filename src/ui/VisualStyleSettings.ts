@@ -95,8 +95,38 @@ export function clearVisualStyle(): void {
 
 const VISUAL_MODE_KEY = 'gw3d-visual-mode';
 
-/** Pixelated = half-res bloom (retro look). Modern = full-res bloom (crisp). Desktop Defender = light background, minimal glow. CRT = modern bloom + CRT Arcade preset. */
+/** Pixelated = half-res bloom. Modern = crisp neon. Desktop Defender = tactical light grid. CRT = phosphor arcade. */
 export type VisualMode = 'pixelated' | 'modern' | 'desktop-defender' | 'crt';
+
+export interface VisualModeDefinition {
+  mode: VisualMode;
+  label: string;
+  featuredPresetName: string | null;
+}
+
+export const VISUAL_MODE_DEFINITIONS: readonly VisualModeDefinition[] = [
+  { mode: 'modern', label: 'STYLE: MODERN', featuredPresetName: 'Sektori Cyan' },
+  { mode: 'pixelated', label: 'STYLE: PIXELATED', featuredPresetName: 'Classic Neon' },
+  { mode: 'crt', label: 'STYLE: CRT PHOSPHOR', featuredPresetName: 'CRT Phosphor' },
+  { mode: 'desktop-defender', label: 'STYLE: TACTICAL GRID', featuredPresetName: 'Tactical Grid' },
+] as const;
+
+export function getVisualModeDefinition(mode: VisualMode): VisualModeDefinition {
+  return VISUAL_MODE_DEFINITIONS.find((definition) => definition.mode === mode)
+    ?? VISUAL_MODE_DEFINITIONS[0];
+}
+
+export function getVisualModeFeaturedPreset(mode: VisualMode): VisualPreset | null {
+  const presetName = getVisualModeDefinition(mode).featuredPresetName;
+  if (!presetName) return null;
+  return getAllPresets().find((preset) => preset.name === presetName) ?? null;
+}
+
+export function getNextVisualMode(mode: VisualMode): VisualMode {
+  const modes = VISUAL_MODE_DEFINITIONS.map((definition) => definition.mode);
+  const index = modes.indexOf(mode);
+  return modes[(index + 1) % modes.length];
+}
 
 /** Load the saved visual mode. Defaults to 'modern' (non-pixelated high-graphics). */
 export function loadVisualMode(): VisualMode {

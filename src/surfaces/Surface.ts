@@ -239,6 +239,22 @@ export abstract class Surface {
     }
   }
 
+  /** Update live grid material color/opacity without rebuilding surface geometry. */
+  setGridStyle(style: { color?: number; opacity?: number }): void {
+    const material = this.gridMesh.material as THREE.Material & {
+      color?: THREE.Color;
+      opacity?: number;
+    };
+    if (material.color && style.color !== undefined) {
+      material.color.set(style.color);
+    }
+    if (typeof material.opacity === 'number' && style.opacity !== undefined) {
+      material.opacity = style.opacity;
+      material.transparent = style.opacity < 1;
+    }
+    material.needsUpdate = true;
+  }
+
   /**
    * Apply world rotation to a local surface point.
    * Used by getPoint() implementations to transform local coords to world coords.
