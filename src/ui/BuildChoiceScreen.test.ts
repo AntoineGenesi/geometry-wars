@@ -180,4 +180,82 @@ describe('BuildChoiceScreen conflict filtering', () => {
     expect(body.children[0].innerHTML).toContain('1pt');
     screen.dispose();
   });
+
+  it('marks MP choices with compact nonblocking layout class', () => {
+    const screen = new BuildChoiceScreen();
+    const onConfirm = vi.fn();
+
+    screen.show(
+      WeaponType.Standard,
+      ['standard_a_1', 'standard_b_1'],
+      new Set(),
+      10,
+      onConfirm,
+      { mode: 'mp' },
+    );
+
+    expect(body.children[0].classList.contains('bcs-mp-mode')).toBe(true);
+    screen.dispose();
+  });
+
+  it('keeps SP choices on the default full-screen presentation', () => {
+    const screen = new BuildChoiceScreen();
+    const onConfirm = vi.fn();
+
+    screen.show(
+      WeaponType.Standard,
+      ['standard_a_1', 'standard_b_1'],
+      new Set(),
+      10,
+      onConfirm,
+      { mode: 'sp' },
+    );
+
+    expect(body.children[0].classList.contains('bcs-mp-mode')).toBe(false);
+    screen.dispose();
+  });
+
+  it('dismisses MP multi-choice screens without confirming a node', () => {
+    const screen = new BuildChoiceScreen();
+    const onConfirm = vi.fn();
+    const onDismiss = vi.fn();
+
+    screen.show(
+      WeaponType.Standard,
+      ['standard_a_1', 'standard_b_1'],
+      new Set(),
+      10,
+      onConfirm,
+      { mode: 'mp', autoDismissMs: 1200, onDismiss },
+    );
+    vi.advanceTimersByTime(1199);
+    expect(onDismiss).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(1);
+
+    expect(onConfirm).not.toHaveBeenCalled();
+    expect(onDismiss).toHaveBeenCalledTimes(1);
+    expect(body.children[0].classList.contains('hidden')).toBe(true);
+    screen.dispose();
+  });
+
+  it('dismisses MP one-choice screens without auto-confirming', () => {
+    const screen = new BuildChoiceScreen();
+    const onConfirm = vi.fn();
+    const onDismiss = vi.fn();
+
+    screen.show(
+      WeaponType.Standard,
+      ['standard_a_1'],
+      new Set(),
+      10,
+      onConfirm,
+      { mode: 'mp', autoDismissMs: 1200, onDismiss },
+    );
+    vi.advanceTimersByTime(1200);
+
+    expect(onConfirm).not.toHaveBeenCalled();
+    expect(onDismiss).toHaveBeenCalledTimes(1);
+    expect(body.children[0].classList.contains('hidden')).toBe(true);
+    screen.dispose();
+  });
 });
