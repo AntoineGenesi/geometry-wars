@@ -91,6 +91,17 @@ async function openQuickGameSurfacePanel(page) {
   await page.waitForSelector('#surface-section:not(.hidden) #custom-mesh-file-input', { timeout: 10_000 });
 }
 
+async function openOnlineSurfacePanel(page) {
+  await page.waitForSelector('#start-menu .oval-btn[data-mode="network"]', { timeout: 30_000 });
+  await page.click('#start-menu .oval-btn[data-mode="network"]');
+  await page.waitForSelector('#surface-section:not(.hidden) .custom-mesh-btn', { timeout: 10_000 });
+}
+
+async function returnToMainMenu(page) {
+  await page.click('#surface-back');
+  await page.waitForSelector('#main-buttons:not(.hidden)', { timeout: 10_000 });
+}
+
 async function uploadMeshFile(page, filePath) {
   await page.evaluate(() => {
     const input = document.querySelector('#custom-mesh-file-input');
@@ -162,6 +173,23 @@ async function run() {
 
     const url = `${BASE_URL}/?debug=true&testMode=true&renderer=webgl2&music=false`;
     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30_000 });
+    await openOnlineSurfacePanel(page);
+    const onlineCustomFence = await page.evaluate(() => {
+      const customButton = document.querySelector('#surface-section .custom-mesh-btn');
+      const status = document.querySelector('#custom-mesh-status');
+      return {
+        disabled: Boolean(customButton?.disabled),
+        ariaDisabled: customButton?.getAttribute('aria-disabled'),
+        text: status?.textContent || '',
+        selected: customButton?.classList.contains('selected') || false,
+      };
+    });
+    if (!onlineCustomFence.disabled || onlineCustomFence.ariaDisabled !== 'true' || !onlineCustomFence.text.includes('single-player only')) {
+      throw new Error(`Online mode did not fence off custom upload: ${JSON.stringify(onlineCustomFence)}`);
+    }
+    const onlineFenceScreenshot = await screenshot(page, 'online-custom-disabled');
+    await returnToMainMenu(page);
+
     await openQuickGameSurfacePanel(page);
 
     const initialStatus = await page.evaluate(() => document.querySelector('#custom-mesh-status')?.textContent || '');
@@ -220,7 +248,8 @@ async function run() {
       initialStatus,
       invalidUpload,
       validUpload,
-      screenshots: [invalidScreenshot, selectedScreenshot, gameplayScreenshot],
+      onlineCustomFence,
+      screenshots: [onlineFenceScreenshot, invalidScreenshot, selectedScreenshot, gameplayScreenshot],
       runtime,
       pageErrors,
       criticalConsole,
@@ -235,6 +264,7 @@ async function run() {
       `- valid mesh: ${report.validMeshPath}`,
       `- proof boundary: ${report.proofBoundary}`,
       `- invalid upload error: ${invalidUpload.text}`,
+      `- online custom fence: ${onlineCustomFence.text}`,
       `- valid upload status: ${validUpload.text}`,
       `- gameplay surface: ${runtime.gameState?.game?.surface}`,
       `- screenshot directory: ${relative(PROJECT_ROOT, SCREENSHOT_DIR)}`,

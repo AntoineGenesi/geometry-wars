@@ -40,8 +40,9 @@ describe('MeshUploadValidation', () => {
   });
 
   it('describes the visible first-release contract', () => {
-    expect(describeMeshUploadLimits()).toContain('.obj');
+    expect(describeMeshUploadLimits()).toContain('.obj/.gltf up to 8 MB');
+    expect(describeMeshUploadLimits()).toContain('.glb up to 16 MB');
     expect(describeMeshUploadLimits()).toContain('Single object only');
-    expect(describeMeshUploadLimits()).toContain('LAN/custom portals are not supported');
+    expect(describeMeshUploadLimits()).toContain('multiplayer, LAN, and custom portals are not supported');
   });
 });

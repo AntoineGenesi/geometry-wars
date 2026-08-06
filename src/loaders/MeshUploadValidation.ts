@@ -33,7 +33,7 @@ export function formatMeshUploadBytes(bytes: number): string {
 }
 
 export function describeMeshUploadLimits(): string {
-  return 'Supported: .obj up to 8 MB, .glb/.gltf up to 16 MB. Single object only; LAN/custom portals are not supported yet.';
+  return 'Supported: .obj/.gltf up to 8 MB, .glb up to 16 MB. Single object only; multiplayer, LAN, and custom portals are not supported yet.';
 }
 
 export function validateMeshUploadFile(file: Pick<File, 'name' | 'size'> | null | undefined): MeshUploadValidationResult {

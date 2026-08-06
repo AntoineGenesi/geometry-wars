@@ -885,6 +885,17 @@ export class StartMenu {
         box-shadow: 0 0 8px rgba(150, 80, 220, 0.25);
       }
 
+      #start-menu .custom-mesh-btn.disabled,
+      #start-menu .custom-mesh-btn:disabled {
+        cursor: not-allowed;
+        opacity: 0.42;
+        filter: grayscale(0.6);
+        background: rgba(24, 24, 32, 0.55);
+        border-color: rgba(120, 120, 140, 0.24);
+        color: #8f93a0;
+        box-shadow: none;
+      }
+
       #start-menu .custom-mesh-loading {
         position: fixed;
         top: 50%;
@@ -2204,6 +2215,28 @@ export class StartMenu {
     status.classList.toggle('error', tone === 'error');
   }
 
+  private setCustomMeshUploadAvailability(enabled: boolean): void {
+    const customMeshBtn = this.container.querySelector('#surface-section .custom-mesh-btn') as HTMLButtonElement | null;
+    if (!customMeshBtn) return;
+
+    customMeshBtn.disabled = !enabled;
+    customMeshBtn.classList.toggle('disabled', !enabled);
+    customMeshBtn.setAttribute('aria-disabled', String(!enabled));
+
+    if (!enabled) {
+      customMeshBtn.classList.remove('selected');
+      if (this.selectedSurface === 'custom') {
+        this.selectedSurface = 'sphere';
+        this.customMeshFileQuickGame = null;
+        const sphereBtn = this.container.querySelector('#surface-section .surface-btn[data-surface="sphere"]') as HTMLElement | null;
+        sphereBtn?.classList.add('selected');
+      }
+      this.setCustomMeshStatus('Custom mesh upload is single-player only. Choose Quick Game to upload a custom map.', 'error');
+    } else {
+      this.setCustomMeshStatus(describeMeshUploadLimits());
+    }
+  }
+
   private attachEventListeners(): void {
     const mainButtonsContainer = this.container.querySelector('#main-buttons') as HTMLElement;
     const adventureSection = this.container.querySelector('#adventure-levels') as HTMLElement;
@@ -2255,6 +2288,11 @@ export class StartMenu {
 
     customMeshBtns.forEach((btn) => {
       btn.addEventListener('click', () => {
+        if (this.pendingMode !== 'single') {
+          this.setCustomMeshUploadAvailability(false);
+          return;
+        }
+
         const gridClass = (btn as HTMLElement).dataset.gridClass ?? 'quick-game-surface-grid';
 
         // Store which section this is for
@@ -2285,6 +2323,11 @@ export class StartMenu {
           const validation = validateMeshUploadFile(file);
           if (!validation.ok) {
             this.setCustomMeshStatus(validation.error ?? 'Unsupported mesh upload.', 'error');
+            return;
+          }
+
+          if (this.pendingMode !== 'single') {
+            this.setCustomMeshUploadAvailability(false);
             return;
           }
 
@@ -2353,6 +2396,7 @@ export class StartMenu {
         mainButtonsContainer.classList.add('hidden');
         adventureSection.classList.add('hidden');
         lanSection.classList.add('hidden');
+        this.setCustomMeshUploadAvailability(this.pendingMode === 'single');
       });
     });
 
