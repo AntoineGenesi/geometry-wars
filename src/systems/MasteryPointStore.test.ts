@@ -412,6 +412,36 @@ describe('MasteryPointStore', () => {
     expect(migrated.getAvailablePoints(WeaponType.Standard)).toBe(3);
   });
 
+  it('refunds real node ids removed by the tree-content rebuild', () => {
+    localStorageMock.setItem('gw_mastery_points', JSON.stringify({
+      version: 2,
+      weaponPoints: {
+        [WeaponType.Standard]: { total: 8, spent: 4 },
+        [WeaponType.Homing]: { total: 5, spent: 2 },
+      },
+      nodePoints: {
+        standard_a_1: 1,
+        standard_al_7: 1,
+        standard_ar_10: 1,
+        standard_br_10: 1,
+        homing_a_10: 1,
+        homing_b_1: 1,
+      },
+    }));
+
+    const migrated = new MasteryPointStore();
+    expect(migrated.isUnlocked('standard_a_1')).toBe(true);
+    expect(migrated.isUnlocked('standard_br_10')).toBe(true);
+    expect(migrated.isUnlocked('standard_al_7')).toBe(false);
+    expect(migrated.isUnlocked('standard_ar_10')).toBe(false);
+    expect(migrated.isUnlocked('homing_a_10')).toBe(false);
+    expect(migrated.isUnlocked('homing_b_1')).toBe(true);
+    expect(migrated.getSpentPoints(WeaponType.Standard)).toBe(3);
+    expect(migrated.getAvailablePoints(WeaponType.Standard)).toBe(5);
+    expect(migrated.getSpentPoints(WeaponType.Homing)).toBe(1);
+    expect(migrated.getAvailablePoints(WeaponType.Homing)).toBe(4);
+  });
+
   it('clamps stale over-ranked v2 node points to current tree maxPoints', () => {
     localStorageMock.setItem('gw_mastery_points', JSON.stringify({
       version: 2,
