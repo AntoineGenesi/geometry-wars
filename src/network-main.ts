@@ -796,7 +796,8 @@ async function main() {
   const _tunnelRaycaster = new THREE.Raycaster();
   const _tunnelToPlayer = new THREE.Vector3();
   const _tunnelToPlayerDir = new THREE.Vector3();
-  let _currentGridOpacity = 0.10; // matches default gridOpacity
+  let _styleBaseGridOpacity = savedStyle?.gridOpacity ?? 0.10;
+  let _currentGridOpacity = _styleBaseGridOpacity;
   const _gridFadeSpeed = 3.0; // opacity per second convergence rate
 
   // -- CameraController: orbit (middle mouse), zoom (scroll wheel), follow (same as single-player) --
@@ -983,6 +984,10 @@ async function main() {
           preset: savedStyle,
           visualMode: savedVisualMode,
           effectiveSurfaceOpacity: getEffectiveSurfaceOpacity(gfxSettings),
+          onGridOpacityApplied: (opacity) => {
+            _styleBaseGridOpacity = opacity;
+            _currentGridOpacity = opacity;
+          },
         });
       }
     }
@@ -2853,6 +2858,10 @@ async function main() {
         preset: featuredPreset,
         visualMode: mode,
         effectiveSurfaceOpacity: getEffectiveSurfaceOpacity(loadGraphicsSettings()),
+        onGridOpacityApplied: (opacity) => {
+          _styleBaseGridOpacity = opacity;
+          _currentGridOpacity = opacity;
+        },
       });
     } else {
       const baseBloomStrength = savedStyle?.bloomStrength ?? (mobile ? 0.4 : 0.7);
@@ -2884,6 +2893,10 @@ async function main() {
       preset,
       visualMode: loadVisualMode(),
       effectiveSurfaceOpacity: getEffectiveSurfaceOpacity(loadGraphicsSettings()),
+      onGridOpacityApplied: (opacity) => {
+        _styleBaseGridOpacity = opacity;
+        _currentGridOpacity = opacity;
+      },
     });
   });
 
@@ -8880,7 +8893,7 @@ async function main() {
       if (localPlayer) {
         const camPos = camera.position;
         const playerPos = localPlayer.mesh.position;
-        const baseGridOpacity = (savedStyle?.gridOpacity ?? 0.10);
+        const baseGridOpacity = _styleBaseGridOpacity;
         let isBlocked = false;
 
         // Only surfaces where the player is INSIDE the mesh need tunnel transparency.

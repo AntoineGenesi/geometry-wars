@@ -534,6 +534,7 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
   const savedVisualMode = loadVisualMode();
   // -- Visual style (explicit gallery choice wins; otherwise mode supplies a featured style) --
   const savedStyle = loadVisualStyle() ?? getVisualModeFeaturedPreset(savedVisualMode);
+  let ctx: GameContext | null = null;
 
   // -- Game engine --
   // On mobile: reduce bloom, cap pixel ratio, apply mobile entity limits
@@ -617,6 +618,12 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
         preset,
         visualMode: currentVisualMode,
         effectiveSurfaceOpacity: getEffectiveSurfaceOpacity(loadGraphicsSettings()),
+        onGridOpacityApplied: (opacity) => {
+          if (ctx) {
+            ctx.state.baseGridOpacity = opacity;
+            ctx.state.currentGridOpacity = opacity;
+          }
+        },
       });
     } else {
       // Reset to defaults, adjusted for visual mode
@@ -639,6 +646,12 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
       preset,
       visualMode: loadVisualMode(),
       effectiveSurfaceOpacity: getEffectiveSurfaceOpacity(loadGraphicsSettings()),
+      onGridOpacityApplied: (opacity) => {
+        if (ctx) {
+          ctx.state.baseGridOpacity = opacity;
+          ctx.state.currentGridOpacity = opacity;
+        }
+      },
     });
   });
 
@@ -716,6 +729,13 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
         preset: savedStyle,
         visualMode: savedVisualMode,
         effectiveSurfaceOpacity: getEffectiveSurfaceOpacity(gfxSettings),
+        onGridOpacityApplied: (opacity) => {
+          // The render-loop state is created after surface construction; startup
+          // already receives the same opacity through createStandardSurfaceConfig.
+          if (!ctx) return;
+          ctx.state.baseGridOpacity = opacity;
+          ctx.state.currentGridOpacity = opacity;
+        },
       });
     }
   }
@@ -1737,6 +1757,10 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
         preset: featuredPreset,
         visualMode: mode,
         effectiveSurfaceOpacity: getEffectiveSurfaceOpacity(loadGraphicsSettings()),
+        onGridOpacityApplied: (opacity) => {
+          ctx.state.baseGridOpacity = opacity;
+          ctx.state.currentGridOpacity = opacity;
+        },
       });
     } else {
       const adjustedStrength = getAdjustedBloomStrength(bloomStrength, mode);
@@ -2098,7 +2122,7 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
   const baseGridOpacity = (surfaceConfig.gridOpacity as number) ?? 0.10;
 
   // -- Game Context: bundles all shared state for GameLoop and RenderLoop --
-  const ctx: GameContext = {
+  ctx = {
     game,
     player,
     surface,
