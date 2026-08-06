@@ -147,7 +147,7 @@ export class Game {
   readonly bloomPass: UnrealBloomPass | null;
   /** WebGPU PostProcessing instance (null when using WebGL2). */
   private webgpuPostProcessing: { render: () => void } | null = null;
-  /** WebGPU TSL uniform nodes for dynamic bloom control (null when using WebGL2). */
+  /** WebGPU TSL uniform nodes for dynamic bloom control (null when unavailable). */
   private webgpuBloomStrengthUniform: any = null;
   private webgpuBloomThresholdUniform: any = null;
 
@@ -388,17 +388,26 @@ export class Game {
    * EffectComposer. We dynamically import three/webgpu and build a
    * pass(scene, camera) -> bloom-approximation pipeline.
    *
-   * Since Three.js 0.170 does NOT have a built-in bloom() TSL function,
-   * we use mip-based blur on the bright pass as an approximation.
-   * The visual result is similar but not identical to UnrealBloomPass.
+   * Three.js r170 exposes blur() only on TextureNode-like nodes. The bright
+   * extraction is a composed math node, so it must be materialized with
+   * convertToTexture() before applying the mip blur.
    */
-  private initWebGPUPostProcessing(_bloomConfig?: Partial<BloomConfig>): void {
+  private initWebGPUPostProcessing(bloomConfig?: Partial<BloomConfig>): void {
     // Async initialization -- we set up PostProcessing after dynamic import.
     // The TSL (Three Shading Language) types are not fully typed for chained
     // node operations, so we use 'any' casts for the node graph construction.
     import('three/webgpu').then((webgpuModule: any) => {
       try {
-        const { PostProcessing, pass, float, max, add, screenUV, uniform } = webgpuModule;
+        const {
+          PostProcessing,
+          pass,
+          float,
+          max,
+          add,
+          screenUV,
+          uniform,
+          convertToTexture,
+        } = webgpuModule;
 
         // Create the scene render pass
         const scenePass = pass(this.scene, this.camera);
@@ -406,20 +415,21 @@ export class Game {
 
         // Bloom approximation using mip-based blur:
         // 1. Extract bright areas (threshold)
-        // 2. Apply mip-level blur to bright areas
-        // 3. Composite with original
-        const strength = _bloomConfig?.strength ?? DEFAULT_BLOOM.strength;
-        const threshold = _bloomConfig?.threshold ?? DEFAULT_BLOOM.threshold;
+        // 2. Materialize the bright math node into a texture node
+        // 3. Apply mip-level blur to the texture node
+        // 4. Composite with original
+        const strength = bloomConfig?.strength ?? DEFAULT_BLOOM.strength;
+        const threshold = bloomConfig?.threshold ?? DEFAULT_BLOOM.threshold;
 
-        // Use TSL uniform nodes so we can update bloom settings dynamically
+        // Use TSL uniform nodes so we can update bloom settings dynamically.
         const bloomStrength = uniform(strength);
         const bloomThreshold = uniform(threshold);
 
-        // Store references for dynamic updates
+        // Store references for dynamic updates.
         this.webgpuBloomStrengthUniform = bloomStrength;
         this.webgpuBloomThresholdUniform = bloomThreshold;
 
-        // Extract bright pixels above threshold
+        // Extract bright pixels above threshold.
         const brightness = max(
           sceneTexture.r,
           max(sceneTexture.g, sceneTexture.b),
@@ -427,11 +437,10 @@ export class Game {
         const brightMask = max(brightness.sub(bloomThreshold), float(0.0));
         const brightColor = sceneTexture.mul(brightMask);
 
-        // Mip-based blur gives a soft glow effect
-        // .blur() is a TSL TextureNode method that uses mip levels for blur
-        const blurredBright = (brightColor as any).blur(float(0.3));
+        const brightTexture = convertToTexture(brightColor);
+        const blurredBright = brightTexture.blur(float(0.3));
 
-        // Composite: original + bloom
+        // Composite: original + bloom.
         const finalColor = add(sceneTexture, blurredBright.mul(bloomStrength));
 
         // Vignette effect
@@ -445,9 +454,13 @@ export class Game {
         console.warn('[Game] WebGPU PostProcessing setup failed, using direct render:', err);
         // Fallback: direct render without post-processing
         this.webgpuPostProcessing = null;
+        this.webgpuBloomStrengthUniform = null;
+        this.webgpuBloomThresholdUniform = null;
       }
     }).catch((err: unknown) => {
       console.warn('[Game] Failed to load three/webgpu for PostProcessing:', err);
+      this.webgpuBloomStrengthUniform = null;
+      this.webgpuBloomThresholdUniform = null;
     });
   }
 
@@ -596,7 +609,7 @@ export class Game {
 
   /**
    * Update bloom settings dynamically.
-   * Works for both WebGL2 (via bloomPass) and WebGPU (via TSL uniforms).
+   * Works for WebGL2 bloomPass and for the optional WebGPU TSL uniforms.
    */
   setBloomSettings(strength: number, threshold: number): void {
     // WebGL2 path: update UnrealBloomPass directly
