@@ -549,6 +549,31 @@ export function getAllNodes(): UpgradeNode[] {
   return Object.values(UPGRADE_TREES).flatMap(tree => tree.nodes);
 }
 
+/** Returns the point cost for one rank of a node. */
+export function getNodeCost(node: UpgradeNode): number {
+  return node.cost ?? 1;
+}
+
+/** Returns the retained investment capacity for a node, including multi-rank nodes. */
+export function getNodeInvestmentCapacity(node: UpgradeNode): number {
+  return getNodeCost(node) * (node.maxPoints ?? 1);
+}
+
+/** Returns the retained investment capacity for a tree. */
+export function getTreeInvestmentCapacity(tree: UpgradeTree): number {
+  return tree.nodes.reduce((sum, node) => sum + getNodeInvestmentCapacity(node), 0);
+}
+
+/** Returns investment capacity by weapon for current tree data. */
+export function getInvestmentCapacityByWeapon(): Record<WeaponType, number> {
+  return Object.fromEntries(
+    Object.values(WeaponType).map(weaponType => [
+      weaponType,
+      getTreeInvestmentCapacity(UPGRADE_TREES[weaponType]),
+    ]),
+  ) as Record<WeaponType, number>;
+}
+
 /** Looks up a single node by id. Returns undefined if not found. */
 export function getNodeById(nodeId: string): UpgradeNode | undefined {
   return getAllNodes().find(n => n.id === nodeId);

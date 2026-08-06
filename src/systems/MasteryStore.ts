@@ -1,4 +1,5 @@
 import { WeaponType, WEAPON_CONFIGS } from '../weapons/WeaponTypes';
+import { getInvestmentCapacityByWeapon } from './UpgradeTreeData';
 
 // ── Storage ─────────────────────────────────────────────────────────────────
 
@@ -33,6 +34,10 @@ export const XP_PER_KILL = 0.5;
  * when XP_PER_KILL is properly calibrated.
  */
 export const DIMINISHING_FACTOR = 0.05;
+
+const INVESTMENT_CAPACITY_BY_WEAPON = getInvestmentCapacityByWeapon();
+const AVERAGE_INVESTMENT_CAPACITY = Object.values(INVESTMENT_CAPACITY_BY_WEAPON)
+  .reduce((sum, capacity) => sum + capacity, 0) / Object.values(INVESTMENT_CAPACITY_BY_WEAPON).length;
 
 // ── Passive bonus table ───────────────────────────────────────────────────────
 
@@ -91,6 +96,12 @@ function xpToLevel(xp: number): number {
     else break;
   }
   return level;
+}
+
+export function getMasteryXPScale(weapon: WeaponType): number {
+  const capacity = INVESTMENT_CAPACITY_BY_WEAPON[weapon] ?? AVERAGE_INVESTMENT_CAPACITY;
+  if (capacity <= 0) return 1;
+  return capacity / AVERAGE_INVESTMENT_CAPACITY;
 }
 
 function computeBonus(type: WeaponType, level: number): PassiveMasteryBonus {
@@ -234,7 +245,7 @@ export class MasteryStore {
       const levelBefore = xpToLevel(xpBefore);
 
       const diminishingFactor = 1 / (1 + entry.gamesPlayed * DIMINISHING_FACTOR);
-      const gameXp = kills * XP_PER_KILL * diminishingFactor;
+      const gameXp = kills * XP_PER_KILL * diminishingFactor * getMasteryXPScale(weapon);
       const xpAfter = xpBefore + gameXp;
       const levelAfter = xpToLevel(xpAfter);
 

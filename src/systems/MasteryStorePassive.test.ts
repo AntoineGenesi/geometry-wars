@@ -7,7 +7,7 @@
  */
 
 import { describe, expect, it, beforeEach } from 'vitest';
-import { MasteryStore, XP_PER_KILL } from './MasteryStore';
+import { MasteryStore, XP_PER_KILL, getMasteryXPScale } from './MasteryStore';
 import { WeaponType } from '../weapons/WeaponTypes';
 
 // ── localStorage mock ─────────────────────────────────────────────────────────
@@ -38,10 +38,10 @@ function killMap(entries: Partial<Record<WeaponType, number>>): Map<WeaponType, 
 
 /**
  * Award exactly enough kills in a single game to land at the given XP total.
- * Game 1 has diminishingFactor=1.0, so XP = kills * XP_PER_KILL.
+ * Game 1 has diminishingFactor=1.0, so XP = kills * XP_PER_KILL * tree-capacity scale.
  */
 function awardExactXP(store: MasteryStore, weapon: WeaponType, targetXP: number): void {
-  const kills = Math.ceil(targetXP / XP_PER_KILL);
+  const kills = Math.ceil(targetXP / (XP_PER_KILL * getMasteryXPScale(weapon)));
   store.awardGameXP(killMap({ [weapon]: kills }));
 }
 
@@ -64,7 +64,7 @@ describe('getPassiveMultipliers — Level 3 Blaster (Standard)', () => {
   let store: MasteryStore;
   beforeEach(() => {
     store = freshStore();
-    // Award exactly 500 XP (Level 3 threshold) in one game: 50 kills * 10 XP = 500 XP
+    // Award enough capacity-normalized XP to reach the Level 3 threshold.
     awardExactXP(store, WeaponType.Standard, 500);
   });
 
@@ -111,7 +111,7 @@ describe('getPassiveMultipliers — composing with 1.0 baseline', () => {
 
   it('Level 5 Blaster returns max damage multiplier (1.50)', () => {
     const store = freshStore();
-    // 100 kills * 10 XP = 1000 XP → Level 5
+    // Capacity-normalized first-game XP reaches Level 5.
     awardExactXP(store, WeaponType.Standard, 1000);
     expect(store.getLevel(WeaponType.Standard)).toBe(5);
     const bonuses = store.getPassiveMultipliers();

@@ -11,7 +11,7 @@
 // ---------------------------------------------------------------------------
 
 import { WeaponType } from '../weapons/WeaponTypes';
-import { UpgradeTree, isExcluded } from './UpgradeTreeData';
+import { UpgradeTree, getNodeById, getNodeCost, isExcluded } from './UpgradeTreeData';
 
 const STORAGE_KEY = 'gw_mastery_points';
 export const DEBUG_MASTERY_POINTS_PER_WEAPON = 9999;
@@ -200,8 +200,10 @@ export class MasteryPointStore {
     } else {
       this.nodePoints = { ...this.nodePoints, [nodeId]: newCount };
     }
+    const node = getNodeById(nodeId);
+    const nodeCost = node ? getNodeCost(node) : 1;
     const entry = this.weaponPoints.get(weaponType) ?? { total: 0, spent: 0 };
-    this.weaponPoints.set(weaponType, { ...entry, spent: Math.max(0, entry.spent - 1) });
+    this.weaponPoints.set(weaponType, { ...entry, spent: Math.max(0, entry.spent - nodeCost) });
     this.save();
     return true;
   }
@@ -269,6 +271,7 @@ export class MasteryPointStore {
         if (s2.nodePoints && typeof s2.nodePoints === 'object') {
           this.nodePoints = { ...s2.nodePoints };
         }
+        this.reconcileLoadedNodePoints();
       } else {
         // Legacy v1 format: global pool. Migrate.
         // Keep node unlocks (they already have weapon prefixes). Discard global
@@ -279,25 +282,24 @@ export class MasteryPointStore {
 
         if (s1.nodePoints && typeof s1.nodePoints === 'object') {
           this.nodePoints = { ...s1.nodePoints };
-          // Reconstruct spent counts per weapon from existing nodePoints
-          for (const [nodeId, pts] of Object.entries(this.nodePoints)) {
-            if (pts <= 0) continue;
-            const wt = weaponTypeFromNodeId(nodeId);
-            if (!wt) continue;
-            const entry = this.weaponPoints.get(wt) ?? { total: 0, spent: 0 };
-            // Set total = spent so available = 0 (can't attribute old unspent points)
-            const newSpent = entry.spent + pts;
-            this.weaponPoints.set(wt, { total: newSpent, spent: newSpent });
+          const legacyTotals = this.estimateLegacyTotalsByWeapon(this.nodePoints);
+          this.reconcileLoadedNodePoints();
+          for (const [weaponType, total] of legacyTotals.entries()) {
+            const spent = this.weaponPoints.get(weaponType)?.spent ?? 0;
+            this.weaponPoints.set(weaponType, { total: Math.max(total, spent), spent });
           }
         } else if (s1.permanentUnlocks && typeof s1.permanentUnlocks === 'object') {
           // Very old format: boolean unlocks
           this.nodePoints = {};
           for (const nodeId of Object.keys(s1.permanentUnlocks)) {
+            const node = getNodeById(nodeId);
+            if (!node) continue;
             this.nodePoints[nodeId] = 1;
             const wt = weaponTypeFromNodeId(nodeId);
             if (!wt) continue;
             const entry = this.weaponPoints.get(wt) ?? { total: 0, spent: 0 };
-            this.weaponPoints.set(wt, { total: entry.total + 1, spent: entry.spent + 1 });
+            const cost = getNodeCost(node);
+            this.weaponPoints.set(wt, { total: entry.total + cost, spent: entry.spent + cost });
           }
         }
       }
@@ -328,5 +330,59 @@ export class MasteryPointStore {
   /** Load from localStorage and return a fully initialised store. */
   static load(options: MasteryPointStoreOptions = {}): MasteryPointStore {
     return new MasteryPointStore(options);
+  }
+
+  /**
+   * Drop stale/renamed node ids and reconcile spent totals to current tree data.
+   * This prevents removed nodes from becoming invisible but still consuming
+   * points after a tree rebuild.
+   */
+  private reconcileLoadedNodePoints(): void {
+    const validNodePoints: Record<string, number> = {};
+    const spentByWeapon = new Map<WeaponType, number>();
+
+    for (const [nodeId, rawPoints] of Object.entries(this.nodePoints)) {
+      if (typeof rawPoints !== 'number' || rawPoints <= 0) continue;
+      const node = getNodeById(nodeId);
+      if (!node) continue;
+      const weaponType = weaponTypeFromNodeId(nodeId);
+      if (!weaponType) continue;
+
+      const points = Math.min(rawPoints, node.maxPoints ?? 1);
+      validNodePoints[nodeId] = points;
+      spentByWeapon.set(
+        weaponType,
+        (spentByWeapon.get(weaponType) ?? 0) + points * getNodeCost(node),
+      );
+    }
+
+    this.nodePoints = validNodePoints;
+
+    const reconciledWeapons = new Set<WeaponType>([
+      ...Array.from(this.weaponPoints.keys()),
+      ...Array.from(spentByWeapon.keys()),
+    ]);
+
+    for (const weaponType of reconciledWeapons) {
+      const entry = this.weaponPoints.get(weaponType) ?? { total: 0, spent: 0 };
+      const spent = spentByWeapon.get(weaponType) ?? 0;
+      this.weaponPoints.set(weaponType, {
+        total: Math.max(entry.total, spent),
+        spent,
+      });
+    }
+  }
+
+  private estimateLegacyTotalsByWeapon(nodePoints: Record<string, number>): Map<WeaponType, number> {
+    const totals = new Map<WeaponType, number>();
+    for (const [nodeId, rawPoints] of Object.entries(nodePoints)) {
+      if (typeof rawPoints !== 'number' || rawPoints <= 0) continue;
+      const weaponType = weaponTypeFromNodeId(nodeId);
+      if (!weaponType) continue;
+      const node = getNodeById(nodeId);
+      const points = node ? Math.min(rawPoints, node.maxPoints ?? 1) : rawPoints;
+      totals.set(weaponType, (totals.get(weaponType) ?? 0) + points * (node ? getNodeCost(node) : 1));
+    }
+    return totals;
   }
 }
