@@ -187,6 +187,53 @@ describe('GameRoom MP weapon upgrade runtime parity', () => {
     expect(room.getUpgradeDamageMult('p1', WeaponType.Spread)).toBeCloseTo(1.15);
   });
 
+  it('uses supported active mastery nodes in authoritative Standard damage', () => {
+    const room = makeRoom();
+    const player = {
+      ...makePlayer(),
+      buffStacks: new Map(),
+      playerLevel: 0,
+    };
+    room.state.players.set('p1', player);
+    room.playerActiveUpgradeNodes.set('p1', new Map([
+      [WeaponType.Standard, new Set(['standard_a_2'])],
+    ]));
+
+    expect(room.getPlayerWeaponDamage('p1', player, WeaponType.Standard, 1)).toBeCloseTo(1.4);
+  });
+
+  it('keeps unsupported retained nodes out of authoritative MP damage even if stale state contains them', () => {
+    const room = makeRoom();
+    const player = {
+      ...makePlayer(),
+      buffStacks: new Map(),
+      playerLevel: 0,
+    };
+    room.state.players.set('p1', player);
+    room.playerActiveUpgradeNodes.set('p1', new Map([
+      [WeaponType.Standard, new Set(['standard_a_2', 'standard_b_4', 'standard_br_10'])],
+    ]));
+
+    expect(room.getUpgradeDamageMult('p1', WeaponType.Standard)).toBeCloseTo(1.4);
+    expect(room.getPlayerWeaponDamage('p1', player, WeaponType.Standard, 1)).toBeCloseTo(1.4);
+  });
+
+  it('does not enable unsupported server-only weapon mastery damage nodes', () => {
+    const room = makeRoom();
+    const player = {
+      ...makePlayer(WeaponType.LaserBeam),
+      buffStacks: new Map(),
+      playerLevel: 0,
+    };
+    room.state.players.set('p1', player);
+    room.playerActiveUpgradeNodes.set('p1', new Map([
+      [WeaponType.LaserBeam, new Set(['laser_beam_a_1'])],
+    ]));
+
+    expect(room.getUpgradeDamageMult('p1', WeaponType.LaserBeam)).toBeCloseTo(1);
+    expect(room.getPlayerWeaponDamage('p1', player, WeaponType.LaserBeam, 2)).toBeCloseTo(2);
+  });
+
   it('publishes accepted nodes through PlayerState when room state is present', () => {
     const room = makeRoom();
     const activeUpgradeNodes = new Map<string, number>();

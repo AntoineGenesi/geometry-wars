@@ -64,6 +64,7 @@ import {
   getStandardUpgradePattern,
   getUpgradeDamageMultiplier,
   getUpgradeFireRateMultiplier,
+  isMpUpgradeNodeSupported,
 } from '../../src/shared/WeaponUpgradeEffects';
 import {
   computePlayerPower,
@@ -1666,11 +1667,12 @@ export class GameRoom extends Room<GameState> {
       // min(remaining, enemy.health) so over-damage carries over to the next enemy.
       const weaponType = typeof data.weaponType === 'string' ? data.weaponType : 'standard';
       const weaponCfg = WEAPON_CONFIGS[weaponType] ?? WEAPON_CONFIGS.standard;
-      const levelIdx = Math.min(player.playerLevel, LEVEL_DAMAGE_MULTIPLIERS.length - 1);
-      const levelDamageMult = LEVEL_DAMAGE_MULTIPLIERS[levelIdx];
-      const buffDamageMult = this.calculateBuffDamageMult(player);
-      const upgradeDamageMult = this.getUpgradeDamageMult(client.sessionId, weaponType);
-      const finalDamage = weaponCfg.damage * levelDamageMult * buffDamageMult * upgradeDamageMult;
+      const finalDamage = this.getPlayerWeaponDamage(
+        client.sessionId,
+        player,
+        weaponType,
+        weaponCfg.damage,
+      );
 
       // Get or initialize remaining damage budget for this bullet
       const currentRemaining = this.bulletDamageTracker.has(data.bulletId)
@@ -1740,11 +1742,12 @@ export class GameRoom extends Room<GameState> {
       // bulletId → remaining damage budget. First hit initializes the budget.
       const weaponType = typeof data.weaponType === 'string' ? data.weaponType : 'standard';
       const weaponCfg = WEAPON_CONFIGS[weaponType] ?? WEAPON_CONFIGS.standard;
-      const levelIdx = Math.min(owner.playerLevel ?? 0, LEVEL_DAMAGE_MULTIPLIERS.length - 1);
-      const damage = weaponCfg.damage
-        * LEVEL_DAMAGE_MULTIPLIERS[levelIdx]
-        * this.state.pvpDamageMultiplier
-        * this.getUpgradeDamageMult(owner.id, weaponType);
+      const damage = this.getPlayerWeaponDamage(
+        owner.id,
+        owner,
+        weaponType,
+        weaponCfg.damage,
+      ) * this.state.pvpDamageMultiplier;
 
       // Get or initialize remaining damage budget for this bullet
       const currentRemaining = this.bulletDamageTracker.has(data.bulletId)
@@ -2317,7 +2320,36 @@ export class GameRoom extends Room<GameState> {
 
   /** Resolve the server-authoritative upgrade multiplier for one player's weapon. */
   private getUpgradeDamageMult(sessionId: string, weaponType: string): number {
-    return getUpgradeDamageMultiplier(weaponType, this.getActiveUpgradeNodes(sessionId, weaponType));
+    const active = this.getActiveUpgradeNodes(sessionId, weaponType);
+    let supportedActive: Set<string> | null = null;
+    for (const nodeId of active) {
+      if (!isMpUpgradeNodeSupported(nodeId)) {
+        supportedActive ??= new Set(active);
+        supportedActive.delete(nodeId);
+      }
+    }
+    return getUpgradeDamageMultiplier(weaponType, supportedActive ?? active);
+  }
+
+  private getPlayerWeaponDamageMultiplier(
+    sessionId: string,
+    player: PlayerState | undefined,
+    weaponType: string,
+  ): number {
+    const levelIdx = Math.min(player?.playerLevel ?? 0, LEVEL_DAMAGE_MULTIPLIERS.length - 1);
+    const levelDamageMult = LEVEL_DAMAGE_MULTIPLIERS[levelIdx];
+    const buffDamageMult = player ? this.calculateBuffDamageMult(player) : 1.0;
+    const upgradeDamageMult = this.getUpgradeDamageMult(sessionId, weaponType);
+    return levelDamageMult * buffDamageMult * upgradeDamageMult;
+  }
+
+  private getPlayerWeaponDamage(
+    sessionId: string,
+    player: PlayerState | undefined,
+    weaponType: string,
+    baseDamage: number,
+  ): number {
+    return baseDamage * this.getPlayerWeaponDamageMultiplier(sessionId, player, weaponType);
   }
 
   private recordUpgradeKill(sessionId: string, weaponType: string, count = 1): void {
@@ -4062,9 +4094,7 @@ export class GameRoom extends Room<GameState> {
 
   private getBlackHoleOwnerDamageMultiplier(ownerId: string): number {
     const owner = this.state.players.get(ownerId);
-    if (!owner) return 1;
-    const levelIndex = Math.min(owner.playerLevel, LEVEL_DAMAGE_MULTIPLIERS.length - 1);
-    return LEVEL_DAMAGE_MULTIPLIERS[levelIndex] * this.calculateBuffDamageMult(owner);
+    return this.getPlayerWeaponDamageMultiplier(ownerId, owner, 'black_hole');
   }
 
   private creditBlackHoleKill(enemyId: string, ownerId: string): void {
@@ -4138,10 +4168,7 @@ export class GameRoom extends Room<GameState> {
     const aimDirX = Math.cos(player.aimAngle);
     const aimDirY = Math.sin(player.aimAngle);
 
-    const levelIdx = Math.min(player.playerLevel ?? 0, LEVEL_DAMAGE_MULTIPLIERS.length - 1);
-    const levelDamageMult = LEVEL_DAMAGE_MULTIPLIERS[levelIdx];
-    const buffDamageMult = this.calculateBuffDamageMult(player);
-    const damage = LASER_DPS * levelDamageMult * buffDamageMult * dt;
+    const damage = this.getPlayerWeaponDamage(player.id, player, 'laser_beam', LASER_DPS) * dt;
 
     const enemiesToKill: number[] = [];
 
@@ -4210,10 +4237,7 @@ export class GameRoom extends Room<GameState> {
     const TESLA_RADIUS_UV = 0.10;   // UV distance (~3 world units on sphere R=10)
     const TESLA_DPS = 3.0;          // damage per second (matches SP WeaponManager: 3 * dt)
 
-    const levelIdx = Math.min(player.playerLevel ?? 0, LEVEL_DAMAGE_MULTIPLIERS.length - 1);
-    const levelDamageMult = LEVEL_DAMAGE_MULTIPLIERS[levelIdx];
-    const buffDamageMult = this.calculateBuffDamageMult(player);
-    const damage = TESLA_DPS * levelDamageMult * buffDamageMult * dt;
+    const damage = this.getPlayerWeaponDamage(player.id, player, 'tesla_coil', TESLA_DPS) * dt;
 
     // s44r6-04: Use accurate chord distance for non-spherical surfaces (Mobius, peanut,
     // torus, etc.) instead of UV distance, which is anisotropic on these surfaces.
@@ -4291,11 +4315,8 @@ export class GameRoom extends Room<GameState> {
     const CHAIN_WORLD_RANGE = 10;
     const MAX_TARGETS = 5;
 
-    const levelIdx = Math.min(player.playerLevel ?? 0, LEVEL_DAMAGE_MULTIPLIERS.length - 1);
-    const levelDamageMult = LEVEL_DAMAGE_MULTIPLIERS[levelIdx];
-    const buffDamageMult = this.calculateBuffDamageMult(player);
     const weapConfig = WEAPON_CONFIGS['chain_lightning'];
-    const damage = weapConfig.damage * levelDamageMult * buffDamageMult;
+    const damage = this.getPlayerWeaponDamage(player.id, player, 'chain_lightning', weapConfig.damage);
 
     // Collect all enemies in range, sorted by canonical world distance
     const candidates: Array<{ eIndex: number; dist: number }> = [];
@@ -5989,8 +6010,8 @@ export class GameRoom extends Room<GameState> {
 
         if (dist < (usesWorldDist ? BULLET_HIT_WORLD : BULLET_HIT_RADIUS)) {
           hitBullets.add(bIndex);
-          // Hit! Apply weapon damage with full damage formula:
-          //   finalDamage = baseDamage × levelDamageMult × buffDamageMult × masteryDamageMult
+          // Hit! Apply weapon damage with the shared authoritative MP formula:
+          //   finalDamage = baseDamage × levelDamageMult × buffDamageMult × supportedUpgradeDamageMult
           // NOTE: SP also multiplies by scorePowerMult (kill-streak multiplier) but in MP
           // player.multiplier is an integer used for SCORE only — it is NOT applied to damage here
           // to avoid wildly inflated damage at high multipliers.
@@ -6006,11 +6027,12 @@ export class GameRoom extends Room<GameState> {
           }
           const weaponCfg = WEAPON_CONFIGS[bulletWeaponType] ?? WEAPON_CONFIGS.standard;
           const baseDamage = weaponCfg.damage;
-          const levelIdx = Math.min(owner?.playerLevel ?? 0, LEVEL_DAMAGE_MULTIPLIERS.length - 1);
-          const levelDamageMult = LEVEL_DAMAGE_MULTIPLIERS[levelIdx];
-          const buffDamageMult = owner ? this.calculateBuffDamageMult(owner) : 1.0;
-          const upgradeDamageMult = this.getUpgradeDamageMult(bullet.ownerId, bulletWeaponType);
-          const finalDamage = baseDamage * levelDamageMult * buffDamageMult * upgradeDamageMult;
+          const finalDamage = this.getPlayerWeaponDamage(
+            bullet.ownerId,
+            owner,
+            bulletWeaponType,
+            baseDamage,
+          );
           this.applyPlayerOwnedEnemyDamage(
             enemy,
             finalDamage,
@@ -6102,11 +6124,12 @@ export class GameRoom extends Room<GameState> {
 
             const owner = this.state.players.get(bullet.ownerId);
             const weaponCfg = WEAPON_CONFIGS[bullet.weaponType] ?? WEAPON_CONFIGS.standard;
-            const levelIdx = Math.min(owner?.playerLevel ?? 0, LEVEL_DAMAGE_MULTIPLIERS.length - 1);
-            const damage = weaponCfg.damage
-              * LEVEL_DAMAGE_MULTIPLIERS[levelIdx]
-              * this.state.pvpDamageMultiplier
-              * this.getUpgradeDamageMult(bullet.ownerId, bullet.weaponType);
+            const damage = this.getPlayerWeaponDamage(
+              bullet.ownerId,
+              owner,
+              bullet.weaponType,
+              weaponCfg.damage,
+            ) * this.state.pvpDamageMultiplier;
 
             const prevHealth = target.health;
             target.health = Math.max(0, target.health - damage);
@@ -6928,9 +6951,6 @@ export class GameRoom extends Room<GameState> {
   }
 
   private collectPlayerPower(player: PlayerState): PlayerPowerInput {
-    const levelIdx = Math.min(Math.max(0, player.playerLevel), LEVEL_DAMAGE_MULTIPLIERS.length - 1);
-    const levelDamageMult = LEVEL_DAMAGE_MULTIPLIERS[levelIdx];
-    const buffDamageMult = this.calculateBuffDamageMult(player);
     const standardNodes = this.getActiveUpgradeNodes(player.id, 'standard');
     const standardPattern = getStandardUpgradePattern(standardNodes);
     const fanCount = standardPattern.fanExtraBolts > 0 ? standardPattern.fanExtraBolts + 1 : 0;
@@ -6950,8 +6970,7 @@ export class GameRoom extends Room<GameState> {
         : weaponType === 'piercing' || weaponType === 'plasma_mortar' ? 2
         : 1;
       activeWeapon = {
-        damage: config.damage * levelDamageMult * buffDamageMult
-          * this.getUpgradeDamageMult(player.id, weaponType),
+        damage: this.getPlayerWeaponDamage(player.id, player, weaponType, config.damage),
         shotsPerSecond: config.fireRate,
         projectilesPerShot,
         multiHitPotential,
@@ -6963,8 +6982,7 @@ export class GameRoom extends Room<GameState> {
       survivalSeconds: Math.max(0, this.state.gameTime - (this.playerPowerLastDeathAt.get(player.id) ?? 0)),
       streak: this.playerPowerStreaks.get(player.id) ?? 0,
       blaster: {
-        damage: blasterConfig.damage * levelDamageMult * buffDamageMult
-          * this.getUpgradeDamageMult(player.id, 'standard'),
+        damage: this.getPlayerWeaponDamage(player.id, player, 'standard', blasterConfig.damage),
         shotsPerSecond: blasterConfig.fireRate
           * getUpgradeFireRateMultiplier('standard', standardNodes),
         projectilesPerShot: standardProjectiles,
