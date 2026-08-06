@@ -261,6 +261,17 @@ describe('Enemy Type Introduction', () => {
     // Should have at least 3 different categories at high difficulty
     expect(categories.size).toBeGreaterThanOrEqual(3);
   });
+
+  it('late 6M-style pressure should include distinctive specialists and a large snake anchor', () => {
+    const entries = generateScaledEndlessWave(29, 6.0, 0, 1);
+    const byType = new Map(entries.map(entry => [entry.type, entry]));
+
+    expect(byType.get('prism_lancer')?.count ?? 0).toBeGreaterThan(0);
+    expect(byType.get('sentinel_orb')?.count ?? 0).toBeGreaterThan(0);
+    expect(byType.get('shatter_bloom')?.count ?? 0).toBeGreaterThan(0);
+    expect(byType.get('snake')?.count ?? 0).toBeGreaterThan(0);
+    expect(byType.get('snake')?.maxSegments ?? 0).toBeGreaterThanOrEqual(30);
+  });
 });
 
 // ============================================================================

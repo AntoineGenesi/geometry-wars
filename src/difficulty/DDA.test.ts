@@ -537,6 +537,28 @@ describe('DDASpawnModifier', () => {
       expect(result[1].count).toBe(3);
     });
 
+    it('should preserve late-game spawn metadata when modifying wave entries', () => {
+      const wave = [
+        {
+          type: 'snake' as EnemyType,
+          count: 1,
+          tier: 4,
+          difficultyLevel: 6.25,
+          maxSegments: 35,
+          region: { minU: 0.1, maxU: 0.2, minV: 0.3, maxV: 0.4 },
+        },
+      ];
+      const result = modifier.modifyWave(wave, [{ index: 0, u: 0.5, v: 0.5 }]);
+
+      expect(result[0]).toMatchObject({
+        count: 1,
+        tier: 4,
+        difficultyLevel: 6.25,
+        maxSegments: 35,
+        region: { minU: 0.1, maxU: 0.2, minV: 0.3, maxV: 0.4 },
+      });
+    });
+
     it('should pass through unchanged when disabled', () => {
       engine.setEnabled(false);
       const wave = [
