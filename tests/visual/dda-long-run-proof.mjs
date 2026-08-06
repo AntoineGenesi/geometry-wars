@@ -9,6 +9,8 @@
  *   DDA is disabled separately from dominance/wave difficulty.
  * - pressure-97: deterministic high-active-count pressure profile around the
  *   reported 90-110 entity range, with raw vs multiplied score telemetry.
+ * - late-6m: deterministic 228-kill / 6M displayed-score late-game plateau
+ *   profile; records composition, caps, and snake body pressure.
  */
 
 import puppeteer from 'puppeteer-core';
@@ -220,6 +222,26 @@ async function applyProfileTick(page, profile) {
       };
     }
 
+    if (profileName === 'late-6m') {
+      if (!window.__DDA_PROOF_LATE_6M) {
+        window.__DDA_PROOF_LATE_6M = true;
+        globalThis.__GOD_MODE = true;
+        ctx.player.lives = 3;
+        ctx.player.score = 6_000_000;
+        ctx.scoreManager.seedScoreTotalsForProof(300_000, 600_000, 6_000_000);
+        while (ctx.playerLevel.totalKills < 228) ctx.playerLevel.addKill();
+        if (ctx.playerPowerRuntime) {
+          ctx.playerPowerRuntime.proofOverride = { survivalSeconds: 600, streak: 120 };
+        }
+        api.setupLateGameDDAProof();
+      }
+      return {
+        ok: true,
+        profile: profileName,
+        injected: 'display_score_6m_raw_score_300k_228_kills_wave_29',
+      };
+    }
+
     if (profileName === 'tier-disable') {
       if (!window.__DDA_PROOF_TIER_DISABLE) {
         window.__DDA_PROOF_TIER_DISABLE = true;
@@ -256,8 +278,34 @@ async function sampleState(page) {
   return page.evaluate(() => {
     const api = window.__TEST_API;
     const dda = api.getDDAState();
+    const enemies = api.getEnemies();
+    const byType = {};
+    let maxSnakeSegments = 0;
+    let snakeCount = 0;
+    for (const enemy of api.ctx.enemySpawner.getEnemies()) {
+      if (!enemy.active) continue;
+      const type = enemy.baseTypeName || enemy.constructor.name;
+      byType[type] = (byType[type] || 0) + 1;
+      if (type === 'snake' || type === 'giant_snake' || type === 'fractal_snake') {
+        snakeCount++;
+        if (typeof enemy.getSegmentData === 'function') {
+          maxSnakeSegments = Math.max(maxSnakeSegments, enemy.getSegmentData().length);
+        }
+        if (Number.isFinite(enemy.maxSegments)) {
+          maxSnakeSegments = Math.max(maxSnakeSegments, enemy.maxSegments);
+        }
+      }
+    }
     return {
       dda,
+      composition: {
+        total: enemies.length,
+        byType,
+        uniqueTypes: Object.keys(byType).length,
+        snakeCount,
+        maxSnakeSegments,
+        enemyCap: api.ctx.enemySpawner.getMaxActiveEnemies(),
+      },
       telemetry: window.__GAME_TELEMETRY ?? null,
       url: window.location.href,
       userAgent: navigator.userAgent,
@@ -342,6 +390,30 @@ function summarize(samples, profile) {
     reason = passed
       ? `Pressure samples=${pressureSamples.length}, enemies=${maxEnemyCount}, rawScore=${Number(finalPlayer.rawScore ?? 0)}, multipliedScore=${Number(finalPlayer.score ?? 0)}, effectiveScore=${Number(finalDominance.effectiveScore ?? 0).toFixed(0)}, brakes f/s/e=${Number(finalPlan?.fodderBrake ?? 0).toFixed(2)}/${Number(finalPlan?.specialistBrake ?? 0).toFixed(2)}/${Number(finalPlan?.eliteBrake ?? 0).toFixed(2)}`
       : `Pressure proof failed: samples=${pressureSamples.length}, enemies=${maxEnemyCount}, rawScore=${Number(finalPlayer.rawScore ?? -1)}, multipliedScore=${Number(finalPlayer.score ?? -1)}, effectiveScore=${Number(finalDominance.effectiveScore ?? -1)}, plan=${JSON.stringify(finalPlan)}`;
+  } else if (profile === 'late-6m') {
+    const lateSamples = samples.filter((sample) => {
+      const player = sample.dda?.player ?? {};
+      return Number(player.score ?? 0) >= 6_000_000
+        && Number(player.rawScore ?? 0) === 300_000
+        && Number(player.totalKills ?? 0) >= 228
+        && Number(sample.dda?.wave?.current ?? 0) >= 29;
+    });
+    const finalComposition = samples.at(-1)?.composition ?? {};
+    const byType = finalComposition.byType ?? {};
+    const hasStrategicSnake = Number(finalComposition.snakeCount ?? 0) >= 1
+      && Number(finalComposition.maxSnakeSegments ?? 0) >= 30;
+    const hasDistinctiveSpecialists = ['prism_lancer', 'sentinel_orb', 'shatter_bloom', 'fractal_snake']
+      .filter((type) => Number(byType[type] ?? 0) > 0)
+      .length >= 3;
+    passed = lateSamples.length >= 3
+      && Number(final?.difficulty?.level ?? 0) >= 3.75
+      && Number(finalComposition.total ?? 0) >= 70
+      && hasStrategicSnake
+      && hasDistinctiveSpecialists
+      && Number(final?.dominance?.multiplierScorePressure ?? 1) < 0.15;
+    reason = passed
+      ? `Late 6M profile escalated: difficulty=${Number(final?.difficulty?.level ?? 0).toFixed(2)}, enemies=${Number(finalComposition.total ?? 0)}, uniqueTypes=${Number(finalComposition.uniqueTypes ?? 0)}, snakeCount=${Number(finalComposition.snakeCount ?? 0)}, maxSnakeSegments=${Number(finalComposition.maxSnakeSegments ?? 0)}, multiplierPressure=${Number(final?.dominance?.multiplierScorePressure ?? 0).toFixed(3)}`
+      : `Late 6M profile under-escalated: samples=${lateSamples.length}, difficulty=${Number(final?.difficulty?.level ?? 0).toFixed(2)}, enemies=${Number(finalComposition.total ?? 0)}, types=${JSON.stringify(byType)}, snakeCount=${Number(finalComposition.snakeCount ?? 0)}, maxSnakeSegments=${Number(finalComposition.maxSnakeSegments ?? 0)}, multiplierPressure=${Number(final?.dominance?.multiplierScorePressure ?? -1).toFixed(3)}`;
   } else {
     passed = maxDifficulty >= 1.0
       && highTierStrongSamples.length >= 3
@@ -511,6 +583,8 @@ async function main() {
       ? 'Scripted struggle profile verifies assistance DDA disable wiring at Nightmare tier; it is not a human balance claim.'
       : PROFILE === 'pressure-97'
         ? 'Scripted SP pressure proof freezes a 100-enemy grid around the reported 90-110 active entity range and verifies DDA score dampening plus strategic pressure telemetry; it is not a human balance claim.'
+        : PROFILE === 'late-6m'
+          ? 'Scripted SP late-game proof stages the reported 228-kill / 6M display-score state and verifies real main.ts DDA/composition/snake pressure while preserving multiplier dampening; it is not a human balance claim.'
         : 'Scripted stationary SP proof uses real activated blaster nodes and four real shooting companions at a staged wave 50; accelerated score, streak, and survival inputs prove wiring/response, not organic human balance.',
       results,
       artifacts: {

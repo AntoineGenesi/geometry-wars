@@ -246,10 +246,8 @@ export class DDASpawnModifier {
       );
 
       modified.push({
+        ...entry,
         type: modifiedType,
-        count: entry.count,
-        region: entry.region,
-        tier: entry.tier,
       });
     }
 

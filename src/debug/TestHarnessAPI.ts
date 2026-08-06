@@ -33,7 +33,7 @@ import {
   createPickupVisualProofDebug,
   type PickupVisualProofRecord,
 } from './PickupVisualProofDebug';
-import { computeEntityPressurePlan } from '../core/DifficultyScaling';
+import { computeEntityPressurePlan, generateScaledEndlessWave } from '../core/DifficultyScaling';
 
 // ---------------------------------------------------------------------------
 // Serializable types (JSON-safe, no THREE objects)
@@ -1642,6 +1642,58 @@ export class TestHarnessAPI {
       score: this.ctx.player.score,
       totalKills: this.ctx.playerLevel.totalKills,
       stagedWave: 50,
+    };
+  }
+
+  /** Configure the reported 228-kill / 6M-score late-game proof state. */
+  setupLateGameDDAProof(): {
+    score: number;
+    rawScore: number;
+    totalKills: number;
+    stagedWave: number;
+    stagedDifficulty: number;
+    spawnedTypes: Record<string, number>;
+    spawnedCount: number;
+  } {
+    const marker = '__DDA_LATE_GAME_PROOF_CONFIGURED';
+    const stagedWave = 29;
+    const stagedDifficulty = 6.0;
+    if (!(this as any)[marker]) {
+      (this as any)[marker] = true;
+      (globalThis as any).__GOD_MODE = true;
+      this.ctx.player.lives = 3;
+      this.ctx.player.score = 6_000_000;
+      this.ctx.scoreManager.seedScoreTotalsForProof(300_000, 600_000, 6_000_000);
+      while (this.ctx.playerLevel.totalKills < 228) this.ctx.playerLevel.addKill();
+      if (this.ctx.playerPowerRuntime) {
+        this.ctx.playerPowerRuntime.proofOverride = { survivalSeconds: 600, streak: 120 };
+      }
+      const waveScheduler = this.ctx.waveScheduler as any;
+      waveScheduler.endlessWave = stagedWave;
+      waveScheduler.elapsed = Math.max(Number(waveScheduler.elapsed ?? 0), 600);
+      waveScheduler.currentDifficultyLevel = stagedDifficulty;
+      waveScheduler.endlessNextSpawn = 9999;
+      this.setPlayerPosition(0.05, 0.05);
+      this.clearEnemies();
+      const wave = generateScaledEndlessWave(stagedWave, stagedDifficulty, 0, 1);
+      this.ctx.enemySpawner.spawnWave(wave as any, true);
+    }
+
+    const byType: Record<string, number> = {};
+    for (const enemy of this.ctx.enemySpawner.getEnemies()) {
+      if (!enemy.active) continue;
+      const type = enemy.baseTypeName || enemy.constructor.name.toLowerCase();
+      byType[type] = (byType[type] ?? 0) + 1;
+    }
+
+    return {
+      score: this.ctx.player.score,
+      rawScore: this.ctx.scoreManager.getRawKillScore(),
+      totalKills: this.ctx.playerLevel.totalKills,
+      stagedWave,
+      stagedDifficulty,
+      spawnedTypes: byType,
+      spawnedCount: this.ctx.enemySpawner.getActiveCount(),
     };
   }
 

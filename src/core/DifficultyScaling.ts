@@ -345,6 +345,21 @@ const SPLITTING_TYPES = [
   'titan_grunt', 'titan_spinner', 'titan_weaver', 'splitter',
 ];
 
+function getSnakeMaxSegmentsForPressure(
+  waveNum: number,
+  difficultyLevel: number,
+  type: string = 'snake',
+): number {
+  const waveScaled = waveNum < 10 ? 14
+    : waveNum < 30 ? 14 + (waveNum - 9)
+    : Math.min(50, 34 + Math.floor((waveNum - 29) * 0.8));
+  const lateGameFloor = waveNum >= 24 && difficultyLevel >= 5
+    ? Math.min(50, 30 + Math.floor((difficultyLevel - 5) * 4))
+    : 14;
+  const maxSeg = Math.max(waveScaled, lateGameFloor);
+  return type === 'giant_snake' ? Math.max(7, Math.floor(maxSeg * 0.5)) : maxSeg;
+}
+
 /**
  * Generate a scaled endless wave based on wave number, difficulty level, and player count.
  *
@@ -450,6 +465,42 @@ export function generateScaledEndlessWave(
       count: Math.min(Math.floor(baseCount * 0.4 * eliteBrake), 6),
       tier: maxTier,
     });
+  }
+
+  // -- Late-game tactical anchor: distinct threats before fodder fills the cap. --
+  // At high power, the player should see harder decisions, not only bigger
+  // piles of the same square-like bodies. These entries are deliberately
+  // inserted before extra basic/variant groups so medium-map caps retain them.
+  if (waveNum >= 24 && difficultyLevel >= 4.5) {
+    const anchorCount = Math.min(
+      4,
+      Math.max(1, Math.round((1 + Math.floor((difficultyLevel - 4.5) * 0.6)) * specialistBrake)),
+    );
+    enemies.push({
+      type: 'prism_lancer',
+      count: anchorCount,
+      tier: Math.min(maxTier, Math.max(0, maxTier - 1)),
+    });
+    enemies.push({
+      type: 'sentinel_orb',
+      count: anchorCount,
+      tier: Math.min(maxTier, Math.max(0, maxTier - 1)),
+    });
+    if (difficultyLevel >= 5) {
+      enemies.push({
+        type: 'shatter_bloom',
+        count: Math.min(3, Math.max(1, Math.round((1 + Math.floor((difficultyLevel - 5) * 0.4)) * eliteBrake))),
+        tier: maxTier,
+      });
+    }
+    if (difficultyLevel >= 5.25) {
+      enemies.push({
+        type: 'snake',
+        count: difficultyLevel >= 8 ? 2 : 1,
+        tier: maxTier,
+        maxSegments: getSnakeMaxSegmentsForPressure(waveNum, difficultyLevel, 'snake'),
+      });
+    }
   }
 
   // -- At difficulty 1.5+, add tiered color-variant basic enemies (earlier!) --
@@ -566,14 +617,11 @@ export function generateScaledEndlessWave(
   // Snakes grow to 50 segments in late game (one snake = entire army).
   // wave <10 = 14 (default), wave 10-29 grows 15→34, wave 30+ up to 50.
   // GiantSnake uses ~half (its segments are larger).
-  const snakeMax = waveNum < 10 ? 14
-    : waveNum < 30 ? 14 + (waveNum - 9)
-    : Math.min(50, 34 + Math.floor((waveNum - 29) * 0.8));
   for (const entry of enemies) {
     if (entry.type === 'snake') {
-      entry.maxSegments = snakeMax;
+      entry.maxSegments = getSnakeMaxSegmentsForPressure(waveNum, difficultyLevel, entry.type);
     } else if (entry.type === 'giant_snake') {
-      entry.maxSegments = Math.max(7, Math.floor(snakeMax * 0.5));
+      entry.maxSegments = getSnakeMaxSegmentsForPressure(waveNum, difficultyLevel, entry.type);
     }
   }
 
