@@ -586,7 +586,9 @@ export class GameLoop {
     // comes from enemy.surfacePosition which has the same UV precision, so errors cancel out,
     // and (2) the collection radius (0.25 world units) provides tolerance for small UV errors.
     const playerPickupPos = ctx.player.alive
-      ? ctx.getTransform(ctx.player.surfaceU, ctx.player.surfaceV).position
+      ? (ctx.surfaceType === 'custom'
+        ? ctx.playerWalker.position
+        : ctx.getTransform(ctx.player.surfaceU, ctx.player.surfaceV).position)
       : null;
 
     // Update new buff pickups
