@@ -394,9 +394,10 @@ async function promptForNameIfNeeded(): Promise<string> {
   // No name known — show a name entry overlay before connecting
   return new Promise<string>((resolve) => {
     const overlay = document.createElement('div');
+    overlay.dataset.networkNamePrompt = 'true';
     overlay.style.cssText =
       'position:fixed;top:0;left:0;width:100%;height:100%;' +
-      'background:rgba(0,0,16,0.95);z-index:999;' +
+      'background:rgba(0,0,16,0.95);z-index:2200;' +
       'display:flex;flex-direction:column;justify-content:center;align-items:center;' +
       'font-family:monospace;padding:20px;box-sizing:border-box;gap:16px;';
 
@@ -411,6 +412,7 @@ async function promptForNameIfNeeded(): Promise<string> {
     hint.textContent = 'Choose a name to join the game';
 
     const input = document.createElement('input');
+    input.dataset.networkNameInput = 'true';
     input.type = 'text';
     input.maxLength = 20;
     input.placeholder = 'Your name...';
@@ -430,6 +432,7 @@ async function promptForNameIfNeeded(): Promise<string> {
     });
 
     const joinBtn = document.createElement('button');
+    joinBtn.dataset.networkNameSubmit = 'true';
     joinBtn.textContent = 'JOIN GAME';
     joinBtn.style.cssText =
       'background:linear-gradient(180deg,#00aa00,#006600);border:2px solid #00ff00;' +
@@ -472,9 +475,10 @@ async function promptForNameIfNeeded(): Promise<string> {
  */
 function showNameTakenOverlay(takenName: string): void {
   const overlay = document.createElement('div');
+  overlay.dataset.networkNamePrompt = 'true';
   overlay.style.cssText =
     'position:fixed;top:0;left:0;width:100%;height:100%;' +
-    'background:rgba(0,0,16,0.95);z-index:999;' +
+    'background:rgba(0,0,16,0.95);z-index:2200;' +
     'display:flex;flex-direction:column;justify-content:center;align-items:center;' +
     'font-family:monospace;padding:20px;box-sizing:border-box;gap:16px;';
 
@@ -489,6 +493,7 @@ function showNameTakenOverlay(takenName: string): void {
   hint.textContent = `"${takenName}" is already taken by a connected player. Choose a different name.`;
 
   const input = document.createElement('input');
+  input.dataset.networkNameInput = 'true';
   input.type = 'text';
   input.maxLength = 20;
   input.placeholder = 'Your name...';
@@ -508,6 +513,7 @@ function showNameTakenOverlay(takenName: string): void {
   });
 
   const joinBtn = document.createElement('button');
+  joinBtn.dataset.networkNameSubmit = 'true';
   joinBtn.textContent = 'JOIN GAME';
   joinBtn.style.cssText =
     'background:linear-gradient(180deg,#00aa00,#006600);border:2px solid #00ff00;' +
