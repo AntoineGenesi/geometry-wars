@@ -1176,6 +1176,7 @@ export class GameRoom extends Room<GameState> {
   /** Authoritative PvE streak and survival state used only for dominance pressure. */
   private playerPowerStreaks: Map<string, number> = new Map();
   private playerPowerLastDeathAt: Map<string, number> = new Map();
+  private playerPowerRawScores: Map<string, number> = new Map();
   private roomDominanceCache: PlayerPowerBreakdown = computePlayerPower();
   private roomDominanceCacheAt = -1;
 
@@ -2029,6 +2030,7 @@ export class GameRoom extends Room<GameState> {
       this.playerPerfWindows.set(client.sessionId, { kills: 0, deaths: 0, windowStart: 0 });
       this.playerPowerStreaks.set(client.sessionId, 0);
       this.playerPowerLastDeathAt.set(client.sessionId, this.state.gameTime);
+      this.playerPowerRawScores.set(client.sessionId, 0);
     }
     const joinType = isReconnect ? 'reconnected' : 'joined';
     this.logger.log(`[GameRoom] ${player.name} ${joinType} (${client.sessionId})`);
@@ -2098,6 +2100,7 @@ export class GameRoom extends Room<GameState> {
       this.playerActiveUpgradeNodes.delete(client.sessionId);
       this.playerPowerStreaks?.delete(client.sessionId);
       this.playerPowerLastDeathAt?.delete(client.sessionId);
+      this.playerPowerRawScores?.delete(client.sessionId);
       this.surfaceManager.removeWalker(client.sessionId);
       this.playerPerfWindows.delete(client.sessionId);
       this.ddaDecreaseCounters.delete(client.sessionId);
@@ -2299,15 +2302,7 @@ export class GameRoom extends Room<GameState> {
     if (enemy.health <= 0) {
       this.removeKilledEnemyAt(targetIndex);
 
-      player.score += this.getEnemyScore(enemy.type) * player.multiplier;
-      player.playerKills++;
-      player.enemyKills++;
-      this.recordUpgradeKill(sessionId, weaponType);
-      const newLevel = this.getPlayerLevel(player.playerKills);
-      if (newLevel > player.playerLevel) {
-        player.playerLevel = newLevel;
-        this.broadcast('player_level_up', { playerId: player.id, newLevel, playerName: player.name });
-      }
+      this.creditPlayerEnemyKill(player, this.getEnemyScore(enemy.type), weaponType);
       this.trackDDAKill(sessionId);
 
       this.rollEnemyPickupDrops(enemy);
@@ -2556,15 +2551,7 @@ export class GameRoom extends Room<GameState> {
 
       const player = this.state.players.get(sessionId);
       if (player) {
-        player.score += this.getEnemyScore(enemy.type) * player.multiplier;
-        player.playerKills++;
-        player.enemyKills++;
-        this.recordUpgradeKill(sessionId, player.weaponType);
-        const newLevel = this.getPlayerLevel(player.playerKills);
-        if (newLevel > player.playerLevel) {
-          player.playerLevel = newLevel;
-          this.broadcast('player_level_up', { playerId: player.id, newLevel, playerName: player.name });
-        }
+        this.creditPlayerEnemyKill(player, this.getEnemyScore(enemy.type), player.weaponType);
         this.trackDDAKill(sessionId);
       }
 
@@ -2747,6 +2734,7 @@ export class GameRoom extends Room<GameState> {
   private startGame() {
     this.playerPowerStreaks ??= new Map();
     this.playerPowerLastDeathAt ??= new Map();
+    this.playerPowerRawScores ??= new Map();
     this.state.roomPhase = 'playing';
     this.state.gameStarted = true;   // backward compat
     this.state.gameOver = false;     // backward compat
@@ -2887,6 +2875,7 @@ export class GameRoom extends Room<GameState> {
       player.ddaLevel = 0;
       this.playerPowerStreaks.set(sessionId, 0);
       this.playerPowerLastDeathAt.set(sessionId, 0);
+      this.playerPowerRawScores.set(sessionId, 0);
 
       // Create walker at spawn position and sync initial world-space state
       const walker = this.surfaceManager.createWalker(sessionId, player.surfaceU, player.surfaceV);
@@ -4412,19 +4401,7 @@ export class GameRoom extends Room<GameState> {
     this.removeKilledEnemyAt(enemyIndex);
     if (!owner) return;
 
-    owner.score += this.getEnemyScore(enemy.type) * owner.multiplier;
-    owner.playerKills++;
-    owner.enemyKills++;
-    this.recordUpgradeKill(ownerId, 'black_hole');
-    const newLevel = this.getPlayerLevel(owner.playerKills);
-    if (newLevel > owner.playerLevel) {
-      owner.playerLevel = newLevel;
-      this.broadcast('player_level_up', {
-        playerId: owner.id,
-        newLevel,
-        playerName: owner.name,
-      });
-    }
+    this.creditPlayerEnemyKill(owner, this.getEnemyScore(enemy.type), 'black_hole');
     this.trackDDAKill(ownerId);
     this.rollEnemyPickupDrops(enemy);
   }
@@ -4497,15 +4474,7 @@ export class GameRoom extends Room<GameState> {
       if (enemy.health <= 0) {
         enemiesToKill.push(eIndex);
 
-        player.score += this.getEnemyScore(enemy.type) * player.multiplier;
-        player.playerKills++;
-        player.enemyKills++;
-        this.recordUpgradeKill(player.id, player.weaponType);
-        const newLevel = this.getPlayerLevel(player.playerKills);
-        if (newLevel > player.playerLevel) {
-          player.playerLevel = newLevel;
-          this.broadcast('player_level_up', { playerId: player.id, newLevel, playerName: player.name });
-        }
+        this.creditPlayerEnemyKill(player, this.getEnemyScore(enemy.type), player.weaponType);
         this.trackDDAKill(player.id);
 
         this.rollEnemyPickupDrops(enemy);
@@ -4584,15 +4553,7 @@ export class GameRoom extends Room<GameState> {
       if (enemy.health <= 0) {
         enemiesToKill.push(eIndex);
 
-        player.score += this.getEnemyScore(enemy.type) * player.multiplier;
-        player.playerKills++;
-        player.enemyKills++;
-        this.recordUpgradeKill(player.id, player.weaponType);
-        const newLevel = this.getPlayerLevel(player.playerKills);
-        if (newLevel > player.playerLevel) {
-          player.playerLevel = newLevel;
-          this.broadcast('player_level_up', { playerId: player.id, newLevel, playerName: player.name });
-        }
+        this.creditPlayerEnemyKill(player, this.getEnemyScore(enemy.type), player.weaponType);
         this.trackDDAKill(player.id);
 
         this.rollEnemyPickupDrops(enemy);
@@ -4650,15 +4611,7 @@ export class GameRoom extends Room<GameState> {
       if (enemy.health <= 0) {
         enemiesToKill.push(eIndex);
 
-        player.score += this.getEnemyScore(enemy.type) * player.multiplier;
-        player.playerKills++;
-        player.enemyKills++;
-        this.recordUpgradeKill(player.id, player.weaponType);
-        const newLevel = this.getPlayerLevel(player.playerKills);
-        if (newLevel > player.playerLevel) {
-          player.playerLevel = newLevel;
-          this.broadcast('player_level_up', { playerId: player.id, newLevel, playerName: player.name });
-        }
+        this.creditPlayerEnemyKill(player, this.getEnemyScore(enemy.type), player.weaponType);
         this.trackDDAKill(player.id);
 
         this.rollEnemyPickupDrops(enemy);
@@ -4687,9 +4640,6 @@ export class GameRoom extends Room<GameState> {
 
         // Geoms removed (s27g-geons-point-pickups-remove-mp)
         // this.spawnGeom(enemy.surfaceU, enemy.surfaceV);
-
-        // Add score
-        player.score += 100 * player.multiplier;
       }
     });
 
@@ -4700,14 +4650,7 @@ export class GameRoom extends Room<GameState> {
 
     // Track kills for level progression (bomb kills count)
     if (enemiesToRemove.length > 0) {
-      player.playerKills += enemiesToRemove.length;
-      player.enemyKills += enemiesToRemove.length;
-      this.recordUpgradeKill(player.id, player.weaponType, enemiesToRemove.length);
-      const newLevel = this.getPlayerLevel(player.playerKills);
-      if (newLevel > player.playerLevel) {
-        player.playerLevel = newLevel;
-        this.broadcast('player_level_up', { playerId: player.id, newLevel, playerName: player.name });
-      }
+      this.creditPlayerEnemyKill(player, 100, player.weaponType, enemiesToRemove.length);
     }
 
     this.logger.log(`[GameRoom] ${player.name} used bomb, killed ${enemiesToRemove.length} enemies`);
@@ -6351,15 +6294,7 @@ export class GameRoom extends Room<GameState> {
             enemiesToRemove.push(eIndex);
 
             if (owner) {
-              owner.score += this.getEnemyScore(enemy.type) * owner.multiplier;
-              owner.playerKills++;
-              owner.enemyKills++;
-              this.recordUpgradeKill(bullet.ownerId, bulletWeaponType);
-              const newLevel = this.getPlayerLevel(owner.playerKills);
-              if (newLevel > owner.playerLevel) {
-                owner.playerLevel = newLevel;
-                this.broadcast('player_level_up', { playerId: owner.id, newLevel, playerName: owner.name });
-              }
+              this.creditPlayerEnemyKill(owner, this.getEnemyScore(enemy.type), bulletWeaponType);
               // DDA: track kill for this player
               this.trackDDAKill(bullet.ownerId);
             }
@@ -6900,6 +6835,37 @@ export class GameRoom extends Room<GameState> {
     return ENEMY_SCORES[type] ?? 25;
   }
 
+  private creditPlayerEnemyKill(
+    player: PlayerState,
+    baseScore: number,
+    weaponType: string,
+    count = 1,
+  ): void {
+    const safeCount = Math.max(0, Math.floor(count));
+    if (safeCount <= 0) return;
+    const safeBaseScore = Math.max(0, baseScore);
+    const rawScoreDelta = safeBaseScore * safeCount;
+
+    // Preserve MP's visible scoring ladder; rawScoreDelta is only for shared
+    // player-power/DDA normalization so display-score multipliers do not
+    // masquerade as raw performance.
+    player.score += rawScoreDelta * player.multiplier;
+    player.playerKills += safeCount;
+    player.enemyKills += safeCount;
+    this.playerPowerRawScores ??= new Map();
+    this.playerPowerRawScores.set(
+      player.id,
+      (this.playerPowerRawScores.get(player.id) ?? 0) + rawScoreDelta,
+    );
+    this.recordUpgradeKill(player.id, weaponType, safeCount);
+
+    const newLevel = this.getPlayerLevel(player.playerKills);
+    if (newLevel > player.playerLevel) {
+      player.playerLevel = newLevel;
+      this.broadcast('player_level_up', { playerId: player.id, newLevel, playerName: player.name });
+    }
+  }
+
   /**
    * Recompute the KotH zone world-space center from current UV coordinates.
    * Uses BVH snap so the result is accurate for ALL surface types (torus, cube, etc.),
@@ -7298,8 +7264,11 @@ export class GameRoom extends Room<GameState> {
 
     return {
       score: player.score,
+      rawScore: this.playerPowerRawScores?.get(player.id) ?? 0,
+      multipliedScore: player.score,
       survivalSeconds: Math.max(0, this.state.gameTime - (this.playerPowerLastDeathAt.get(player.id) ?? 0)),
       streak: this.playerPowerStreaks.get(player.id) ?? 0,
+      totalKills: player.enemyKills,
       blaster: {
         damage: this.getPlayerWeaponDamage(player.id, player, 'standard', blasterConfig.damage),
         shotsPerSecond: blasterConfig.fireRate
