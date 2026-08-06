@@ -122,7 +122,8 @@ export class BuildChoiceScreen {
     this.overlay.classList.toggle('bcs-mp-mode', options.mode === 'mp');
 
     // Auto-confirm if only one selectable option
-    const onlyOne = this.selectableIndices.length === 1 && availableNodeIds.length <= 1;
+    const mpMode = options.mode === 'mp';
+    const onlyOne = !mpMode && this.selectableIndices.length === 1 && availableNodeIds.length <= 1;
     if (onlyOne) {
       const confirmIdx = this.selectableIndices[0];
       const nodeId = availableNodeIds[confirmIdx];

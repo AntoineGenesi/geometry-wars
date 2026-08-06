@@ -237,4 +237,25 @@ describe('BuildChoiceScreen conflict filtering', () => {
     expect(body.children[0].classList.contains('hidden')).toBe(true);
     screen.dispose();
   });
+
+  it('dismisses MP one-choice screens without auto-confirming', () => {
+    const screen = new BuildChoiceScreen();
+    const onConfirm = vi.fn();
+    const onDismiss = vi.fn();
+
+    screen.show(
+      WeaponType.Standard,
+      ['standard_a_1'],
+      new Set(),
+      10,
+      onConfirm,
+      { mode: 'mp', autoDismissMs: 1200, onDismiss },
+    );
+    vi.advanceTimersByTime(1200);
+
+    expect(onConfirm).not.toHaveBeenCalled();
+    expect(onDismiss).toHaveBeenCalledTimes(1);
+    expect(body.children[0].classList.contains('hidden')).toBe(true);
+    screen.dispose();
+  });
 });
