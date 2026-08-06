@@ -46,6 +46,10 @@ if (typeof globalThis.window === 'undefined') {
   globalThis.window = mockWindow;
 }
 
+if (typeof globalThis.location === 'undefined') {
+  (globalThis as any).location = globalThis.window.location;
+}
+
 // ---------------------------------------------------------------------------
 // document
 // ---------------------------------------------------------------------------
@@ -72,6 +76,15 @@ if (typeof globalThis.document === 'undefined') {
 
   const mockDoc: any = {
     hidden: false,
+    head: {
+      appendChild: _noop, removeChild: _noop,
+      style: {}, clientWidth: 800, clientHeight: 0,
+      getBoundingClientRect: () => ({
+        left: 0, top: 0, right: 800, bottom: 0,
+        width: 800, height: 0, x: 0, y: 0, toJSON: _noop,
+      }),
+      addEventListener: _noopEvent, removeEventListener: _noopEvent,
+    },
     body: {
       appendChild: _noop, removeChild: _noop,
       style: {}, clientWidth: 800, clientHeight: 600,
