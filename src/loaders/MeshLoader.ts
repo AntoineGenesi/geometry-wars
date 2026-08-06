@@ -17,6 +17,7 @@ import * as THREE from 'three';
 import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { validateMeshUploadFile } from './MeshUploadValidation';
 
 export interface LoadedMesh {
   /** The merged, walkable mesh */
@@ -171,6 +172,11 @@ export async function loadMeshFromURL(url: string, targetRadius: number = 8): Pr
  * @returns The loaded and processed mesh
  */
 export async function loadMeshFromFile(file: File, targetRadius: number = 8): Promise<LoadedMesh> {
+  const uploadValidation = validateMeshUploadFile(file);
+  if (!uploadValidation.ok) {
+    throw new Error(uploadValidation.error ?? 'Unsupported mesh upload.');
+  }
+
   const fileType = detectFileType(file.name);
   if (!fileType) {
     throw new Error(`Unsupported file type: ${file.name}. Use .obj, .glb, or .gltf`);
