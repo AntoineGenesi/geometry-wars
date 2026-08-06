@@ -123,6 +123,10 @@ export interface NetworkEnemyState {
   surfaceU: number;
   surfaceV: number;
   wx: number; wy: number; wz: number;
+  nx?: number; ny?: number; nz?: number;
+  tx?: number; ty?: number; tz?: number;
+  bx?: number; by?: number; bz?: number;
+  walkerFaceIndex?: number;
   health: number;
   maxHealth: number;
   alive: boolean;
@@ -350,6 +354,24 @@ export interface UpgradeActivationResult {
   reason?: string;
 }
 
+export interface CubeFaceTransitionAimProofSetupResult {
+  ok: boolean;
+  reason?: string;
+  before?: {
+    faceIndex: number;
+    world: [number, number, number];
+    normal: [number, number, number];
+  };
+  after?: {
+    faceIndex: number;
+    world: [number, number, number];
+    normal: [number, number, number];
+  };
+  aimAngle?: number;
+  targetEnemyId?: string;
+  targetDistance?: number;
+}
+
 /** Event callbacks */
 export interface NetworkCallbacks {
   onStateChange?: (state: NetworkGameState) => void;
@@ -414,6 +436,8 @@ export interface NetworkCallbacks {
   onPvpHit?: (data: { killerId: string; killerName: string; victimId: string; victimName: string; damage: number }) => void;
   /** Fired after the server accepts or rejects a match upgrade activation. */
   onUpgradeActivationResult?: (data: UpgradeActivationResult) => void;
+  /** Fired after the opt-in cube face-transition aim proof setup request. */
+  onCubeFaceTransitionAimProofSetupResult?: (data: CubeFaceTransitionAimProofSetupResult) => void;
   onPortalLocations?: (data: NetworkPortalLocations) => void;
 }
 
@@ -801,6 +825,11 @@ export class NetworkClient {
       this.callbacks.onUpgradeActivationResult?.(data);
     });
 
+    this.room.onMessage('cube_face_transition_aim_proof_setup_result', (data: CubeFaceTransitionAimProofSetupResult) => {
+      netLog(`[Network] cube_face_transition_aim_proof_setup_result: ok=${data.ok} reason=${data.reason ?? ''}`);
+      this.callbacks.onCubeFaceTransitionAimProofSetupResult?.(data);
+    });
+
     // Disconnection
     this.room.onLeave((code) => {
       netLog(`[Network] Left room with code: ${code}`);
@@ -1092,6 +1121,15 @@ export class NetworkClient {
   sendUpgradeProofSetup(data: { weaponType: string; killCount: number }): void {
     if (!this.room || !this.connected) return;
     this.room.send('upgrade_proof_setup', data);
+  }
+
+  /**
+   * Request deterministic setup for the opt-in MP cube face-transition aim proof.
+   * The server ignores this message unless GEOMETRY_WARS_MP_PROOF_CONTROLS=1.
+   */
+  sendCubeFaceTransitionAimProofSetup(data: { targetDistance?: number } = {}): void {
+    if (!this.room || !this.connected) return;
+    this.room.send('cube_face_transition_aim_proof_setup', data);
   }
 
   /** Request the opt-in authoritative Black Hole browser proof scene. */
