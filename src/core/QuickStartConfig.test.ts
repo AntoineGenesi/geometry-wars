@@ -39,4 +39,3 @@ describe('parseQuickStartConfig', () => {
     expect(parsed.customMeshSource).toBeUndefined();
   });
 });
-

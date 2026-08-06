@@ -79,4 +79,3 @@ export function parseQuickStartConfig(search: string | URLSearchParams): QuickSt
 
   return { enabled: true, surface: requestedSurface, seed, gameMode };
 }
-

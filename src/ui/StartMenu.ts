@@ -225,8 +225,8 @@ export class StartMenu {
       )
       .join('');
 
-    // Add custom mesh button
-    const customMeshBtn = `
+    // Custom meshes are SP-only until server/client mesh metadata exists.
+    const customMeshBtn = gridClass === 'lan-surface-grid' ? '' : `
       <button class="surface-btn custom-mesh-btn" data-grid-class="${gridClass}">
         <span class="icon">📁</span>
         <span class="name">Load Custom</span>
@@ -2250,13 +2250,12 @@ export class StartMenu {
 
           // Store the file based on which section
           if (gridClass === 'lan-surface-grid') {
-            this.customMeshFileLAN = file;
-            this.lanSelectedSurface = 'custom';
-
-            const lanCustomBtn = this.container.querySelector('.lan-surface-grid .custom-mesh-btn') as HTMLElement;
-            const lanBtns = this.container.querySelectorAll('.lan-surface-grid .surface-btn');
-            lanBtns.forEach((b) => b.classList.remove('selected'));
-            lanCustomBtn?.classList.add('selected');
+            alert('Custom imported meshes are single-player only until LAN mesh synchronization is implemented.');
+            this.customMeshFileLAN = null;
+            if (this.lanSelectedSurface === 'custom') {
+              this.lanSelectedSurface = 'sphere';
+            }
+            return;
           } else {
             // Quick game
             this.customMeshFileQuickGame = file;
