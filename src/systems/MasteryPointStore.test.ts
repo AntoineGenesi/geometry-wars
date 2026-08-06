@@ -469,7 +469,7 @@ describe('MasteryPointStore', () => {
     expect(migrated.isUnlocked('standard_a_1')).toBe(true);
     expect(migrated.isUnlocked('standard_removed_99')).toBe(false);
     expect(migrated.getSpentPoints(WeaponType.Standard)).toBe(1);
-    expect(migrated.getAvailablePoints(WeaponType.Standard)).toBe(0);
+    expect(migrated.getAvailablePoints(WeaponType.Standard)).toBe(2);
   });
 
   it('migrates v1 legacy permanentUnlocks format', () => {

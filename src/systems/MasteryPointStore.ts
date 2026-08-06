@@ -282,17 +282,11 @@ export class MasteryPointStore {
 
         if (s1.nodePoints && typeof s1.nodePoints === 'object') {
           this.nodePoints = { ...s1.nodePoints };
+          const legacyTotals = this.estimateLegacyTotalsByWeapon(this.nodePoints);
           this.reconcileLoadedNodePoints();
-          // Reconstruct spent counts per weapon from existing nodePoints
-          for (const [nodeId, pts] of Object.entries(this.nodePoints)) {
-            if (pts <= 0) continue;
-            const wt = weaponTypeFromNodeId(nodeId);
-            if (!wt) continue;
-            const entry = this.weaponPoints.get(wt) ?? { total: 0, spent: 0 };
-            // Set total = spent so available = 0 (can't attribute old unspent points)
-            const node = getNodeById(nodeId);
-            const newSpent = entry.spent + pts * (node ? getNodeCost(node) : 1);
-            this.weaponPoints.set(wt, { total: newSpent, spent: newSpent });
+          for (const [weaponType, total] of legacyTotals.entries()) {
+            const spent = this.weaponPoints.get(weaponType)?.spent ?? 0;
+            this.weaponPoints.set(weaponType, { total: Math.max(total, spent), spent });
           }
         } else if (s1.permanentUnlocks && typeof s1.permanentUnlocks === 'object') {
           // Very old format: boolean unlocks
@@ -364,14 +358,31 @@ export class MasteryPointStore {
 
     this.nodePoints = validNodePoints;
 
-    for (const weaponType of Object.values(WeaponType) as WeaponType[]) {
-      const entry = this.weaponPoints.get(weaponType);
-      if (!entry) continue;
+    const reconciledWeapons = new Set<WeaponType>([
+      ...Array.from(this.weaponPoints.keys()),
+      ...Array.from(spentByWeapon.keys()),
+    ]);
+
+    for (const weaponType of reconciledWeapons) {
+      const entry = this.weaponPoints.get(weaponType) ?? { total: 0, spent: 0 };
       const spent = spentByWeapon.get(weaponType) ?? 0;
       this.weaponPoints.set(weaponType, {
         total: Math.max(entry.total, spent),
         spent,
       });
     }
+  }
+
+  private estimateLegacyTotalsByWeapon(nodePoints: Record<string, number>): Map<WeaponType, number> {
+    const totals = new Map<WeaponType, number>();
+    for (const [nodeId, rawPoints] of Object.entries(nodePoints)) {
+      if (typeof rawPoints !== 'number' || rawPoints <= 0) continue;
+      const weaponType = weaponTypeFromNodeId(nodeId);
+      if (!weaponType) continue;
+      const node = getNodeById(nodeId);
+      const points = node ? Math.min(rawPoints, node.maxPoints ?? 1) : rawPoints;
+      totals.set(weaponType, (totals.get(weaponType) ?? 0) + points * (node ? getNodeCost(node) : 1));
+    }
+    return totals;
   }
 }
