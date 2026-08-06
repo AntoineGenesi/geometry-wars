@@ -14,6 +14,7 @@ import {
   type BlackHoleConfig,
   type BlackHolePhase,
 } from '../shared/BlackHoleModel';
+import { getSpreadUpgradePattern } from '../shared/WeaponUpgradeEffects';
 import { BlackHoleVisual } from '../effects/BlackHoleVisual';
 
 // ---------------------------------------------------------------------------
@@ -488,7 +489,7 @@ export class WeaponManager {
     const active = this.upgradeTracker.getActiveUpgrades(WeaponType.Standard);
     // AL sub-branch overrides: al_6 (Nova burst) fires 9 bolts total (8 extra)
     if (active.has('standard_al_6'))  return 8;  // Nova burst: 9 total
-    // al_5 (Shotgun spread): 5 bolts = same as a_4; falls through to a_4 check below
+    // al_5 (Shotgun spread): same bolt count as a_4, but a wider scatter arc.
     if (active.has('standard_a_4') || active.has('standard_al_5')) return 4;  // 5 total
     if (active.has('standard_a_3')) return 3;  // 4 total
     if (active.has('standard_a_2')) return 2;  // 3 total
@@ -505,7 +506,7 @@ export class WeaponManager {
     const active = this.upgradeTracker.getActiveUpgrades(WeaponType.Standard);
     // AL sub-branch overrides
     if (active.has('standard_al_6'))  return Math.PI * 55 / 180; // Nova burst: 55° fan
-    if (active.has('standard_al_5'))  return Math.PI / 7.2;       // Shotgun spread: 25° (same as a_4)
+    if (active.has('standard_al_5'))  return Math.PI * 35 / 180;  // Shotgun spread: 35 degrees
     if (active.has('standard_a_4')) return Math.PI / 7.2; // 25°
     if (active.has('standard_a_3')) return Math.PI / 12;  // 15°
     if (active.has('standard_a_2')) return Math.PI / 18;  // 10°
@@ -531,13 +532,8 @@ export class WeaponManager {
     return 0;
   }
 
-  /**
-   * Returns 1 if standard_b_4 (Heavy bolt) is active — projectiles pierce 1 extra enemy.
-   */
   getBlasterPierceCount(): number {
-    if (!this.upgradeTracker) return 0;
-    const active = this.upgradeTracker.getActiveUpgrades(WeaponType.Standard);
-    return active.has('standard_b_4') ? 1 : 0;
+    return 0;
   }
 
   /**
@@ -1501,14 +1497,8 @@ export class WeaponManager {
     const isL5 = this.isMasteryMaxLevel(WeaponType.Spread);
     const spreadNodes = this.activeUpgradeNodes(WeaponType.Spread);
 
-    // Pellet count upgrades (branch A): base 5, +1 per node 1-3, then +4 and +5 for nodes 4 and 5
-    const upgradePellets =
-      (spreadNodes.has('spread_a_1') ? 1 : 0) +
-      (spreadNodes.has('spread_a_2') ? 1 : 0) +
-      (spreadNodes.has('spread_a_3') ? 1 : 0) +
-      (spreadNodes.has('spread_al_4') ? 4 : 0) +  // +4 more (9 total with nodes 1-3)
-      (spreadNodes.has('spread_al_5') ? 5 : 0);   // +5 more (10 total with nodes 1-3)
-    const bulletCount = isL5 ? 9 : 5 + upgradePellets;
+    const spreadPattern = getSpreadUpgradePattern(spreadNodes);
+    const bulletCount = isL5 ? 9 : spreadPattern.bulletCount;
 
     // Pierce upgrades (branch B nodes 4+5): pellets pass through enemies
     const piercePellets =
@@ -1530,7 +1520,7 @@ export class WeaponManager {
     } else if (spreadNodes.has('spread_b_1')) {
       spreadAngle = Math.PI / 7.5; // -15% tighter ≈ 24°
     } else {
-      spreadAngle = Math.PI / 6; // base 30°
+      spreadAngle = spreadPattern.spreadAngle;
     }
     // Spread animation: pellets start aimed at center, fan out over 0.35-0.5s
     const spreadDuration = 0.35 + Math.random() * 0.15;

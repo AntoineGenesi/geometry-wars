@@ -767,6 +767,45 @@ describe('WeaponManager', () => {
       expect(manager.projectileRoot.children.length).toBe(1);
     });
 
+    it('Multi Void fires four travelling bolts after Singularity instead of promising two', () => {
+      manager.setUpgradeTracker(createActiveUpgradeTracker([
+        'black_hole_a_1',
+        'black_hole_a_2',
+        'black_hole_a_3',
+        'black_hole_al_4',
+      ]));
+
+      manager.fire(origin(), forward(), T);
+
+      expect(manager['projectiles'].filter(p => p.type === WeaponType.BlackHole)).toHaveLength(4);
+      expect(manager['activeEffects'].filter(e => e.type === 'blackhole')).toHaveLength(0);
+    });
+
+    it('Doomsday keeps the four-bolt Multi Void shape and applies the duration capstone', () => {
+      manager.setUpgradeTracker(createActiveUpgradeTracker([
+        'black_hole_a_1',
+        'black_hole_a_2',
+        'black_hole_a_3',
+        'black_hole_al_4',
+        'black_hole_al_5',
+      ]));
+      const enemy: MockEnemy = { position: blackHolePathPoint(0.2), index: 0, alive: true };
+      mock = createMockCallbacks([enemy]);
+      manager.setCallbacks(mock.callbacks);
+
+      manager.fire(origin(), forward(), T);
+      expect(manager['projectiles'].filter(p => p.type === WeaponType.BlackHole)).toHaveLength(4);
+
+      manager.update(0.05);
+
+      const effects = manager['activeEffects'].filter(e => e.type === 'blackhole');
+      expect(effects.length).toBeGreaterThan(0);
+      expect(effects.length).toBeLessThanOrEqual(4);
+      for (const effect of effects) {
+        expect(effect.duration).toBeCloseTo(3 * (1 + 0.3 + 0.6 + 1 + 1.5), 3);
+      }
+    });
+
     it('expires on a miss without placing the impact field', () => {
       manager.fire(origin(), forward(), T);
 
@@ -1255,6 +1294,16 @@ describe('WeaponManager LAN visual-only mode', () => {
       wm2.dispose();
     });
 
+    it('getUpgradeDamageMult: Standard b_4 is damage-only after tree rebuild', () => {
+      const tracker = makeTracker(['standard_b_1', 'standard_b_2', 'standard_b_3', 'standard_b_4']);
+      activateNodes(tracker, WeaponType.Standard, 80);
+      const wm2 = new WeaponManager();
+      wm2.setUpgradeTracker(tracker);
+      expect(wm2.getUpgradeDamageMult(WeaponType.Standard)).toBeCloseTo(1.40, 5);
+      expect(wm2.getBlasterPierceCount()).toBe(0);
+      wm2.dispose();
+    });
+
     it('getUpgradeDamageMult: PlasmaMortar b nodes stack correctly', () => {
       const tracker = makeTracker(['plasma_mortar_b_1', 'plasma_mortar_b_2']);
       activateNodes(tracker, WeaponType.PlasmaMortar, 25);
@@ -1369,6 +1418,36 @@ describe('WeaponManager LAN visual-only mode', () => {
       wm2.fire(origin(), forward(), T, normal());
       const after = wm2['projectiles'].length;
       expect(after - before).toBe(8);
+      wm2.dispose();
+    });
+
+    it('Spread al_4 final branch → 9 projectiles total, not 12 stacked with trunk', () => {
+      const tracker = makeTracker(['spread_a_1', 'spread_a_2', 'spread_a_3', 'spread_al_4']);
+      activateNodes(tracker, WeaponType.Spread, 80);
+      const wm2 = new WeaponManager();
+      wm2.setUpgradeTracker(tracker);
+      const { callbacks } = createMockCallbacks();
+      wm2.setCallbacks(callbacks);
+      wm2.equipWeapon(WeaponType.Spread, 10);
+      const before = wm2['projectiles'].length;
+      wm2.fire(origin(), forward(), T, normal());
+      const after = wm2['projectiles'].length;
+      expect(after - before).toBe(9);
+      wm2.dispose();
+    });
+
+    it('Spread al_5 final branch → 10 projectiles total, not 18 stacked with trunk', () => {
+      const tracker = makeTracker(['spread_a_1', 'spread_a_2', 'spread_a_3', 'spread_al_4', 'spread_al_5']);
+      activateNodes(tracker, WeaponType.Spread, 120);
+      const wm2 = new WeaponManager();
+      wm2.setUpgradeTracker(tracker);
+      const { callbacks } = createMockCallbacks();
+      wm2.setCallbacks(callbacks);
+      wm2.equipWeapon(WeaponType.Spread, 10);
+      const before = wm2['projectiles'].length;
+      wm2.fire(origin(), forward(), T, normal());
+      const after = wm2['projectiles'].length;
+      expect(after - before).toBe(10);
       wm2.dispose();
     });
 
@@ -1974,6 +2053,7 @@ describe('Homing missile visual orientation (s44r3-05 regression)', () => {
       // bl_5 fires 4 seeking bolts — check they are in the projectile root
       const projRoot = wm2.getVisualRoot().children[1]; // projectileRoot
       expect(projRoot.children.length).toBe(4); // 4 seeking bolts
+      expect(wm2['projectiles'].every(p => p.type !== WeaponType.Standard || p.canPierce === undefined)).toBe(true);
 
       wm2.dispose();
     });

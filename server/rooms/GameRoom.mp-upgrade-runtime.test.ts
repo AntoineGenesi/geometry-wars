@@ -150,18 +150,40 @@ describe('GameRoom MP weapon upgrade runtime parity', () => {
     expect(new Set(standardBullets.map((b: any) => b.dirY)).size).toBeGreaterThan(2);
   });
 
+  it('emits a wider server-authoritative Standard scatter when standard_al_5 is active', () => {
+    const maxAbsDirYFor = (activeNodes: string[]) => {
+      const room = makeRoom();
+      const player = makePlayer();
+      room.state.players.set('p1', player);
+      room.playerActiveUpgradeNodes.set('p1', new Map([
+        [WeaponType.Standard, new Set(activeNodes)],
+      ]));
+
+      room.tryShoot(player);
+
+      const standardBullets = room.state.bullets.filter((b: any) => b.weaponType === WeaponType.Standard);
+      expect(standardBullets).toHaveLength(5);
+      return Math.max(...standardBullets.map((b: any) => Math.abs(b.dirY)));
+    };
+
+    const rapidBurstSpread = maxAbsDirYFor(['standard_a_4']);
+    const shotgunSpread = maxAbsDirYFor(['standard_a_4', 'standard_al_5']);
+
+    expect(shotgunSpread).toBeGreaterThan(rapidBurstSpread);
+  });
+
   it('emits upgraded Spread pellet count and applies server damage multiplier', () => {
     const room = makeRoom(WeaponType.Spread);
     const player = makePlayer(WeaponType.Spread);
     room.state.players.set('p1', player);
     room.playerActiveUpgradeNodes.set('p1', new Map([
-      [WeaponType.Spread, new Set(['spread_a_1', 'spread_al_5'])],
+      [WeaponType.Spread, new Set(['spread_a_1', 'spread_a_2', 'spread_a_3', 'spread_al_5'])],
     ]));
 
     room.tryShoot(player);
 
     const spreadBullets = room.state.bullets.filter((b: any) => b.weaponType === WeaponType.Spread);
-    expect(spreadBullets).toHaveLength(11);
+    expect(spreadBullets).toHaveLength(10);
     expect(room.getUpgradeDamageMult('p1', WeaponType.Spread)).toBeCloseTo(1.15);
   });
 

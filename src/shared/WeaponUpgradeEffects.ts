@@ -112,7 +112,7 @@ export function getStandardUpgradePattern(active: ReadonlySet<string>): Standard
   let fanExtraBolts = 0;
   let fanAngle = 0;
   if (active.has('standard_al_6')) { fanExtraBolts = 8; fanAngle = Math.PI * 55 / 180; }
-  else if (active.has('standard_al_5')) { fanExtraBolts = 4; fanAngle = Math.PI / 7.2; }
+  else if (active.has('standard_al_5')) { fanExtraBolts = 4; fanAngle = Math.PI * 35 / 180; }
   else if (active.has('standard_a_4')) { fanExtraBolts = 4; fanAngle = Math.PI / 7.2; }
   else if (active.has('standard_a_3')) { fanExtraBolts = 3; fanAngle = Math.PI / 12; }
   else if (active.has('standard_a_2')) { fanExtraBolts = 2; fanAngle = Math.PI / 18; }
@@ -128,12 +128,12 @@ export function getStandardUpgradePattern(active: ReadonlySet<string>): Standard
 }
 
 export function getSpreadUpgradePattern(active: ReadonlySet<string>): SpreadUpgradePattern {
-  const extraPellets =
-    (active.has('spread_a_1') ? 1 : 0) +
-    (active.has('spread_a_2') ? 1 : 0) +
-    (active.has('spread_a_3') ? 1 : 0) +
-    (active.has('spread_al_4') ? 4 : 0) +
-    (active.has('spread_al_5') ? 5 : 0);
+  const bulletCount = active.has('spread_al_5') ? 10
+    : active.has('spread_al_4') ? 9
+    : 5
+      + (active.has('spread_a_1') ? 1 : 0)
+      + (active.has('spread_a_2') ? 1 : 0)
+      + (active.has('spread_a_3') ? 1 : 0);
 
   let spreadAngle = Math.PI / 6;
   if (active.has('spread_br_4') || active.has('spread_br_5')) spreadAngle = Math.PI / 36;
@@ -141,5 +141,5 @@ export function getSpreadUpgradePattern(active: ReadonlySet<string>): SpreadUpgr
   else if (active.has('spread_b_2')) spreadAngle = Math.PI / 5;
   else if (active.has('spread_b_1')) spreadAngle = Math.PI / 7.5;
 
-  return { bulletCount: 5 + extraPellets, spreadAngle };
+  return { bulletCount, spreadAngle };
 }

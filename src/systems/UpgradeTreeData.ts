@@ -175,7 +175,7 @@ export const UPGRADE_TREES: Record<WeaponType, UpgradeTree> = {
       node(WeaponType.Standard, 'a', 4, 'Rapid burst',   '+30% fire rate; fires 5 bolts in tight burst',    { x:  35, y: 142 }),
 
       // Scatter: retain the proven fan shapes instead of speculative ring/final forms.
-      node(WeaponType.Standard, 'al', 5, 'Shotgun spread', 'Fires 5 bolts in a 25 deg arc (+4 bullets)', { parentId: 'standard_a_4', x:  10, y: 184 }),
+      node(WeaponType.Standard, 'al', 5, 'Shotgun spread', 'Fires 5 bolts in a wider 35 deg arc (+4 bullets)', { parentId: 'standard_a_4', x:  10, y: 184 }),
       node(WeaponType.Standard, 'al', 6, 'Nova fan',       'Capstone: fires 9 bolts in a 55 deg arc',    { parentId: 'standard_al_5', x:   8, y: 226 }),
 
       // Cadence: premium path for fire-rate players.
@@ -452,8 +452,8 @@ export const UPGRADE_TREES: Record<WeaponType, UpgradeTree> = {
       node(WeaponType.BlackHole, 'a', 3, 'Singularity',   '+100% duration, +2 shots',                      { x:  57, y: 110 }),
 
       // ── Sub-branch AL: Multi Void (multiple simultaneous black holes) ──
-      node(WeaponType.BlackHole, 'al', 4, 'Twin holes',   'Fires 2 black holes simultaneously',            { parentId: 'black_hole_a_3', x:  30, y: 148 }),
-      node(WeaponType.BlackHole, 'al', 5, 'Doomsday',     'Fires 2 black holes, each +150% duration',     { parentId: 'black_hole_al_4', x:  16, y: 186 }),
+      node(WeaponType.BlackHole, 'al', 4, 'Multi void',   'Capstone path: fires 4 black holes after Singularity', { parentId: 'black_hole_a_3', x:  30, y: 148 }),
+      node(WeaponType.BlackHole, 'al', 5, 'Doomsday',     'Fires 4 black holes, each +150% duration',     { parentId: 'black_hole_al_4', x:  16, y: 186 }),
 
       // ── Sub-branch AR: Giant Void (single massive long-duration black hole) ──
       node(WeaponType.BlackHole, 'ar', 4, 'Mega void',    '+200% duration; black hole is 40% larger',     { parentId: 'black_hole_a_3', cost: 2, x:  68, y: 148 }),
