@@ -15,6 +15,11 @@ import { createQRCodeDisplay } from './QRCode';
 import { QUICK_GAME_MODES, type QuickGameModeType } from '../core/modes';
 import { OBJDebugPanel } from './OBJDebugPanel';
 import { loadVisualMode } from './VisualStyleSettings';
+import {
+  describeMeshUploadLimits,
+  formatMeshUploadBytes,
+  validateMeshUploadFile,
+} from '../loaders/MeshUploadValidation';
 
 /** LAN-specific game mode type: includes MP-only modes (pvp/pvpve) on top of SP modes. */
 export type LanGameMode = QuickGameModeType | 'pvp' | 'pvpve';
@@ -472,6 +477,9 @@ export class StartMenu {
             <div id="custom-mesh-loading" class="custom-mesh-loading hidden">
               <p>${t('menu.misc.loadingMesh')}</p>
             </div>
+            <div id="custom-mesh-status" class="custom-mesh-status" role="status" aria-live="polite">
+              ${describeMeshUploadLimits()}
+            </div>
             <button class="start-btn" id="surface-start-btn">
               <span class="btn-icon">\u25B6</span>
               <span>${t('menu.buttons.start')}</span>
@@ -895,6 +903,30 @@ export class StartMenu {
 
       #start-menu .custom-mesh-loading.hidden {
         display: none;
+      }
+
+      #start-menu .custom-mesh-status {
+        min-height: 36px;
+        margin: 10px auto 12px;
+        max-width: 540px;
+        padding: 8px 12px;
+        border: 1px solid rgba(120, 190, 220, 0.28);
+        border-radius: 6px;
+        background: rgba(3, 12, 24, 0.72);
+        color: #a9d8e6;
+        font-size: 11px;
+        line-height: 1.35;
+        text-align: center;
+      }
+
+      #start-menu .custom-mesh-status.ready {
+        border-color: rgba(0, 220, 180, 0.55);
+        color: #9dffe7;
+      }
+
+      #start-menu .custom-mesh-status.error {
+        border-color: rgba(255, 95, 120, 0.68);
+        color: #ff9bad;
       }
 
       /* ------------------------------------------------------------------- */
@@ -2164,6 +2196,14 @@ export class StartMenu {
   // Event listeners
   // -----------------------------------------------------------------------
 
+  private setCustomMeshStatus(message: string, tone: 'info' | 'ready' | 'error' = 'info'): void {
+    const status = this.container.querySelector('#custom-mesh-status') as HTMLElement | null;
+    if (!status) return;
+    status.textContent = message;
+    status.classList.toggle('ready', tone === 'ready');
+    status.classList.toggle('error', tone === 'error');
+  }
+
   private attachEventListeners(): void {
     const mainButtonsContainer = this.container.querySelector('#main-buttons') as HTMLElement;
     const adventureSection = this.container.querySelector('#adventure-levels') as HTMLElement;
@@ -2198,6 +2238,7 @@ export class StartMenu {
         btn.classList.add('selected');
         this.selectedSurface = (btn as HTMLElement).dataset.surface as SurfaceType;
         this.customMeshFileQuickGame = null; // Clear custom mesh when selecting built-in
+        this.setCustomMeshStatus(describeMeshUploadLimits());
         // Auto-suggest the default map size for this surface
         const suggestedSize = getDefaultMapSizeForSurface(this.selectedSurface);
         this.selectedMapSize = suggestedSize;
@@ -2241,10 +2282,9 @@ export class StartMenu {
         }
 
         try {
-          // Validate file type
-          const fileName = file.name.toLowerCase();
-          if (!fileName.endsWith('.obj') && !fileName.endsWith('.glb') && !fileName.endsWith('.gltf')) {
-            alert('Unsupported file type. Please use .obj, .glb, or .gltf files.');
+          const validation = validateMeshUploadFile(file);
+          if (!validation.ok) {
+            this.setCustomMeshStatus(validation.error ?? 'Unsupported mesh upload.', 'error');
             return;
           }
 
@@ -2260,6 +2300,10 @@ export class StartMenu {
             // Quick game
             this.customMeshFileQuickGame = file;
             this.selectedSurface = 'custom';
+            this.setCustomMeshStatus(
+              `Selected ${file.name} (${formatMeshUploadBytes(file.size)}). Custom maps are single-player only.`,
+              'ready',
+            );
 
             const quickCustomBtn = surfaceSection.querySelector('.custom-mesh-btn') as HTMLElement;
             surfaceBtns.forEach((b) => b.classList.remove('selected'));
@@ -2329,6 +2373,14 @@ export class StartMenu {
     // Surface section START button (Quick Game / Online)
     const surfaceStartBtn = this.container.querySelector('#surface-start-btn');
     surfaceStartBtn?.addEventListener('click', () => {
+      if (this.selectedSurface === 'custom') {
+        const validation = validateMeshUploadFile(this.customMeshFileQuickGame);
+        if (!validation.ok) {
+          this.setCustomMeshStatus(validation.error ?? 'Choose a mesh file before starting a custom map.', 'error');
+          return;
+        }
+      }
+
       this.onStartCallback?.({
         surfaceType: this.selectedSurface,
         gameMode: this.pendingMode,
