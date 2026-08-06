@@ -7,7 +7,10 @@
  */
 
 import { test, expect } from 'vitest';
+import * as THREE from 'three';
 import { SurfaceFactory } from '../surfaces/SurfaceFactory';
+import { LoadedMeshSurface } from '../surfaces/LoadedMeshSurface';
+import type { LoadedMesh } from '../loaders/MeshLoader';
 
 test('SurfaceType includes custom', () => {
   const types = SurfaceFactory.getAvailableTypes();
@@ -31,4 +34,64 @@ test('SurfaceFactory.create remains synchronous for built-in types', () => {
   const sphere = SurfaceFactory.create('sphere', { radius: 8 });
   expect(sphere).toBeDefined();
   expect(sphere.mesh).toBeDefined();
+});
+
+test('LoadedMeshSurface exposes finite compatibility contract for a valid imported mesh', () => {
+  const geometry = new THREE.TetrahedronGeometry(8, 2);
+  geometry.computeVertexNormals();
+  const mesh = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial());
+  mesh.updateMatrixWorld(true);
+
+  const loadedMesh: LoadedMesh = {
+    mesh,
+    originalSize: new THREE.Vector3(16, 16, 16),
+    scaleFactor: 1,
+    triangleCount: geometry.index
+      ? geometry.index.count / 3
+      : geometry.getAttribute('position').count / 3,
+    animations: [],
+  };
+
+  const surface = new LoadedMeshSurface(loadedMesh, {
+    gridSegmentsU: 6,
+    gridSegmentsV: 5,
+  });
+
+  const point = surface.getPoint(0.45, 0.55);
+  const uv = surface.worldToSurface(point.position);
+  const moved = surface.moveOnSurface(0.45, 0.55, 0.005, -0.004);
+  const wrapped = surface.wrapUV(-0.2, 1.4);
+
+  for (const value of [
+    point.position.x,
+    point.position.y,
+    point.position.z,
+    point.normal.x,
+    point.normal.y,
+    point.normal.z,
+    point.tangentU.x,
+    point.tangentV.y,
+    uv.u,
+    uv.v,
+    moved.u,
+    moved.v,
+    surface.speedScale,
+  ]) {
+    expect(Number.isFinite(value)).toBe(true);
+  }
+
+  expect(point.normal.length()).toBeGreaterThan(0.99);
+  expect(point.tangentU.length()).toBeGreaterThan(0.99);
+  expect(point.tangentV.length()).toBeGreaterThan(0.99);
+  expect(uv.u).toBeGreaterThanOrEqual(0);
+  expect(uv.u).toBeLessThanOrEqual(1);
+  expect(uv.v).toBeGreaterThanOrEqual(0);
+  expect(uv.v).toBeLessThanOrEqual(1);
+  expect(wrapped.u).toBeGreaterThanOrEqual(0);
+  expect(wrapped.u).toBeLessThan(1);
+  expect(wrapped.v).toBeGreaterThan(0);
+  expect(wrapped.v).toBeLessThan(1);
+  expect(surface.speedScale).toBeGreaterThan(0);
+
+  surface.dispose();
 });
