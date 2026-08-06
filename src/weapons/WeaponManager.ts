@@ -983,7 +983,7 @@ export class WeaponManager {
   /**
    * Update all projectiles and effects
    */
-  update(dt: number): void {
+  update(dt: number, primaryFireHeld = false): void {
     // Tick down active buffs
     for (let i = this.activeBuffs.length - 1; i >= 0; i--) {
       this.activeBuffs[i].remaining -= dt;
@@ -1146,8 +1146,12 @@ export class WeaponManager {
       }
     }
 
-    // Tesla coil: maintain persistent aura while equipped so orbs always follow the player
-    if (this.currentWeapon === WeaponType.TeslaCoil && this.playerPositionRef !== null) {
+    if (this.currentWeapon === WeaponType.TeslaCoil && !primaryFireHeld) {
+      this.removeTeslaEffects();
+    }
+
+    // Tesla coil: maintain persistent aura while fire is held so orbs follow the player.
+    if (primaryFireHeld && this.currentWeapon === WeaponType.TeslaCoil && this.playerPositionRef !== null) {
       if (!this.activeEffects.some(e => e.type === 'tesla')) {
         this.fireTesla(this.playerPositionRef.clone());
       }
@@ -2221,6 +2225,16 @@ export class WeaponManager {
 
   private fireTesla(origin: THREE.Vector3): void {
     // Tesla coil is an area effect around player (radius 3, stronger damage)
+    const existing = this.activeEffects.find(effect => effect.type === 'tesla');
+    if (existing) {
+      existing.position.copy(origin);
+      existing.elapsed = 0;
+      if (existing.mesh) {
+        existing.mesh.position.copy(origin);
+      }
+      return;
+    }
+
     // Geometry shared via GeometryCache
     const teslaMat = new THREE.MeshBasicMaterial({
       color: 0x88aaff,
@@ -2242,6 +2256,17 @@ export class WeaponManager {
       elapsed: 0,
       mesh: teslaMesh,
     });
+  }
+
+  private removeTeslaEffects(): void {
+    for (let i = this.activeEffects.length - 1; i >= 0; i--) {
+      const effect = this.activeEffects[i];
+      if (effect.type !== 'tesla') continue;
+      if (effect.mesh) {
+        this.projectileRoot.remove(effect.mesh);
+      }
+      this.activeEffects.splice(i, 1);
+    }
   }
 
   /**

@@ -3112,19 +3112,13 @@ export class GameRoom extends Room<GameState> {
       player.surfaceU = approxUV.u;
       player.surfaceV = approxUV.v;
 
-      // Tesla coil: always-active aura (like SP WeaponManager — no shooting required).
-      // Applies continuous damage to enemies in range regardless of fire button state.
-      // Mirrors SP behavior where the Tesla sphere auto-maintains while weapon is equipped.
-      if (player.weaponType === 'tesla_coil') {
-        this.applyTeslaDamage(player, dt);
-      }
-
       // Handle shooting (continuous action, applied per tick)
       if (input.shooting) {
         if (player.weaponType === 'laser_beam') {
           this.applyLaserDamage(player, dt);
+        } else if (player.weaponType === 'tesla_coil') {
+          this.applyTeslaDamage(player, dt);
         } else if (player.weaponType !== 'tesla_coil') {
-          // Tesla is handled above (always-active); all other weapons require shooting input
           this.tryShoot(player);
         }
       }

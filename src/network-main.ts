@@ -7304,7 +7304,7 @@ async function main() {
         localWeaponManager.fire(origin, aimDir, game.clock.totalTime, wpNormal);
       }
     }
-    localWeaponManager.update(dt);
+    localWeaponManager.update(dt, inputState.shooting && !localMenuOpen);
 
     // -- Update visual systems (same as co-op) --
     particles.update(dt);

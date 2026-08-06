@@ -640,6 +640,7 @@ export class GameInstance {
     }
 
     // Update player movement and shooting
+    let primaryFireHeld = false;
     if (this.player.alive) {
       // Weapon swap (E key)
       if (inputState.weaponSwap && !this.config.lockedWeapon) {
@@ -699,6 +700,7 @@ export class GameInstance {
       this.player.mesh.updateMatrixWorld(true);
 
       // Player update (shooting, bombs, etc.)
+      primaryFireHeld = inputState.shooting;
       this.player.update(dt, inputState);
     }
 
@@ -711,7 +713,7 @@ export class GameInstance {
     this._checkEnemyPlayerCollisions();
 
     // Update weapons (homing projectiles, etc.)
-    this.weaponManager.update(dt);
+    this.weaponManager.update(dt, primaryFireHeld);
 
     // Update particles
     this.particles.update(dt);

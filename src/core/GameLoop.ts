@@ -263,6 +263,7 @@ export class GameLoop {
 
     profiler.begin('player_update');
     // Update player movement and shooting
+    let primaryFireHeld = false;
     if (ctx.player.alive) {
       // Weapon swap (E key)
       if (inputState.weaponSwap) {
@@ -393,6 +394,7 @@ export class GameLoop {
       const effectiveInput = !ctx.gameMode.config.canShoot
         ? { ...inputState, shooting: false }
         : inputState;
+      primaryFireHeld = effectiveInput.shooting;
       ctx.player.update(dt, effectiveInput);
     }
     profiler.end('player_update');
@@ -1106,7 +1108,7 @@ export class GameLoop {
 
     profiler.begin('weapons_and_pickups');
     // Update weapon manager (projectiles, effects)
-    ctx.weaponManager.update(dt);
+    ctx.weaponManager.update(dt, primaryFireHeld);
 
     // Update weapon pickups
     for (let i = ctx.pickupSpawner.weaponPickups.length - 1; i >= 0; i--) {

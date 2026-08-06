@@ -962,11 +962,29 @@ describe('WeaponManager', () => {
 
       // Simulate a few frames
       for (let i = 0; i < 10; i++) {
-        manager.update(0.05);
+        manager.update(0.05, true);
       }
 
       const teslaDamages = mock.damages.filter(d => d.type === WeaponType.TeslaCoil);
       expect(teslaDamages.length).toBeGreaterThan(0);
+    });
+
+    it('does not create or damage with Tesla during no-input updates', () => {
+      const enemy: MockEnemy = {
+        position: origin().clone().add(new THREE.Vector3(1, 0, 0)),
+        index: 0, alive: true,
+      };
+
+      mock = createMockCallbacks([enemy]);
+      manager.setCallbacks(mock.callbacks);
+      manager.playerPositionRef = origin();
+
+      manager.update(0.05);
+      manager.update(0.05);
+
+      expect(manager.isTeslaActive()).toBe(false);
+      expect(mock.damages.filter(d => d.type === WeaponType.TeslaCoil)).toHaveLength(0);
+      expect(manager.getCurrentAmmo()).toBe(50);
     });
 
     it('should NOT damage enemies outside radius (3 units)', () => {
@@ -980,7 +998,7 @@ describe('WeaponManager', () => {
       manager.playerPositionRef = origin();
 
       manager.fire(origin(), forward(), T);
-      manager.update(0.05);
+      manager.update(0.05, true);
 
       const teslaDamages = mock.damages.filter(d => d.type === WeaponType.TeslaCoil);
       expect(teslaDamages.length).toBe(0);
@@ -993,7 +1011,7 @@ describe('WeaponManager', () => {
       // Move player
       const newPos = new THREE.Vector3(10, 5, 0);
       manager.playerPositionRef.copy(newPos);
-      manager.update(0.05);
+      manager.update(0.05, true);
 
       // Tesla mesh should follow player
       const teslaMesh = manager.projectileRoot.children[0];
