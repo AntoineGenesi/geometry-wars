@@ -171,6 +171,15 @@ describe('MP upgrade activation validation', () => {
 
   it('rejects unsupported retained Black Hole and Plasma mastery nodes', () => {
     expect(validate({
+      nodeId: 'black_hole_a_1',
+      weaponType: WeaponType.BlackHole,
+      unlockedNodeIds: ['black_hole_a_1'],
+    }, [], 10)).toMatchObject({
+      accepted: false,
+      reason: 'unsupported_runtime_effect',
+    });
+
+    expect(validate({
       nodeId: 'black_hole_al_4',
       weaponType: WeaponType.BlackHole,
       unlockedNodeIds: ['black_hole_al_4'],

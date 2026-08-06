@@ -1,4 +1,3 @@
-import { getNodeById } from '../systems/UpgradeTreeData';
 import { WeaponType } from '../weapons/WeaponTypes';
 
 export interface StandardUpgradePattern {
@@ -20,40 +19,181 @@ export interface MpUpgradeNodeSupport {
   reason: string;
 }
 
-// MP accepts only nodes whose projectile/damage behavior is implemented by
-// GameRoom.tryShoot() and its authoritative bullet damage paths.
-export const MP_SUPPORTED_UPGRADE_NODE_IDS = new Set([
-  'standard_a_1', 'standard_a_2', 'standard_a_3', 'standard_a_4',
-  'standard_b_1', 'standard_b_2', 'standard_b_3',
-  'standard_al_5', 'standard_al_6',
-  'spread_a_1', 'spread_a_2', 'spread_a_3', 'spread_al_4', 'spread_al_5',
-  'spread_b_1', 'spread_b_2',
-]);
+const STANDARD_SERVER_PROJECTILE_PATTERN: MpUpgradeNodeSupport = {
+  status: 'server_authoritative',
+  reason: 'GameRoom.tryShoot() applies this Standard projectile pattern from server active-node state.',
+};
+const SPREAD_SERVER_PROJECTILE_PATTERN: MpUpgradeNodeSupport = {
+  status: 'server_authoritative',
+  reason: 'GameRoom.tryShoot() applies this Spread projectile/damage pattern from server active-node state.',
+};
+const UNSUPPORTED_STANDARD: MpUpgradeNodeSupport = {
+  status: 'unsupported',
+  reason: 'Standard mastery node is retained, but its MP runtime mechanic is not server-authoritative yet.',
+};
+const UNSUPPORTED_SPREAD: MpUpgradeNodeSupport = {
+  status: 'unsupported',
+  reason: 'Spread mastery node is retained, but its MP runtime mechanic is not server-authoritative yet.',
+};
+const UNSUPPORTED_WEAPON: MpUpgradeNodeSupport = {
+  status: 'unsupported',
+  reason: 'This retained weapon mastery node has no MP server-authoritative activation support yet.',
+};
+const UNSUPPORTED_BLACK_HOLE_MASTERY: MpUpgradeNodeSupport = {
+  status: 'unsupported',
+  reason: 'Black Hole MP weapon baseline is supported, but mastery-node modifiers are deferred until server authority is proven.',
+};
+
+export const MP_UPGRADE_NODE_SUPPORT: Record<string, MpUpgradeNodeSupport> = {
+  standard_a_1: STANDARD_SERVER_PROJECTILE_PATTERN,
+  standard_a_2: STANDARD_SERVER_PROJECTILE_PATTERN,
+  standard_a_3: STANDARD_SERVER_PROJECTILE_PATTERN,
+  standard_a_4: STANDARD_SERVER_PROJECTILE_PATTERN,
+  standard_al_5: STANDARD_SERVER_PROJECTILE_PATTERN,
+  standard_al_6: STANDARD_SERVER_PROJECTILE_PATTERN,
+  standard_ar_5: UNSUPPORTED_STANDARD,
+  standard_ar_6: UNSUPPORTED_STANDARD,
+  standard_b_1: STANDARD_SERVER_PROJECTILE_PATTERN,
+  standard_b_2: STANDARD_SERVER_PROJECTILE_PATTERN,
+  standard_b_3: STANDARD_SERVER_PROJECTILE_PATTERN,
+  standard_b_4: {
+    status: 'unsupported',
+    reason: 'Standard heavy bolt remains MP-unsupported until its full retained contract is server-authoritative.',
+  },
+  standard_bl_5: UNSUPPORTED_STANDARD,
+  standard_bl_7: UNSUPPORTED_STANDARD,
+  standard_bl_10: UNSUPPORTED_STANDARD,
+  standard_br_5: UNSUPPORTED_STANDARD,
+  standard_br_7: UNSUPPORTED_STANDARD,
+  standard_br_10: UNSUPPORTED_STANDARD,
+
+  spread_a_1: SPREAD_SERVER_PROJECTILE_PATTERN,
+  spread_a_2: SPREAD_SERVER_PROJECTILE_PATTERN,
+  spread_a_3: SPREAD_SERVER_PROJECTILE_PATTERN,
+  spread_al_4: SPREAD_SERVER_PROJECTILE_PATTERN,
+  spread_al_5: SPREAD_SERVER_PROJECTILE_PATTERN,
+  spread_ar_4: UNSUPPORTED_SPREAD,
+  spread_ar_5: UNSUPPORTED_SPREAD,
+  spread_b_1: SPREAD_SERVER_PROJECTILE_PATTERN,
+  spread_b_2: SPREAD_SERVER_PROJECTILE_PATTERN,
+  spread_b_3: UNSUPPORTED_SPREAD,
+  spread_bl_4: UNSUPPORTED_SPREAD,
+  spread_bl_5: UNSUPPORTED_SPREAD,
+  spread_br_4: UNSUPPORTED_SPREAD,
+  spread_br_5: UNSUPPORTED_SPREAD,
+
+  piercing_a_1: UNSUPPORTED_WEAPON,
+  piercing_a_2: UNSUPPORTED_WEAPON,
+  piercing_a_3: UNSUPPORTED_WEAPON,
+  piercing_al_4: UNSUPPORTED_WEAPON,
+  piercing_al_5: UNSUPPORTED_WEAPON,
+  piercing_ar_4: UNSUPPORTED_WEAPON,
+  piercing_ar_5: UNSUPPORTED_WEAPON,
+  piercing_b_1: UNSUPPORTED_WEAPON,
+  piercing_b_2: UNSUPPORTED_WEAPON,
+  piercing_b_3: UNSUPPORTED_WEAPON,
+  piercing_bl_4: UNSUPPORTED_WEAPON,
+  piercing_bl_5: UNSUPPORTED_WEAPON,
+  piercing_br_4: UNSUPPORTED_WEAPON,
+  piercing_br_5: UNSUPPORTED_WEAPON,
+
+  chain_lightning_a_1: UNSUPPORTED_WEAPON,
+  chain_lightning_a_2: UNSUPPORTED_WEAPON,
+  chain_lightning_a_3: UNSUPPORTED_WEAPON,
+  chain_lightning_a_4: UNSUPPORTED_WEAPON,
+  chain_lightning_a_5: UNSUPPORTED_WEAPON,
+  chain_lightning_b_1: UNSUPPORTED_WEAPON,
+  chain_lightning_b_2: UNSUPPORTED_WEAPON,
+  chain_lightning_b_3: UNSUPPORTED_WEAPON,
+  chain_lightning_b_4: UNSUPPORTED_WEAPON,
+  chain_lightning_b_5: UNSUPPORTED_WEAPON,
+
+  homing_a_1: UNSUPPORTED_WEAPON,
+  homing_a_2: UNSUPPORTED_WEAPON,
+  homing_a_3: UNSUPPORTED_WEAPON,
+  homing_a_4: UNSUPPORTED_WEAPON,
+  homing_a_5: UNSUPPORTED_WEAPON,
+  homing_b_1: UNSUPPORTED_WEAPON,
+  homing_b_2: UNSUPPORTED_WEAPON,
+  homing_b_3: UNSUPPORTED_WEAPON,
+  homing_b_4: UNSUPPORTED_WEAPON,
+  homing_b_5: UNSUPPORTED_WEAPON,
+
+  plasma_mortar_a_1: UNSUPPORTED_WEAPON,
+  plasma_mortar_a_2: UNSUPPORTED_WEAPON,
+  plasma_mortar_a_3: UNSUPPORTED_WEAPON,
+  plasma_mortar_a_4: UNSUPPORTED_WEAPON,
+  plasma_mortar_a_5: UNSUPPORTED_WEAPON,
+  plasma_mortar_b_1: UNSUPPORTED_WEAPON,
+  plasma_mortar_b_2: UNSUPPORTED_WEAPON,
+  plasma_mortar_b_3: UNSUPPORTED_WEAPON,
+  plasma_mortar_b_4: UNSUPPORTED_WEAPON,
+  plasma_mortar_b_5: UNSUPPORTED_WEAPON,
+
+  gravity_gun_a_1: UNSUPPORTED_WEAPON,
+  gravity_gun_a_2: UNSUPPORTED_WEAPON,
+  gravity_gun_a_3: UNSUPPORTED_WEAPON,
+  gravity_gun_a_4: UNSUPPORTED_WEAPON,
+  gravity_gun_a_5: UNSUPPORTED_WEAPON,
+  gravity_gun_b_1: UNSUPPORTED_WEAPON,
+  gravity_gun_b_2: UNSUPPORTED_WEAPON,
+  gravity_gun_b_3: UNSUPPORTED_WEAPON,
+  gravity_gun_b_4: UNSUPPORTED_WEAPON,
+  gravity_gun_b_5: UNSUPPORTED_WEAPON,
+
+  laser_beam_a_1: UNSUPPORTED_WEAPON,
+  laser_beam_a_2: UNSUPPORTED_WEAPON,
+  laser_beam_a_3: UNSUPPORTED_WEAPON,
+  laser_beam_a_4: UNSUPPORTED_WEAPON,
+  laser_beam_a_5: UNSUPPORTED_WEAPON,
+  laser_beam_b_1: UNSUPPORTED_WEAPON,
+  laser_beam_b_2: UNSUPPORTED_WEAPON,
+  laser_beam_b_3: UNSUPPORTED_WEAPON,
+  laser_beam_b_4: UNSUPPORTED_WEAPON,
+  laser_beam_b_5: UNSUPPORTED_WEAPON,
+
+  black_hole_a_1: UNSUPPORTED_BLACK_HOLE_MASTERY,
+  black_hole_a_2: UNSUPPORTED_BLACK_HOLE_MASTERY,
+  black_hole_a_3: UNSUPPORTED_BLACK_HOLE_MASTERY,
+  black_hole_al_4: UNSUPPORTED_BLACK_HOLE_MASTERY,
+  black_hole_al_5: UNSUPPORTED_BLACK_HOLE_MASTERY,
+  black_hole_ar_4: UNSUPPORTED_BLACK_HOLE_MASTERY,
+  black_hole_ar_5: UNSUPPORTED_BLACK_HOLE_MASTERY,
+  black_hole_b_1: UNSUPPORTED_BLACK_HOLE_MASTERY,
+  black_hole_b_2: UNSUPPORTED_BLACK_HOLE_MASTERY,
+  black_hole_b_3: UNSUPPORTED_BLACK_HOLE_MASTERY,
+  black_hole_bl_4: UNSUPPORTED_BLACK_HOLE_MASTERY,
+  black_hole_bl_5: UNSUPPORTED_BLACK_HOLE_MASTERY,
+  black_hole_br_4: UNSUPPORTED_BLACK_HOLE_MASTERY,
+  black_hole_br_5: UNSUPPORTED_BLACK_HOLE_MASTERY,
+
+  tesla_coil_a_1: UNSUPPORTED_WEAPON,
+  tesla_coil_a_2: UNSUPPORTED_WEAPON,
+  tesla_coil_a_3: UNSUPPORTED_WEAPON,
+  tesla_coil_a_4: UNSUPPORTED_WEAPON,
+  tesla_coil_a_5: UNSUPPORTED_WEAPON,
+  tesla_coil_b_1: UNSUPPORTED_WEAPON,
+  tesla_coil_b_2: UNSUPPORTED_WEAPON,
+  tesla_coil_b_3: UNSUPPORTED_WEAPON,
+  tesla_coil_b_4: UNSUPPORTED_WEAPON,
+  tesla_coil_b_5: UNSUPPORTED_WEAPON,
+};
+
+export const MP_SUPPORTED_UPGRADE_NODE_IDS = new Set(
+  Object.entries(MP_UPGRADE_NODE_SUPPORT)
+    .filter(([, support]) => support.status !== 'unsupported')
+    .map(([nodeId]) => nodeId),
+);
+
+export function getMpUpgradeNodeSupport(nodeId: string): MpUpgradeNodeSupport {
+  return MP_UPGRADE_NODE_SUPPORT[nodeId] ?? {
+    status: 'unsupported',
+    reason: 'Unknown, removed, or stale upgrade node id is not supported in MP.',
+  };
+}
 
 export function isMpUpgradeNodeSupported(nodeId: string): boolean {
   return getMpUpgradeNodeSupport(nodeId).status !== 'unsupported';
-}
-
-export function getMpUpgradeNodeSupport(nodeId: string): MpUpgradeNodeSupport {
-  if (MP_SUPPORTED_UPGRADE_NODE_IDS.has(nodeId)) {
-    return {
-      status: 'server_authoritative',
-      reason: 'MP server applies this retained node from authoritative active-upgrade state.',
-    };
-  }
-
-  const node = getNodeById(nodeId);
-  if (node) {
-    return {
-      status: 'unsupported',
-      reason: 'Retained mastery node has no MP server-authoritative or client-safe runtime support yet.',
-    };
-  }
-
-  return {
-    status: 'unsupported',
-    reason: 'Unknown or stale removed upgrade node id is not supported in MP.',
-  };
 }
 
 export function filterMpSupportedUpgradeNodeIds(nodeIds: readonly string[]): string[] {

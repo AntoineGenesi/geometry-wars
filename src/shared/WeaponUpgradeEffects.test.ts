@@ -3,12 +3,14 @@ import { getAllNodes } from '../systems/UpgradeTreeData';
 import { WeaponType } from '../weapons/WeaponTypes';
 import {
   MP_SUPPORTED_UPGRADE_NODE_IDS,
+  MP_UPGRADE_NODE_SUPPORT,
   filterMpSupportedUpgradeNodeIds,
   getMpUpgradeNodeSupport,
   getSpreadUpgradePattern,
   getStandardUpgradePattern,
   getUpgradeDamageMultiplier,
   getUpgradeFireRateMultiplier,
+  isMpUpgradeNodeSupported,
 } from './WeaponUpgradeEffects';
 
 describe('shared weapon upgrade effects', () => {
@@ -51,30 +53,51 @@ describe('shared weapon upgrade effects', () => {
     expect(getUpgradeFireRateMultiplier(WeaponType.Standard, new Set(['standard_ar_5']))).toBeCloseTo(1.5);
   });
 
-  it('keeps all MP-supported ids present in the rebuilt retained tree', () => {
-    const retainedNodeIds = new Set(getAllNodes().map(node => node.id));
+  it('defines MP support for every retained tree node and no stale removed nodes', () => {
+    const retainedNodeIds = getAllNodes().map(node => node.id).sort();
+    const supportNodeIds = Object.keys(MP_UPGRADE_NODE_SUPPORT).sort();
 
-    for (const nodeId of MP_SUPPORTED_UPGRADE_NODE_IDS) {
-      expect(retainedNodeIds.has(nodeId)).toBe(true);
-      expect(getMpUpgradeNodeSupport(nodeId).status).toBe('server_authoritative');
+    expect(supportNodeIds).toEqual(retainedNodeIds);
+    for (const nodeId of supportNodeIds) {
+      expect(getMpUpgradeNodeSupport(nodeId).reason.length).toBeGreaterThan(0);
     }
   });
 
-  it('returns unsupported reasons for retained nodes without MP support', () => {
-    for (const nodeId of ['standard_b_4', 'black_hole_al_4', 'plasma_mortar_a_4']) {
-      const support = getMpUpgradeNodeSupport(nodeId);
-      expect(support.status).toBe('unsupported');
-      expect(support.reason.length).toBeGreaterThan(0);
-    }
+  it('keeps the proven MP Standard and Spread support subset explicit', () => {
+    expect([...MP_SUPPORTED_UPGRADE_NODE_IDS].sort()).toEqual([
+      'spread_a_1',
+      'spread_a_2',
+      'spread_a_3',
+      'spread_al_4',
+      'spread_al_5',
+      'spread_b_1',
+      'spread_b_2',
+      'standard_a_1',
+      'standard_a_2',
+      'standard_a_3',
+      'standard_a_4',
+      'standard_al_5',
+      'standard_al_6',
+      'standard_b_1',
+      'standard_b_2',
+      'standard_b_3',
+    ]);
+    expect(getMpUpgradeNodeSupport('standard_a_1').status).toBe('server_authoritative');
+    expect(getMpUpgradeNodeSupport('spread_al_5').status).toBe('server_authoritative');
   });
 
-  it('filters unsupported MP build-choice ids while preserving supported ids', () => {
+  it('filters unsupported retained or stale nodes out of MP build-choice offers', () => {
+    expect(isMpUpgradeNodeSupported('standard_b_4')).toBe(false);
+    expect(getMpUpgradeNodeSupport('standard_b_4').status).toBe('unsupported');
+    expect(getMpUpgradeNodeSupport('black_hole_a_1').status).toBe('unsupported');
+    expect(getMpUpgradeNodeSupport('standard_al_10').status).toBe('unsupported');
+
     expect(filterMpSupportedUpgradeNodeIds([
       'standard_a_1',
       'standard_b_4',
-      'black_hole_al_4',
+      'black_hole_a_1',
       'spread_b_2',
-      'plasma_mortar_a_4',
+      'standard_al_10',
     ])).toEqual(['standard_a_1', 'spread_b_2']);
   });
 });

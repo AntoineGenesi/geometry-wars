@@ -127,28 +127,31 @@ describe('MP upgrade activation client reconciliation', () => {
     expect(tracker.getActiveUpgrades(WeaponType.Spread).size).toBe(0);
   });
 
-  it('filters unsupported MP build choices while preserving supported choices', () => {
-    expect(filterMpBuildChoiceNodeIds([
+  it('filters unsupported retained nodes before MP build-choice UI sends requests', () => {
+    const result = filterMpBuildChoiceNodeIds([
       'standard_a_1',
       'standard_b_4',
       'spread_b_2',
-      'black_hole_al_4',
-      'plasma_mortar_a_4',
-    ])).toEqual({
+      'black_hole_a_1',
+    ]);
+
+    expect(result).toEqual({
       supportedNodeIds: ['standard_a_1', 'spread_b_2'],
-      unsupportedNodeIds: ['standard_b_4', 'black_hole_al_4', 'plasma_mortar_a_4'],
+      unsupportedNodeIds: ['standard_b_4', 'black_hole_a_1'],
       shouldShowChoiceScreen: true,
     });
   });
 
-  it('lets the MP caller skip the build-choice overlay when all choices are unsupported', () => {
-    expect(filterMpBuildChoiceNodeIds([
+  it('lets the MP build-choice caller clear pending state without pausing when all offers are unsupported', () => {
+    const result = filterMpBuildChoiceNodeIds([
       'standard_b_4',
-      'black_hole_al_4',
-      'plasma_mortar_a_4',
-    ])).toEqual({
+      'standard_ar_5',
+      'black_hole_a_1',
+    ]);
+
+    expect(result).toEqual({
       supportedNodeIds: [],
-      unsupportedNodeIds: ['standard_b_4', 'black_hole_al_4', 'plasma_mortar_a_4'],
+      unsupportedNodeIds: ['standard_b_4', 'standard_ar_5', 'black_hole_a_1'],
       shouldShowChoiceScreen: false,
     });
   });

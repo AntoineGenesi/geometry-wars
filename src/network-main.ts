@@ -1335,6 +1335,9 @@ async function main() {
   function wireBuildChoiceCallback(): void {
     matchUpgradeTracker.onBuildChoiceAvailable = (weaponType, availableNodeIds) => {
       const supportFilter = filterMpBuildChoiceNodeIds(availableNodeIds);
+      if (supportFilter.unsupportedNodeIds.length > 0) {
+        netMainLog(`[NetworkMain] Filtered unsupported MP upgrade choices: ${supportFilter.unsupportedNodeIds.join(', ')}`);
+      }
       if (!supportFilter.shouldShowChoiceScreen) {
         matchUpgradeTracker.clearPendingChoice();
         buildChoiceActive = false;

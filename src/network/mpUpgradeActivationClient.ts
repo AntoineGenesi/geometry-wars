@@ -28,9 +28,10 @@ export function filterMpBuildChoiceNodeIds(
 ): MpBuildChoiceSupportFilterResult {
   const supportedNodeIds = filterMpSupportedUpgradeNodeIds(availableNodeIds);
   const supported = new Set(supportedNodeIds);
+  const unsupportedNodeIds = availableNodeIds.filter(nodeId => !supported.has(nodeId));
   return {
     supportedNodeIds,
-    unsupportedNodeIds: availableNodeIds.filter(nodeId => !supported.has(nodeId)),
+    unsupportedNodeIds,
     shouldShowChoiceScreen: supportedNodeIds.length > 0,
   };
 }
