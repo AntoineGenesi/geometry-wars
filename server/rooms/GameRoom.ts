@@ -1412,6 +1412,15 @@ export class GameRoom extends Room<GameState> {
       client.send('cube_face_transition_aim_proof_setup_result', result);
     });
 
+    this.onMessage('pole_crossing_proof_setup', (client, data: { startU?: unknown; startV?: unknown }) => {
+      if (process.env.GEOMETRY_WARS_MP_PROOF_CONTROLS !== '1') {
+        client.send('pole_crossing_proof_setup_result', { ok: false, reason: 'proof_controls_disabled' });
+        return;
+      }
+      const result = this.setupPoleCrossingProof(client.sessionId, data);
+      client.send('pole_crossing_proof_setup_result', result);
+    });
+
     this.onMessage('start', (client, data?: { choice?: string; settings?: Partial<GameSettings> }) => {
       // Only the host can start the game
       if (client.sessionId !== this.state.hostId) {
@@ -3865,6 +3874,73 @@ export class GameRoom extends Room<GameState> {
       aimAngle: transition.aimAngle,
       targetEnemyId,
       targetDistance,
+    };
+  }
+
+  /** Place the host near a pole/neck region for the opt-in MP movement proof. */
+  private setupPoleCrossingProof(
+    sessionId: string,
+    data?: { startU?: unknown; startV?: unknown },
+  ): {
+    ok: boolean;
+    reason?: string;
+    surface?: string;
+    start?: ReturnType<GameRoom['locationSummary']>;
+    startU?: number;
+    startV?: number;
+  } {
+    if (sessionId !== this.state.hostId) return { ok: false, reason: 'not_host' };
+    if (this.state.roomPhase !== 'playing') return { ok: false, reason: 'not_playing' };
+
+    const player = this.state.players.get(sessionId);
+    const surface = this.surfaceManager.getMeshSurface();
+    const walker = this.surfaceManager.getWalker(sessionId);
+    if (!player || !surface || !walker) return { ok: false, reason: 'missing_player_or_surface' };
+
+    const startU = typeof data?.startU === 'number' && Number.isFinite(data.startU)
+      ? Math.max(0, Math.min(1, data.startU))
+      : 0.0;
+    const startV = typeof data?.startV === 'number' && Number.isFinite(data.startV)
+      ? Math.max(0.001, Math.min(0.999, data.startV))
+      : 0.02;
+
+    this.spawnGeneration++;
+    this.pendingEnemyCount = 0;
+    this.waveElapsed = 0;
+    this.nextWaveAt = Number.POSITIVE_INFINITY;
+    this.state.bullets.clear();
+    this.clearBlackHoleBolts();
+    this.state.blackHoleFields?.clear();
+    this.bulletDamageTracker.clear();
+    this.state.enemies.clear();
+    this.enemyAI.clear();
+    this.enemyWalkers.clear();
+    this.playerInputs.delete(sessionId);
+
+    this.surfaceManager.teleportWalkerToUV(sessionId, startU, startV);
+    const location = this.surfaceManager.getWalkerLocation(sessionId);
+    if (!location) return { ok: false, reason: 'teleport_failed' };
+    this.applyWalkerStateToPlayer(player, location);
+    player.surfaceU = startU;
+    player.surfaceV = startV;
+    player.aimAngle = 0;
+    player.weaponType = 'standard';
+    player.weaponAmmo = -1;
+    player.alive = true;
+    this.playerWeaponInventory.set(sessionId, [{ type: 'standard', ammo: -1 }]);
+    this.playerWeaponIndex.set(sessionId, 0);
+
+    this.logger.log(
+      `[GameRoom] Pole crossing proof setup: player=${sessionId} surface=${this.state.surfaceType} `
+      + `uv=(${startU.toFixed(3)},${startV.toFixed(3)}) face=${location.faceIndex}`,
+    );
+
+    return {
+      ok: true,
+      surface: this.state.surfaceType,
+      start: this.locationSummary(location),
+      startU,
+      startV,
     };
   }
 

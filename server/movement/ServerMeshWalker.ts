@@ -18,6 +18,8 @@ import {
   type ServerMeshLocation,
 } from './ServerMeshLocation';
 
+const CAMERA_AXIS_DEGENERATE_THRESHOLD = 0.1;
+
 export interface ServerWalkerState {
   wx: number; wy: number; wz: number;          // world position
   nx: number; ny: number; nz: number;          // surface normal
@@ -70,12 +72,19 @@ export class ServerMeshWalker {
     const rightLen = this._camRight.length();
     const upLen = this._camUp.length();
 
-    if (rightLen < 0.001 || upLen < 0.001) {
-      // Degenerate: camera axis is nearly parallel to surface normal.
-      // Fall back to tangent frame directly.
+    if (rightLen < CAMERA_AXIS_DEGENERATE_THRESHOLD || upLen < CAMERA_AXIS_DEGENERATE_THRESHOLD) {
+      // Degenerate: camera axis is nearly parallel to the surface normal.
+      // Match MeshWalker.moveFromInput()'s stable screen-axis fallback instead
+      // of using the walker's transported frame, which can disagree with the
+      // client's camera-relative controls around Peanut/sphere poles.
+      const ref = Math.abs(n.y) < 0.9
+        ? this._camUp.set(0, 1, 0)
+        : this._camUp.set(0, 0, 1);
+      this._camRight.crossVectors(ref, n).normalize();
+      this._camUp.crossVectors(n, this._camRight).normalize();
       this._moveDir.set(0, 0, 0)
-        .addScaledVector(this.walker.tangent, moveX)
-        .addScaledVector(this.walker.bitangent, moveY);
+        .addScaledVector(this._camRight, moveX)
+        .addScaledVector(this._camUp, moveY);
     } else {
       this._camRight.multiplyScalar(1 / rightLen);
       this._camUp.multiplyScalar(1 / upLen);

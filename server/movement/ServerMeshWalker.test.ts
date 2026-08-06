@@ -146,6 +146,31 @@ describe('ServerMeshWalker', () => {
       expect(bitangentBefore.dot(bitangentAfter)).toBeGreaterThan(0);
     });
 
+    test('peanut pole degenerate camera axes use screen-stable movement direction', () => {
+      const startNearPole = new THREE.Vector3(0.15, 7.8, 0);
+      const walker = new ServerMeshWalker(PEANUT_SURFACE, startNearPole, PLAYER_WORLD_SPEED);
+      const state0 = walker.getState();
+      const before = new THREE.Vector3(state0.wx, state0.wy, state0.wz);
+      const normal = new THREE.Vector3(state0.nx, state0.ny, state0.nz).normalize();
+      const ref = Math.abs(normal.y) < 0.9
+        ? new THREE.Vector3(0, 1, 0)
+        : new THREE.Vector3(0, 0, 1);
+      const stableRight = new THREE.Vector3().crossVectors(ref, normal).normalize();
+      const stableUp = new THREE.Vector3().crossVectors(normal, stableRight).normalize();
+
+      walker.moveWithCameraAxes(
+        0, 1,
+        1, 0, 0,
+        0, 1, 0,
+        0.1,
+      );
+
+      const state1 = walker.getState();
+      const after = new THREE.Vector3(state1.wx, state1.wy, state1.wz);
+      const actualDirection = after.clone().sub(before).normalize();
+      expect(actualDirection.dot(stableUp)).toBeGreaterThan(0.7);
+    });
+
     test('peanut waist crossing — speed is consistent (no distortion)', () => {
       // The peanut waist is near the equator (surfaceV ~ 0.5).
       // Speed should remain within 50% of the mean across 20 steps.

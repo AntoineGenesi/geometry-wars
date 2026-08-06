@@ -372,6 +372,19 @@ export interface CubeFaceTransitionAimProofSetupResult {
   targetDistance?: number;
 }
 
+export interface PoleCrossingProofSetupResult {
+  ok: boolean;
+  reason?: string;
+  surface?: string;
+  start?: {
+    faceIndex: number;
+    world: [number, number, number];
+    normal: [number, number, number];
+  };
+  startU?: number;
+  startV?: number;
+}
+
 /** Event callbacks */
 export interface NetworkCallbacks {
   onStateChange?: (state: NetworkGameState) => void;
@@ -438,6 +451,8 @@ export interface NetworkCallbacks {
   onUpgradeActivationResult?: (data: UpgradeActivationResult) => void;
   /** Fired after the opt-in cube face-transition aim proof setup request. */
   onCubeFaceTransitionAimProofSetupResult?: (data: CubeFaceTransitionAimProofSetupResult) => void;
+  /** Fired after the opt-in MP pole-crossing proof setup request. */
+  onPoleCrossingProofSetupResult?: (data: PoleCrossingProofSetupResult) => void;
   onPortalLocations?: (data: NetworkPortalLocations) => void;
 }
 
@@ -830,6 +845,11 @@ export class NetworkClient {
       this.callbacks.onCubeFaceTransitionAimProofSetupResult?.(data);
     });
 
+    this.room.onMessage('pole_crossing_proof_setup_result', (data: PoleCrossingProofSetupResult) => {
+      netLog(`[Network] pole_crossing_proof_setup_result: ok=${data.ok} reason=${data.reason ?? ''}`);
+      this.callbacks.onPoleCrossingProofSetupResult?.(data);
+    });
+
     // Disconnection
     this.room.onLeave((code) => {
       netLog(`[Network] Left room with code: ${code}`);
@@ -1130,6 +1150,12 @@ export class NetworkClient {
   sendCubeFaceTransitionAimProofSetup(data: { targetDistance?: number } = {}): void {
     if (!this.room || !this.connected) return;
     this.room.send('cube_face_transition_aim_proof_setup', data);
+  }
+
+  /** Request deterministic setup for the opt-in MP pole-crossing proof. */
+  sendPoleCrossingProofSetup(data: { startU?: number; startV?: number } = {}): void {
+    if (!this.room || !this.connected) return;
+    this.room.send('pole_crossing_proof_setup', data);
   }
 
   /** Request the opt-in authoritative Black Hole browser proof scene. */

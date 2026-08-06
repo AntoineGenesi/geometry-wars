@@ -109,6 +109,7 @@ import {
   NetworkMeshLocation,
   ClientMetricsPayload,
   CubeFaceTransitionAimProofSetupResult,
+  PoleCrossingProofSetupResult,
 } from './network/NetworkClient';
 import {
   filterMpBuildChoiceNodeIds,
@@ -238,6 +239,9 @@ interface GameDebugAPI {
   fireChevronAimProofShot: () => boolean;
   setupCubeFaceTransitionAimProof: (targetDistance?: number) => boolean;
   fireCubeFaceTransitionAimProofShot: () => boolean;
+  startPoleCrossingProofGame: (surfaceType: string) => boolean;
+  setupPoleCrossingProof: (startU?: number, startV?: number) => boolean;
+  sendPoleCrossingProofInput: (moveX?: number, moveY?: number, holdMs?: number) => boolean;
   getUpgradeProofState: () => Record<string, unknown>;
   setupUpgradeProof: (weaponType: string, killCount: number) => boolean;
   requestUpgradeProofActivation: (weaponType: string, nodeId: string, unlockedNodeIds: string[]) => boolean;
@@ -1344,7 +1348,13 @@ async function main() {
     reason?: string;
   } | null = null;
   let lastCubeFaceTransitionAimProofSetupResult: CubeFaceTransitionAimProofSetupResult | null = null;
+  let lastPoleCrossingProofSetupResult: PoleCrossingProofSetupResult | null = null;
   let cubeFaceTransitionAimProofForcedAimAngle: number | null = null;
+  let poleCrossingProofInputOverride: {
+    moveX: number;
+    moveY: number;
+    untilMs: number;
+  } | null = null;
 
   function wireBuildChoiceCallback(): void {
     matchUpgradeTracker.onBuildChoiceAvailable = (weaponType, availableNodeIds) => {
@@ -6503,6 +6513,23 @@ async function main() {
           console.warn(`[NetworkMain] Cube face-transition aim proof setup rejected: ${data.reason ?? 'unknown'}`);
         }
       },
+      onPoleCrossingProofSetupResult: (data) => {
+        lastPoleCrossingProofSetupResult = { ...data };
+        if (data.ok) {
+          const idle = {
+            ...(lastSentInput ?? { moveX: 0, moveY: 0, aimAngle: 0, shooting: false, bomb: false, boost: false }),
+            moveX: 0,
+            moveY: 0,
+            aimAngle: 0,
+            shooting: false,
+          };
+          lastSentInput = idle;
+          network.sendInput(idle);
+          netMainLog(`[NetworkMain] Pole crossing proof setup accepted: surface=${data.surface ?? 'unknown'}`);
+        } else {
+          console.warn(`[NetworkMain] Pole crossing proof setup rejected: ${data.reason ?? 'unknown'}`);
+        }
+      },
       onPvpKill: (data) => {
         netMainLog(`[PvP] ${data.killerName} killed ${data.victimName} (streak: ${data.streakCount})`);
         mpPerfLogger.recordPvpKill({
@@ -7025,7 +7052,7 @@ async function main() {
     if (!localMenuOpen && network.isConnected() && lastInputSendTime >= INPUT_SEND_INTERVAL) {
       // Negate moveY (same fix as before: W = screen up = -moveY, but
       // server expects +moveY = move up on surface)
-      const currentInput = {
+      let currentInput = {
         moveX: inputState.moveX,
         moveY: -inputState.moveY,
         aimAngle,
@@ -7037,6 +7064,28 @@ async function main() {
         camRightX: _aimCamRight.x, camRightY: _aimCamRight.y, camRightZ: _aimCamRight.z,
         camUpX: _aimCamUp.x, camUpY: _aimCamUp.y, camUpZ: _aimCamUp.z,
       };
+      if (_netMainTestMode && poleCrossingProofInputOverride) {
+        if (performance.now() <= poleCrossingProofInputOverride.untilMs) {
+          currentInput = {
+            ...currentInput,
+            moveX: poleCrossingProofInputOverride.moveX,
+            moveY: poleCrossingProofInputOverride.moveY,
+            aimAngle: 0,
+            shooting: false,
+            bomb: false,
+            boost: false,
+            weaponSwap: false,
+            camRightX: 1,
+            camRightY: 0,
+            camRightZ: 0,
+            camUpX: 0,
+            camUpY: 1,
+            camUpZ: 0,
+          };
+        } else {
+          poleCrossingProofInputOverride = null;
+        }
+      }
 
       const changed = !lastSentInput
         || currentInput.moveX !== lastSentInput.moveX
@@ -9384,6 +9433,7 @@ async function main() {
             forward: cameraForward.toArray(),
           },
           cubeFaceTransitionAimProofSetup: lastCubeFaceTransitionAimProofSetupResult,
+          poleCrossingProofSetup: lastPoleCrossingProofSetupResult,
           players,
           proofEnemies,
           recentServerBulletSpawns: _mpTelBulletSpawns.slice(-50).map((spawn) => {
@@ -9435,6 +9485,33 @@ async function main() {
         lastCubeFaceTransitionAimProofSetupResult = null;
         cubeFaceTransitionAimProofForcedAimAngle = null;
         network.sendCubeFaceTransitionAimProofSetup({ targetDistance });
+        return true;
+      },
+      startPoleCrossingProofGame: (surfaceType) => {
+        if (!_netMainTestMode || !isHost || !network.isConnected()) return false;
+        if (surfaceType !== 'peanut' && surfaceType !== 'capsule' && surfaceType !== 'sphere') return false;
+        network.startGame(`${surfaceType}:waves:medium:infinite`, {
+          ...currentGameSettings,
+          surface: surfaceType,
+          mode: 'waves',
+          infiniteLives: true,
+        });
+        return true;
+      },
+      setupPoleCrossingProof: (startU?: number, startV?: number) => {
+        if (!_netMainTestMode || !isHost || !network.isConnected()) return false;
+        lastPoleCrossingProofSetupResult = null;
+        poleCrossingProofInputOverride = null;
+        network.sendPoleCrossingProofSetup({ startU, startV });
+        return true;
+      },
+      sendPoleCrossingProofInput: (moveX?: number, moveY?: number, holdMs?: number) => {
+        if (!_netMainTestMode || !network.isConnected()) return false;
+        poleCrossingProofInputOverride = {
+          moveX: Number.isFinite(moveX) ? moveX! : 0,
+          moveY: Number.isFinite(moveY) ? moveY! : 1,
+          untilMs: performance.now() + (Number.isFinite(holdMs) ? Math.max(0, holdMs!) : 1000),
+        };
         return true;
       },
       fireCubeFaceTransitionAimProofShot: () => {
