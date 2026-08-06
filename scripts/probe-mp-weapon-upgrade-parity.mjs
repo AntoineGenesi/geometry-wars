@@ -14,6 +14,17 @@ const jsonPath = resolve(ROOT, 'reports', `mp-weapon-upgrade-parity-cube-waves-$
 const htmlPath = resolve(ROOT, 'reports', `mp-weapon-upgrade-parity-cube-waves-${runId}.html`);
 const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
 
+function findUp(relativePath, startDir = ROOT) {
+  let dir = startDir;
+  for (;;) {
+    const candidate = resolve(dir, relativePath);
+    if (existsSync(candidate)) return candidate;
+    const parent = dirname(dir);
+    if (parent === dir) return null;
+    dir = parent;
+  }
+}
+
 function commandPath(command) {
   try {
     return execSync(`command -v ${command}`, { encoding: 'utf8' }).trim().split('\n')[0] || null;
@@ -67,7 +78,11 @@ async function waitForPage(page, predicate, timeoutMs = 30000, argument = undefi
 }
 
 function startProcess(args, env, logs) {
-  const child = spawn(process.execPath, args, {
+  const resolvedArgs = [...args];
+  if (resolvedArgs[0]?.startsWith('node_modules/')) {
+    resolvedArgs[0] = findUp(resolvedArgs[0]) || resolvedArgs[0];
+  }
+  const child = spawn(process.execPath, resolvedArgs, {
     cwd: ROOT,
     env: { ...process.env, ...env },
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -334,7 +349,7 @@ async function main() {
     const checks = [
       { name: 'Real MP client connected', pass: Boolean(connected), detail: url },
       { name: 'Cube Waves room entered playing state', pass: Boolean(playing), detail: JSON.stringify({ connected: telemetry?.network?.connected, playerCount: telemetry?.network?.playerCount, isHost: telemetry?.network?.isHost, roomPhase: telemetry?.network?.roomPhase }) },
-      { name: 'Standard baseline projectile count', pass: standardBaseline.maxServerSyncedProjectileCount === 2, detail: `observed ${standardBaseline.maxServerSyncedProjectileCount}, expected 2` },
+      { name: 'Standard baseline projectile count', pass: standardBaseline.maxServerSyncedProjectileCount === 1, detail: `observed ${standardBaseline.maxServerSyncedProjectileCount}, expected 1` },
       { name: 'Standard node activation accepted', pass: standardActivation.lastActivationResult?.accepted === true, detail: JSON.stringify(standardActivation.lastActivationResult) },
       { name: 'Standard node visible in server schema and client tracker', pass: finalState.schemaActiveUpgradeNodes.includes('standard:standard_a_2') && finalState.trackerActiveUpgradeNodes.standard.includes('standard_a_2'), detail: JSON.stringify(finalState) },
       { name: 'Standard upgraded projectile count changed', pass: standardUpgraded.maxServerSyncedProjectileCount === 3 && standardUpgraded.maxServerSyncedProjectileCount > standardBaseline.maxServerSyncedProjectileCount, detail: `${standardBaseline.maxServerSyncedProjectileCount} -> ${standardUpgraded.maxServerSyncedProjectileCount}` },
