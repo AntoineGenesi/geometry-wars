@@ -1138,6 +1138,18 @@ export class NetworkClient {
     this.room.send('black_hole_proof_setup');
   }
 
+  /** Request the opt-in MP snake body proof scene. */
+  sendSnakeBodyProofSetup(data: { waveNumber?: number; queueLength?: number } = {}): void {
+    if (!this.room || !this.connected) return;
+    this.room.send('snake_body_proof_setup', data);
+  }
+
+  /** Kill the opt-in MP snake proof head through the server release path. */
+  sendSnakeBodyProofKillHead(data: { headId: string }): void {
+    if (!this.room || !this.connected) return;
+    this.room.send('snake_body_proof_kill_head', data);
+  }
+
   /**
    * Client-authoritative pickup collection: player detects proximity in world space
    * and notifies server to apply the effect and remove the pickup from state.

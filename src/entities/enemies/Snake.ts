@@ -6,7 +6,7 @@ import { buildTriangle3D, buildDiamond3D } from '../../utils/GeometryBuilder';
 const _tempMatrix = new THREE.Matrix4();
 
 export interface SnakeQueuedSegment {
-  type: 'grunt';
+  type: 'grunt' | 'weaver' | 'spinner' | 'neutron';
   surfaceU: number;
   surfaceV: number;
   health: number;
@@ -35,6 +35,13 @@ const GRUNT_SEGMENT_COLOR = 0x4444ff;
 const GRUNT_SEGMENT_RADIUS = 0.22;
 const GRUNT_SEGMENT_DEPTH = GRUNT_SEGMENT_RADIUS * 0.7;
 const GRUNT_SEGMENT_TUBE_RADIUS = 0.025;
+
+type SurfaceTransformResolver = (u: number, v: number) => {
+  position: THREE.Vector3;
+  normal: THREE.Vector3;
+  tangent: THREE.Vector3;
+  bitangent: THREE.Vector3;
+};
 
 /**
  * Snake enemy — a chained series of segments led by a large triangle head.
@@ -112,10 +119,22 @@ export class Snake extends BaseEnemy {
   }
 
   private createSegmentMesh(type: SnakeQueuedSegment['type'] = DEFAULT_SEGMENT_TYPE): THREE.Group {
+    const color = (() => {
+      switch (type) {
+        case 'weaver': return 0x00ff44;
+        case 'spinner': return 0xff44ff;
+        case 'neutron': return 0xccff00;
+        case 'grunt':
+        default: return GRUNT_SEGMENT_COLOR;
+      }
+    })();
     switch (type) {
+      case 'weaver':
+      case 'spinner':
+      case 'neutron':
       case 'grunt':
       default:
-        return buildDiamond3D(GRUNT_SEGMENT_RADIUS, GRUNT_SEGMENT_COLOR, GRUNT_SEGMENT_DEPTH, GRUNT_SEGMENT_TUBE_RADIUS);
+        return buildDiamond3D(GRUNT_SEGMENT_RADIUS, color, GRUNT_SEGMENT_DEPTH, GRUNT_SEGMENT_TUBE_RADIUS);
     }
   }
 
@@ -203,7 +222,7 @@ export class Snake extends BaseEnemy {
     return seg.health <= 0;
   }
 
-  setQueuedSegmentsFromNetwork(segments: SnakeQueuedSegment[]): void {
+  setQueuedSegmentsFromNetwork(segments: SnakeQueuedSegment[], getTransform?: SurfaceTransformResolver): void {
     this.usingExternalQueueSegments = true;
     const sorted = [...segments].sort((a, b) => a.queueIndex - b.queueIndex);
 
@@ -228,6 +247,11 @@ export class Snake extends BaseEnemy {
     for (let i = 0; i < sorted.length; i++) {
       const input = sorted[i];
       const seg = this.segs[i];
+      if (seg.type !== input.type) {
+        this.disposeSegmentMesh(seg);
+        seg.mesh = this.createSegmentMesh(input.type);
+        this.segmentRoot.add(seg.mesh);
+      }
       seg.type = input.type;
       seg.surfaceU = input.surfaceU;
       seg.surfaceV = input.surfaceV;
@@ -235,6 +259,8 @@ export class Snake extends BaseEnemy {
       seg.maxHealth = input.maxHealth;
       seg.queueIndex = input.queueIndex;
     }
+
+    if (getTransform) this.positionSegmentMeshes(getTransform);
   }
 
   // ─────────────────────────── shared logic ────────────────────────────────
@@ -362,6 +388,10 @@ export class Snake extends BaseEnemy {
 
     // Update each segment mesh in world space
     // segmentRoot is at world origin — child positions ARE world positions
+    this.positionSegmentMeshes(getTransform);
+  }
+
+  private positionSegmentMeshes(getTransform: SurfaceTransformResolver): void {
     for (const seg of this.segs) {
       const t = getTransform(seg.surfaceU, seg.surfaceV);
       seg.mesh.position.copy(t.position).addScaledVector(t.normal, this.radius);
@@ -393,5 +423,24 @@ export class Snake extends BaseEnemy {
       v: s.surfaceV,
       radius: GRUNT_SEGMENT_RADIUS,
     }));
+  }
+
+  /** Expose ordered segment mesh positions for MP/browser proof harnesses. */
+  getSegmentRenderData(): Array<SnakeQueuedSegment & { world: number[]; visible: boolean; radius: number }> {
+    return this.segs.map((s) => {
+      const world = new THREE.Vector3();
+      s.mesh.getWorldPosition(world);
+      return {
+        type: s.type,
+        surfaceU: s.surfaceU,
+        surfaceV: s.surfaceV,
+        health: s.health,
+        maxHealth: s.maxHealth,
+        queueIndex: s.queueIndex,
+        world: world.toArray(),
+        visible: s.mesh.visible,
+        radius: GRUNT_SEGMENT_RADIUS,
+      };
+    });
   }
 }

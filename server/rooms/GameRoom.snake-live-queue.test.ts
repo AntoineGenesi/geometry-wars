@@ -58,4 +58,23 @@ describe('GameRoom snake live queues', () => {
     expect(room.state.enemies[1].health).toBe(1);
     expect(room.enemyAI.has(head.id)).toBe(false);
   });
+
+  it('scales queued snake segment composition beyond grunts at high difficulty', () => {
+    const room = new GameRoom() as any;
+    room.computeDifficultyLevel = () => 11;
+
+    const head = makeEnemy('snake-head', 'snake', 6, 0.5, 0.5);
+    const segmentTypes = Array.from({ length: 8 }, (_, index) => room.makeSnakeSegmentState(head, index).type);
+
+    expect(segmentTypes).toEqual([
+      'grunt',
+      'weaver',
+      'spinner',
+      'neutron',
+      'grunt',
+      'weaver',
+      'spinner',
+      'neutron',
+    ]);
+  });
 });

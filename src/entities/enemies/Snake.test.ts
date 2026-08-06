@@ -5,6 +5,7 @@
  * segment-peel on bullet hit, head-death spawning all remaining segments.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import * as THREE from 'three';
 import { Snake } from './Snake';
 import { computeSnakeInitialQueueLength } from './EnemySpawner';
 
@@ -196,6 +197,27 @@ describe('Snake enemy', () => {
     expect(data.map((s) => s.health)).toEqual([3, 4, 2]);
     expect(snake.segmentRoot.children.length).toBe(3);
     expect(data.every((s) => s.radius === 0.22)).toBe(true);
+  });
+
+  it('positions externally synced MP segments immediately from network state', () => {
+    const getTransform = (u: number, v: number) => ({
+      position: new THREE.Vector3(u * 10, v * 10, 1),
+      normal: new THREE.Vector3(0, 1, 0),
+      tangent: new THREE.Vector3(1, 0, 0),
+      bitangent: new THREE.Vector3(0, 0, 1),
+    });
+
+    snake.setQueuedSegmentsFromNetwork([
+      { type: 'weaver', surfaceU: 0.7, surfaceV: 0.6, health: 4, maxHealth: 6, queueIndex: 0 },
+      { type: 'spinner', surfaceU: 0.65, surfaceV: 0.6, health: 3, maxHealth: 5, queueIndex: 1 },
+    ], getTransform);
+
+    const data = snake.getSegmentData();
+    expect(data.map((s) => s.type)).toEqual(['weaver', 'spinner']);
+    expect(snake.segmentRoot.children[0].position.x).toBeCloseTo(7, 4);
+    expect(snake.segmentRoot.children[0].position.y).toBeCloseTo(6.3, 4);
+    expect(collectMeshColors(snake.segmentRoot)).toContain(0x00ff44);
+    expect(collectMeshColors(snake.segmentRoot)).toContain(0xff44ff);
   });
 
   // ──────────────────── movement ────────────────────

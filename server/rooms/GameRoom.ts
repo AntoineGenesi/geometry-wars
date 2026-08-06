@@ -1347,6 +1347,65 @@ export class GameRoom extends Room<GameState> {
       if (player) this.setupBlackHoleProof(player);
     });
 
+    this.onMessage('snake_body_proof_setup', (client, data: { waveNumber?: unknown; queueLength?: unknown }) => {
+      if (process.env.GEOMETRY_WARS_MP_PROOF_CONTROLS !== '1') {
+        client.send('snake_body_proof_setup_result', { ok: false, error: 'proof controls disabled' });
+        return;
+      }
+      if (client.sessionId !== this.state.hostId || this.state.roomPhase !== 'playing') {
+        client.send('snake_body_proof_setup_result', { ok: false, error: 'host playing room required' });
+        return;
+      }
+
+      const proofWave = typeof data?.waveNumber === 'number' && Number.isFinite(data.waveNumber)
+        ? Math.max(1, Math.min(80, Math.floor(data.waveNumber)))
+        : this.waveNumber;
+      const queueLength = typeof data?.queueLength === 'number' && Number.isFinite(data.queueLength)
+        ? Math.max(1, Math.min(50, Math.floor(data.queueLength)))
+        : 14;
+      const previousWave = this.waveNumber;
+      const previousStateWave = this.state.waveNumber;
+      this.waveNumber = proofWave;
+      this.state.waveNumber = proofWave;
+
+      const head = this.makeEnemyState('snake', 0.52, 0.5);
+      this.ensureEnemyWalker(head);
+      this.enemyAI.set(head.id, this.createEnemyAI(head.type));
+      const segments: EnemyState[] = [];
+      for (let i = 0; i < queueLength; i++) {
+        segments.push(this.makeSnakeSegmentState(head, i));
+      }
+      this.state.enemies.push(head, ...segments);
+
+      this.waveNumber = previousWave;
+      this.state.waveNumber = previousStateWave;
+
+      client.send('snake_body_proof_setup_result', {
+        ok: true,
+        headId: head.id,
+        queueLength,
+        segmentTypes: segments.map((segment) => segment.type),
+      });
+    });
+
+    this.onMessage('snake_body_proof_kill_head', (client, data: { headId?: unknown }) => {
+      if (process.env.GEOMETRY_WARS_MP_PROOF_CONTROLS !== '1') {
+        client.send('snake_body_proof_kill_head_result', { ok: false, error: 'proof controls disabled' });
+        return;
+      }
+      if (client.sessionId !== this.state.hostId || typeof data?.headId !== 'string') {
+        client.send('snake_body_proof_kill_head_result', { ok: false, error: 'host and headId required' });
+        return;
+      }
+      const index = this.state.enemies.findIndex((enemy) => enemy.id === data.headId);
+      if (index < 0) {
+        client.send('snake_body_proof_kill_head_result', { ok: false, error: 'head not found' });
+        return;
+      }
+      const released = this.removeKilledEnemyAt(index);
+      client.send('snake_body_proof_kill_head_result', { ok: true, released });
+    });
+
     this.onMessage('cube_face_transition_aim_proof_setup', (client, data: { targetDistance?: unknown }) => {
       if (process.env.GEOMETRY_WARS_MP_PROOF_CONTROLS !== '1') return;
       const result = this.setupCubeFaceTransitionAimProof(client.sessionId, data);
@@ -6941,9 +7000,21 @@ export class GameRoom extends Room<GameState> {
     return enemy;
   }
 
+  private getSnakeSegmentType(queueIndex: number): string {
+    const difficulty = Math.max(0, this.computeDifficultyLevel());
+    if (difficulty < 4) return 'grunt';
+
+    const pattern = difficulty >= 10
+      ? ['grunt', 'weaver', 'spinner', 'neutron']
+      : difficulty >= 7
+        ? ['grunt', 'weaver', 'spinner']
+        : ['grunt', 'weaver'];
+    return pattern[queueIndex % pattern.length];
+  }
+
   private makeSnakeSegmentState(parent: EnemyState, queueIndex: number): EnemyState {
     const offset = (queueIndex + 1) * 0.035;
-    const segment = this.makeEnemyState('grunt', this.wrapCoord(parent.surfaceU - offset), parent.surfaceV);
+    const segment = this.makeEnemyState(this.getSnakeSegmentType(queueIndex), this.wrapCoord(parent.surfaceU - offset), parent.surfaceV);
     segment.id = `${parent.id}:q${queueIndex}`;
     segment.queued = true;
     segment.parentId = parent.id;

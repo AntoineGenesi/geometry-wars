@@ -223,6 +223,9 @@ interface GameDebugAPI {
   getEnemyCount: () => number;
   getEnemies: () => { id: string; type: string; u: number; v: number; hp: number }[];
   getEnemyMeshPathingSamples: () => Record<string, unknown>[];
+  getSnakeBodyDebug: () => Record<string, unknown>[];
+  setupSnakeBodyProof: (waveNumber?: number, queueLength?: number) => boolean;
+  killSnakeBodyProofHead: (headId: string) => boolean;
   getBulletCount: () => number;
   getBlackHoleProofState: () => Record<string, unknown>;
   startBlackHoleProofGame: () => boolean;
@@ -4632,7 +4635,7 @@ async function main() {
       if (netEnemy.queued && netEnemy.parentId) {
         const segments = queuedSnakeSegments.get(netEnemy.parentId) ?? [];
         segments.push({
-          type: 'grunt',
+          type: netEnemy.type as SnakeQueuedSegment['type'],
           surfaceU: netEnemy.surfaceU,
           surfaceV: netEnemy.surfaceV,
           health: netEnemy.health,
@@ -4727,7 +4730,11 @@ async function main() {
     queuedSnakeSegments.forEach((segments, parentId) => {
       const parent = networkEnemies.get(parentId);
       if (parent instanceof Snake) {
-        parent.setQueuedSegmentsFromNetwork(segments);
+        if (getTransform) {
+          parent.setQueuedSegmentsFromNetwork(segments, getTransform);
+        } else {
+          parent.setQueuedSegmentsFromNetwork(segments);
+        }
       }
     });
 
@@ -9064,6 +9071,64 @@ async function main() {
           });
         });
         return samples;
+      },
+      getSnakeBodyDebug: () => {
+        const serverQueuedByParent = new Map<string, Record<string, unknown>[]>();
+        latestGameState?.enemies.forEach((enemy) => {
+          if (!enemy.queued || !enemy.parentId) return;
+          const rows = serverQueuedByParent.get(enemy.parentId) ?? [];
+          rows.push({
+            id: enemy.id,
+            type: enemy.type,
+            surfaceU: enemy.surfaceU,
+            surfaceV: enemy.surfaceV,
+            health: enemy.health,
+            maxHealth: enemy.maxHealth,
+            queueIndex: enemy.queueIndex,
+            world: [enemy.wx, enemy.wy, enemy.wz],
+          });
+          serverQueuedByParent.set(enemy.parentId, rows);
+        });
+
+        const samples: Record<string, unknown>[] = [];
+        networkEnemies.forEach((enemy, id) => {
+          if (!(enemy instanceof Snake)) return;
+          const headWorld = new THREE.Vector3();
+          const headObject = enemy.mesh ?? null;
+          if (headObject) headObject.getWorldPosition(headWorld);
+          else headWorld.copy(enemy.position);
+          const segmentRenderData = enemy.getSegmentRenderData();
+          const segmentWorld = segmentRenderData.map((segment, index) => {
+            const world = new THREE.Vector3().fromArray(segment.world);
+            return {
+              index,
+              type: segment.type,
+              queueIndex: segment.queueIndex,
+              world: world.toArray(),
+              distanceToHead: world.distanceTo(headWorld),
+              visible: segment.visible,
+            };
+          });
+          samples.push({
+            id,
+            type: enemy.baseTypeName || 'snake',
+            headWorld: headWorld.toArray(),
+            segmentCount: enemy.getSegmentData().length,
+            segmentTypes: enemy.getSegmentData().map((segment) => segment.type),
+            segmentWorld,
+            serverQueuedRows: serverQueuedByParent.get(id) ?? [],
+          });
+        });
+        return samples;
+      },
+      setupSnakeBodyProof: (waveNumber?: number, queueLength?: number) => {
+        network.sendSnakeBodyProofSetup({ waveNumber, queueLength });
+        return true;
+      },
+      killSnakeBodyProofHead: (headId: string) => {
+        if (!headId) return false;
+        network.sendSnakeBodyProofKillHead({ headId });
+        return true;
       },
       getBulletCount: () => bulletIdToIndex.size,
       getBlackHoleProofState: () => {
