@@ -48,9 +48,41 @@ function injectStyles(): void {
       position: absolute;
       display: flex;
       flex-direction: column;
-      gap: 3px;
+      gap: 5px;
       pointer-events: none;
       z-index: 110;
+    }
+    .weapon-hud-switch-prompt {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      height: 15px;
+      font-family: 'Segoe UI', Arial, sans-serif;
+      font-size: 10px;
+      font-weight: 600;
+      color: rgba(220, 230, 255, 0.95);
+      text-shadow: 0 0 5px rgba(80, 180, 255, 0.55);
+      white-space: nowrap;
+      letter-spacing: 0;
+    }
+    .weapon-hud-switch-prompt .weapon-hud-key {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 13px;
+      height: 13px;
+      padding: 0 3px;
+      border: 1px solid rgba(170, 170, 204, 0.36);
+      border-radius: 3px;
+      background: rgba(0, 0, 0, 0.55);
+      color: rgba(245, 250, 255, 0.96);
+      box-sizing: border-box;
+      line-height: 1;
+    }
+    .weapon-hud-list {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
     }
     .weapon-hud-item {
       display: flex;
@@ -167,6 +199,9 @@ function injectStyles(): void {
     }
     /* Mobile scaling — reduce weapon HUD size on small screens */
     @media (max-width: 900px) and (pointer: coarse) {
+      .weapon-hud-switch-prompt {
+        display: none;
+      }
       .weapon-hud-main-row {
         height: 16px;
         gap: 3px;
@@ -206,6 +241,7 @@ function injectStyles(): void {
 
 export class WeaponHUD {
   private container: HTMLDivElement;
+  private list: HTMLDivElement;
   private items: Map<WeaponType, HTMLDivElement> = new Map();
   private lastActiveType: WeaponType = WeaponType.Standard;
 
@@ -214,6 +250,23 @@ export class WeaponHUD {
 
     this.container = document.createElement('div');
     this.container.className = 'weapon-hud';
+
+    const prompt = document.createElement('div');
+    prompt.className = 'weapon-hud-switch-prompt';
+    prompt.setAttribute('aria-hidden', 'true');
+    prompt.innerHTML = [
+      '<span>SWAP</span>',
+      '<span class="weapon-hud-key">Q</span>',
+      '<span>/</span>',
+      '<span class="weapon-hud-key">E</span>',
+      '<span class="weapon-hud-key">PAD Y</span>',
+    ].join('');
+
+    this.list = document.createElement('div');
+    this.list.className = 'weapon-hud-list';
+
+    this.container.appendChild(prompt);
+    this.container.appendChild(this.list);
     document.body.appendChild(this.container);
   }
 
@@ -393,7 +446,7 @@ export class WeaponHUD {
   }
 
   private rebuild(inventory: WeaponInventoryEntry[]): void {
-    this.container.innerHTML = '';
+    this.list.innerHTML = '';
     this.items.clear();
 
     for (const entry of inventory) {
@@ -462,7 +515,7 @@ export class WeaponHUD {
 
       item.appendChild(mainRow);
       item.appendChild(masteryRow);
-      this.container.appendChild(item);
+      this.list.appendChild(item);
       this.items.set(entry.type, item);
     }
   }
