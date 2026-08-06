@@ -534,7 +534,7 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
   const savedVisualMode = loadVisualMode();
   // -- Visual style (explicit gallery choice wins; otherwise mode supplies a featured style) --
   const savedStyle = loadVisualStyle() ?? getVisualModeFeaturedPreset(savedVisualMode);
-  let ctx: GameContext | null = null;
+  let ctx = undefined as unknown as GameContext;
 
   // -- Game engine --
   // On mobile: reduce bloom, cap pixel ratio, apply mobile entity limits
