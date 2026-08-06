@@ -22,14 +22,6 @@ function makeEnemy(id, type, health, u, v) {
   return enemy;
 }
 
-function makeQueuedSegment(parentId, queueIndex, health) {
-  const segment = makeEnemy(`${parentId}:q${queueIndex}`, 'grunt', health, 0.5 - queueIndex * 0.002, 0.5);
-  segment.queued = true;
-  segment.parentId = parentId;
-  segment.queueIndex = queueIndex;
-  return segment;
-}
-
 function summarize(room) {
   const enemies = Array.from(room.state.enemies);
   return {
@@ -46,19 +38,23 @@ function summarize(room) {
   };
 }
 
-function runScenario(queueLength) {
+function runScenario(queueLength, difficulty = 0) {
   const room = new GameRoom();
   room.state = new GameState();
   room.state.roomPhase = 'playing';
   room.state.gameMode = 'pvpve';
   room.state.pvpMode = 'pvpve';
   room.enemyAI = new Map();
+  room.computeDifficultyLevel = () => difficulty;
 
   const head = makeEnemy(`snake-${queueLength}`, 'snake', 6, 0.5, 0.5);
   room.state.enemies.push(head);
   room.enemyAI.set(head.id, { currentSpeed: 0.02 });
   for (let i = 0; i < queueLength; i++) {
-    room.state.enemies.push(makeQueuedSegment(head.id, i, i % 3 === 0 ? 5 : 2));
+    const segment = room.makeSnakeSegmentState(head, i);
+    segment.health = i % 3 === 0 ? 5 : 2;
+    segment.maxHealth = Math.max(segment.maxHealth, segment.health);
+    room.state.enemies.push(segment);
   }
 
   const before = summarize(room);
@@ -75,13 +71,14 @@ function runScenario(queueLength) {
     hasAI: room.enemyAI.has(enemy.id),
   }));
 
-  return { queueLength, before, released, after, releasedRows };
+  return { queueLength, difficulty, before, released, after, releasedRows };
 }
 
 mkdirSync(REPORT_DIR, { recursive: true });
 
-const representative = runScenario(14);
-const latePerf = runScenario(50);
+const representative = runScenario(14, 0);
+const latePerf = runScenario(50, 11);
+const lateTypes = new Set(latePerf.releasedRows.map((row) => row.type));
 
 const report = {
   verdict:
@@ -93,6 +90,8 @@ const report = {
     && representative.releasedRows.some((row) => row.health === 1)
     && latePerf.released === 50
     && latePerf.after.totalRows === 50
+    && ['grunt', 'weaver', 'spinner', 'neutron'].every((type) => lateTypes.has(type))
+    && latePerf.releasedRows.every((row) => !row.queued && row.parentId === '' && row.queueIndex === -1 && row.hasAI)
     ? 'PASS'
     : 'FAIL',
   representative,
@@ -102,7 +101,8 @@ const report = {
     beforeRows: latePerf.before.totalRows,
     afterRows: latePerf.after.totalRows,
     runawayHiddenRows: latePerf.after.queuedRows,
-    note: 'Head row is removed; queued segment rows flip in place into normal enemies, so release does not duplicate rows.',
+    releasedTypes: [...lateTypes].sort(),
+    note: 'Head row is removed; queued segment rows flip in place into normal enemies, so release does not duplicate rows. At high difficulty, queued snake bodies mix grunt/weaver/spinner/neutron.',
   },
 };
 
