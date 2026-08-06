@@ -123,6 +123,12 @@ export interface EnemyInfo {
   renderSlotIndex: number | null;
   renderDrawCount: number | null;
   movementMode: 'walker' | 'uv';
+  surfaceVisibility: {
+    className: string;
+    visibility: number;
+    minColorBrightness: number;
+    topologyDistanceRatio: number;
+  } | null;
   commandedWorldSpeed: number;
   actualWorldSpeed: number;
   distanceToPlayer: number;
@@ -448,6 +454,7 @@ export class TestHarnessAPI {
         renderSlotIndex,
         renderDrawCount,
         movementMode: enemy.lastMovementMode,
+        surfaceVisibility: this.serializeSurfaceVisibility((enemy as any).__surfaceVisibility),
         commandedWorldSpeed: enemy.lastCommandedWorldSpeed,
         actualWorldSpeed: enemy.lastActualWorldSpeed,
         distanceToPlayer: enemy.lastDistanceToPlayer,
@@ -562,10 +569,41 @@ export class TestHarnessAPI {
 
   /** Spawn a weapon pickup at a UV position. Returns an ID. */
   spawnPickup(type: string, u: number, v: number): string {
-    // Force-spawn pickup at the given location by calling the pickup spawner's
-    // underlying mechanism. We use the real PickupSpawner but override RNG.
     const id = `pickup_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-    this.ctx.pickupSpawner.spawnPickupsOnEnemyDeath(u, v);
+    const { pickupSpawner, game } = this.ctx;
+    const addPickup = <T extends { mesh: THREE.Group }>(pickup: T, collection: T[]): void => {
+      pickup.mesh.userData.testPickupId = id;
+      game.scene.add(pickup.mesh);
+      collection.push(pickup);
+    };
+
+    switch (type) {
+      case 'super':
+        addPickup(new SuperStatePickup(SuperStateType.QuadFire, u, v), pickupSpawner.superPickups);
+        break;
+      case 'weapon':
+        addPickup(new WeaponPickup(WeaponType.Spread, u, v), pickupSpawner.weaponPickups);
+        break;
+      case 'buff':
+        addPickup(new BuffPickup(BuffType.RapidFire, u, v), pickupSpawner.buffPickups);
+        break;
+      case 'stack-buff':
+      case 'new-buff':
+        addPickup(new BuffPickupNew(StackBuffType.HotHands, u, v), pickupSpawner.newBuffPickups);
+        break;
+      case 'companion':
+        addPickup(new CompanionPickup(CompanionType.Guardian, u, v), pickupSpawner.companionPickups);
+        break;
+      case 'heal':
+        addPickup(new HealPickup(u, v), pickupSpawner.healPickups);
+        break;
+      case 'shield':
+        addPickup(new ShieldPickup(u, v), pickupSpawner.shieldPickups);
+        break;
+      default:
+        pickupSpawner.spawnPickupsOnEnemyDeath(u, v);
+        break;
+    }
     return id;
   }
 
@@ -1402,6 +1440,16 @@ export class TestHarnessAPI {
 
   private getEnemyInfoById(id: string): EnemyInfo | null {
     return this.getEnemies().find((enemy) => enemy.id === id) ?? null;
+  }
+
+  private serializeSurfaceVisibility(surfaceVisibility: any): EnemyInfo['surfaceVisibility'] {
+    if (!surfaceVisibility) return null;
+    return {
+      className: String(surfaceVisibility.className ?? 'unknown'),
+      visibility: Number(surfaceVisibility.visibility ?? 0),
+      minColorBrightness: Number(surfaceVisibility.minColorBrightness ?? 0),
+      topologyDistanceRatio: Number(surfaceVisibility.topologyDistanceRatio ?? 0),
+    };
   }
 
   private getFireDirection(origin: THREE.Vector3, targetEnemyId?: string): THREE.Vector3 {
