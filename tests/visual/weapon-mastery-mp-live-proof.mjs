@@ -6,9 +6,10 @@
  * src/network-main.ts + server/rooms/GameRoom.ts.
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
-import { dirname, relative, resolve } from 'path';
+import { dirname, isAbsolute, relative, resolve } from 'path';
 import { spawn } from 'child_process';
 import { fileURLToPath } from 'url';
+import { screenshotPixelStats } from './screenshot-pixel-stats.mjs';
 
 const PROJECT_ROOT = resolve(fileURLToPath(new URL('../..', import.meta.url)));
 const RUN_ID = new Date().toISOString().replace(/[:.]/g, '-');
@@ -65,6 +66,19 @@ function summarizeChecks(rawReport) {
   }));
 }
 
+function safeScreenshotStats(path) {
+  const absolutePath = isAbsolute(path) ? path : resolve(PROJECT_ROOT, path);
+  try {
+    return screenshotPixelStats(absolutePath);
+  } catch (error) {
+    return {
+      path: absolutePath,
+      nonblank: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
 async function main() {
   mkdirSync(dirname(REPORT_PATH), { recursive: true });
   const child = await runProbe();
@@ -72,10 +86,18 @@ async function main() {
   const rawJsonPath = parsed?.jsonPath || null;
   const rawHtmlPath = parsed?.htmlPath || null;
   const rawReport = readRawReport(rawJsonPath);
-  const screenshots = (rawReport?.screenshots || []).map(path =>
+  const rawScreenshots = rawReport?.screenshots || [];
+  const screenshotStats = rawScreenshots.map(path => safeScreenshotStats(path));
+  const screenshots = rawScreenshots.map(path =>
     path.startsWith(PROJECT_ROOT) ? relative(PROJECT_ROOT, path) : path);
   const checks = summarizeChecks(rawReport);
-  const passed = child.code === 0 && rawReport?.verdict === 'PASS';
+  const screenshotChecks = {
+    screenshotCount: screenshotStats.length,
+    screenshotsNonblank: screenshotStats.length > 0 && screenshotStats.every(stats => stats.nonblank),
+  };
+  const passed = child.code === 0
+    && rawReport?.verdict === 'PASS'
+    && screenshotChecks.screenshotsNonblank;
 
   const report = {
     generatedAt: new Date().toISOString(),
@@ -94,6 +116,8 @@ async function main() {
     },
     rawVerdict: rawReport?.verdict ?? null,
     checks,
+    screenshotChecks,
+    screenshotStats,
     observations: rawReport?.observations ?? null,
     childStdout: child.stdout.slice(-5000),
     childStderr: child.stderr.slice(-5000),
@@ -103,6 +127,7 @@ async function main() {
   console.log(`Report: ${REPORT_PATH}`);
   if (rawJsonPath) console.log(`Raw probe JSON: ${rawJsonPath}`);
   if (rawHtmlPath) console.log(`Raw probe HTML: ${rawHtmlPath}`);
+  for (const screenshot of rawScreenshots) console.log(`Raw screenshot: ${screenshot}`);
   console.log(`Result: ${passed ? 'PASS' : 'FAIL'}`);
   process.exit(passed ? 0 : 1);
 }

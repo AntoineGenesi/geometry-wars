@@ -10,6 +10,7 @@ import { existsSync, mkdirSync, statSync, writeFileSync } from 'fs';
 import { dirname, resolve } from 'path';
 import { spawn } from 'child_process';
 import { fileURLToPath } from 'url';
+import { screenshotPixelStats } from './screenshot-pixel-stats.mjs';
 
 const PROJECT_ROOT = resolve(fileURLToPath(new URL('../..', import.meta.url)));
 const PORT = Number(process.env.PORT || process.env.SP_DEV_PORT || 3048);
@@ -247,6 +248,7 @@ async function runScenario(page, scenario) {
     .filter(effect => effect.type === 'blackhole');
   const activeNodesPresent = scenario.activeNodes.every(nodeId => setup.activeNodes.includes(nodeId));
   const screenshots = [afterFireScreenshot, afterImpactScreenshot].filter(Boolean);
+  const screenshotStats = screenshots.map(path => screenshotPixelStats(path));
   const runtimeVisible = bulletDelta > 0 || projectileDelta >= scenario.expected.projectileDeltaMin
     || blackHoleEffects.length >= scenario.expected.blackHoleEffectsMin;
   const checks = {
@@ -260,6 +262,7 @@ async function runScenario(page, scenario) {
         || blackHoleEffects.some(effect => effect.visualChildCount > 0 || effect.radius > 0)),
     runtimeVisible,
     screenshotsRetained: screenshots.every(screenshotRetained),
+    screenshotsNonblank: screenshotStats.every(stats => stats.nonblank),
   };
 
   return {
@@ -275,6 +278,7 @@ async function runScenario(page, scenario) {
       blackHoleVisualChildren: blackHoleEffects.map(effect => effect.visualChildCount),
       afterFireCanvas,
       afterImpactCanvas,
+      screenshotStats,
     },
     setup,
     fire,

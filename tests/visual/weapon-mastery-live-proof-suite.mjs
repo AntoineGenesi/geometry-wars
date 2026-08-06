@@ -61,6 +61,9 @@ function extractArtifactPaths(lines) {
   for (const pattern of [
     /Report:\s+([^\n]+)/g,
     /Screenshots:\s+([^\n]+)/g,
+    /Raw probe JSON:\s+([^\n]+)/g,
+    /Raw probe HTML:\s+([^\n]+)/g,
+    /Raw screenshot:\s+([^\n]+)/g,
     /"jsonPath":\s*"([^"]+)"/g,
     /"htmlPath":\s*"([^"]+)"/g,
   ]) {
