@@ -18,11 +18,25 @@ describe('shared weapon upgrade effects', () => {
     });
   });
 
+  it('makes standard_al_5 a distinct MP-supported scatter upgrade over standard_a_4', () => {
+    const rapidBurst = getStandardUpgradePattern(new Set(['standard_a_4']));
+    const shotgunSpread = getStandardUpgradePattern(new Set(['standard_a_4', 'standard_al_5']));
+
+    expect(shotgunSpread.fanExtraBolts).toBe(rapidBurst.fanExtraBolts);
+    expect(shotgunSpread.fanAngle).toBeGreaterThan(rapidBurst.fanAngle);
+    expect(shotgunSpread.fanAngle).toBeCloseTo(Math.PI * 35 / 180);
+  });
+
   it('matches SP Spread pellet upgrade semantics', () => {
     expect(getSpreadUpgradePattern(new Set(['spread_a_1', 'spread_a_2', 'spread_a_3']))).toEqual({
       bulletCount: 8,
       spreadAngle: Math.PI / 6,
     });
+  });
+
+  it('uses Spread AL nodes as final pellet counts instead of stacking trunk extras twice', () => {
+    expect(getSpreadUpgradePattern(new Set(['spread_a_1', 'spread_a_2', 'spread_a_3', 'spread_al_4'])).bulletCount).toBe(9);
+    expect(getSpreadUpgradePattern(new Set(['spread_a_1', 'spread_a_2', 'spread_a_3', 'spread_al_5'])).bulletCount).toBe(10);
   });
 
   it('applies the same Standard and Spread damage/fire-rate families used by SP', () => {

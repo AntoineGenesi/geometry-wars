@@ -378,6 +378,13 @@ describe('Homing rebuilt branch node ids', () => {
   });
 });
 
+describe('retained runtime promise alignment', () => {
+  it('describes Black Hole Multi Void as the four-bolt payoff that runtime fires after Singularity', () => {
+    expect(getNodeById('black_hole_al_4')?.effect).toContain('fires 4 black holes');
+    expect(getNodeById('black_hole_al_5')?.effect).toContain('Fires 4 black holes');
+  });
+});
+
 // ---------------------------------------------------------------------------
 // Exclusion system tests
 // ---------------------------------------------------------------------------
