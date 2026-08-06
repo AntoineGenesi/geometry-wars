@@ -119,7 +119,13 @@ vi.mock('three', async (importOriginal) => {
     private pixelRatio: number = 1;
 
     constructor(_opts?: any) {
-      this.domElement = { style: {}, width: 800, height: 600 };
+      this.domElement = {
+        style: {},
+        width: 800,
+        height: 600,
+        addEventListener: _noopEvent,
+        removeEventListener: _noopEvent,
+      };
       this.toneMapping = 0;
       this.toneMappingExposure = 1;
       this.shadowMap = { enabled: false };
