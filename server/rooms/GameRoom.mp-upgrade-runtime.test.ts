@@ -108,6 +108,81 @@ function makeLifecycleRoom() {
   return { room, activeUpgradeNodes };
 }
 
+function makeDamageHandlerRoom() {
+  const room = makeRoom();
+  const player = {
+    ...makePlayer(),
+    id: 'p1',
+    name: 'Player 1',
+    alive: true,
+    buffStacks: new Map(),
+    enemyKills: 0,
+    health: 100,
+    kills: 0,
+    lives: 3,
+    maxHealth: 100,
+    multiplier: 1,
+    playerKills: 0,
+    playerLevel: 0,
+    score: 0,
+    shieldCount: 0,
+    totalDamageDealt: 0,
+  };
+  const target = {
+    ...makePlayer(),
+    id: 'p2',
+    name: 'Player 2',
+    alive: true,
+    buffStacks: new Map(),
+    deaths: 0,
+    health: 100,
+    kills: 0,
+    lives: 3,
+    maxHealth: 100,
+    multiplier: 1,
+    playerLevel: 0,
+    score: 0,
+    shieldCount: 0,
+    totalDamageDealt: 0,
+  };
+  const enemy = {
+    id: 'e1',
+    type: 'wanderer',
+    alive: true,
+    queued: false,
+    health: 10,
+    surfaceU: 0.5,
+    surfaceV: 0.5,
+    aggroTargetId: '',
+    aggroUntil: 0,
+  };
+  room.state = {
+    ...room.state,
+    roomPhase: 'playing',
+    gameTime: 0,
+    infiniteLives: false,
+    pvpDamageMultiplier: 1,
+    players: new Map([
+      ['p1', player],
+      ['p2', target],
+    ]),
+    enemies: [enemy],
+  };
+  room.bulletDamageTracker = new Map();
+  room.lastHealthPickupSpawnTime = new Map();
+  room.playerInvincibility = new Map();
+  room.pvpKillStreaks = new Map();
+  room.currentSettings = { pvpWinCondition: 'kills' };
+  room.healthPickupFrequency = Infinity;
+  room.logger = { log: vi.fn() };
+  room.broadcast = vi.fn();
+  room.trackDDAKill = vi.fn();
+  room.rollEnemyPickupDrops = vi.fn();
+  room.spawnHealthPickup = vi.fn();
+  room._checkHalfHealthPortalTrigger = vi.fn();
+  return { room, player, target, enemy };
+}
+
 describe('GameRoom MP weapon upgrade runtime parity', () => {
   it('emits one Standard starter bolt before mastery unlocks', () => {
     const room = makeRoom();
@@ -232,6 +307,58 @@ describe('GameRoom MP weapon upgrade runtime parity', () => {
 
     expect(room.getUpgradeDamageMult('p1', WeaponType.LaserBeam)).toBeCloseTo(1);
     expect(room.getPlayerWeaponDamage('p1', player, WeaponType.LaserBeam, 2)).toBeCloseTo(2);
+  });
+
+  it('applies supported mastery damage through the live client bullet_hit handler', () => {
+    const { room, enemy } = makeDamageHandlerRoom();
+    room.playerActiveUpgradeNodes.set('p1', new Map([
+      [WeaponType.Standard, new Set(['standard_a_2'])],
+    ]));
+
+    room.handleClientBulletHit('p1', {
+      bulletId: 'b-live-standard',
+      enemyId: 'e1',
+      weaponType: WeaponType.Standard,
+      ownerId: 'p1',
+    });
+
+    expect(enemy.health).toBeCloseTo(8.6);
+    expect(room.bulletDamageTracker.get('b-live-standard')).toBeCloseTo(0);
+  });
+
+  it('filters stale unsupported nodes through the live client bullet_hit handler', () => {
+    const { room, enemy } = makeDamageHandlerRoom();
+    room.playerActiveUpgradeNodes.set('p1', new Map([
+      [WeaponType.Standard, new Set(['standard_a_2', 'standard_b_4', 'standard_br_10'])],
+    ]));
+
+    room.handleClientBulletHit('p1', {
+      bulletId: 'b-live-filtered',
+      enemyId: 'e1',
+      weaponType: WeaponType.Standard,
+      ownerId: 'p1',
+    });
+
+    expect(enemy.health).toBeCloseTo(8.6);
+    expect(room.bulletDamageTracker.get('b-live-filtered')).toBeCloseTo(0);
+  });
+
+  it('applies supported mastery damage through the live client pvp_bullet_hit handler', () => {
+    const { room, target } = makeDamageHandlerRoom();
+    room.pvpEnabled = true;
+    room.playerActiveUpgradeNodes.set('p1', new Map([
+      [WeaponType.Standard, new Set(['standard_a_2'])],
+    ]));
+
+    room.handleClientPvpBulletHit('p1', {
+      bulletId: 'pvp-live-standard',
+      targetId: 'p2',
+      weaponType: WeaponType.Standard,
+      ownerId: 'p1',
+    });
+
+    expect(target.health).toBeCloseTo(98.6);
+    expect(room.bulletDamageTracker.get('pvp-live-standard')).toBeCloseTo(0);
   });
 
   it('publishes accepted nodes through PlayerState when room state is present', () => {
