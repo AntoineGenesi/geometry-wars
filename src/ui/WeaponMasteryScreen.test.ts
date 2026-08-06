@@ -609,18 +609,12 @@ describe('WeaponMasteryScreen — constellation UI', () => {
     expect(isPrerequisiteMet(a2, tree, ps)).toBe(true);
   });
 
-  it('isPrerequisiteMet: multi-point parent must be FULLY unlocked (all points spent)', () => {
+  it('isPrerequisiteMet: rebuilt Black Hole roots unlock the next node after one point', () => {
     const ps = new MasteryPointStore();
-    // BlackHole a_1 has maxPoints=3 — spending only 1 is not enough for a_2
-    for (let i = 0; i < 3; i++) ps.earnPoint(WT.BlackHole);
-    ps.spendPoint(`${WT.BlackHole}_a_1`, 3); // Spend 1 of 3
+    ps.earnPoint(WT.BlackHole);
+    ps.spendPoint(`${WT.BlackHole}_a_1`);
     const tree = UPGRADE_TREES[WT.BlackHole];
     const a2 = tree.nodes.find(n => n.id === `${WT.BlackHole}_a_2`)!;
-    // After 1 spend, parent has 1/3 points — prereq NOT met
-    expect(isPrerequisiteMet(a2, tree, ps)).toBe(false);
-    // After 2 more spends (3 total), prereq IS met
-    ps.spendPoint(`${WT.BlackHole}_a_1`, 3, 1);
-    ps.spendPoint(`${WT.BlackHole}_a_1`, 3, 1);
     expect(isPrerequisiteMet(a2, tree, ps)).toBe(true);
   });
 

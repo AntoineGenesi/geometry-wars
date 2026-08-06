@@ -9,6 +9,7 @@ import {
   getNodeInvestmentCapacity,
   getTreeInvestmentCapacity,
   getInvestmentCapacityByWeapon,
+  getImplicitParent,
   getExcludedBy,
   isExcluded,
   type UpgradeNode,
@@ -48,8 +49,8 @@ describe('UPGRADE_TREES', () => {
     expect(tree.branchBRName).toBeTruthy();
   });
 
-  it('Standard has explicit svgHeight for branching layout', () => {
-    expect(UPGRADE_TREES[WeaponType.Standard].svgHeight).toBe(390);
+  it('Standard has explicit svgHeight for rebuilt branching layout', () => {
+    expect(UPGRADE_TREES[WeaponType.Standard].svgHeight).toBe(318);
   });
 
   it('Standard sub-branch nodes connect via parentId', () => {
@@ -204,7 +205,7 @@ describe('UPGRADE_TREES', () => {
     const blackHoleA1 = getNodeById('black_hole_a_1')!;
     const standardAr5 = getNodeById('standard_ar_5')!;
 
-    expect(getNodeInvestmentCapacity(blackHoleA1)).toBe(3);
+    expect(getNodeInvestmentCapacity(blackHoleA1)).toBe(1);
     expect(getNodeInvestmentCapacity(standardAr5)).toBe(2);
     expect(getTreeInvestmentCapacity(standard)).toBeGreaterThan(standard.nodes.length);
 
@@ -296,29 +297,10 @@ describe('plasma_mortar node ids', () => {
   });
 });
 
-describe('multi-level nodes (maxPoints > 1)', () => {
-  it('BlackHole a_1 has maxPoints: 3', () => {
-    const n = getNodeById('black_hole_a_1');
-    expect(n).toBeDefined();
-    expect(getNodeMaxPoints(n!)).toBe(3);
-  });
-
-  it('BlackHole b_1 has maxPoints: 3', () => {
-    const n = getNodeById('black_hole_b_1');
-    expect(n).toBeDefined();
-    expect(getNodeMaxPoints(n!)).toBe(3);
-  });
-
-  it('Homing a_1 has maxPoints: 2', () => {
-    const n = getNodeById('homing_a_1');
-    expect(n).toBeDefined();
-    expect(getNodeMaxPoints(n!)).toBe(2);
-  });
-
-  it('Homing b_1 has maxPoints: 2', () => {
-    const n = getNodeById('homing_b_1');
-    expect(n).toBeDefined();
-    expect(getNodeMaxPoints(n!)).toBe(2);
+describe('multi-level node helper behavior', () => {
+  it('rebuilt live trees do not use maxPoints until runtime is rank-aware', () => {
+    const multiRankNodes = getAllNodes().filter(n => (n.maxPoints ?? 1) > 1);
+    expect(multiRankNodes).toEqual([]);
   });
 
   it('standard nodes (no maxPoints) default to 1 via getNodeMaxPoints', () => {
@@ -349,31 +331,50 @@ describe('Standard 4-endpoint node ids', () => {
     }
   });
 
-  it('has sub-branch nodes al_5..al_10 and ar_5..ar_10', () => {
+  it('has four rebuilt sub-branch capstone paths without filler depth requirements', () => {
     const ids = UPGRADE_TREES[WeaponType.Standard].nodes.map(n => n.id);
-    for (let i = 5; i <= 10; i++) {
-      expect(ids).toContain(`standard_al_${i}`);
-      expect(ids).toContain(`standard_ar_${i}`);
-      expect(ids).toContain(`standard_bl_${i}`);
-      expect(ids).toContain(`standard_br_${i}`);
-    }
+    expect(ids).toEqual(expect.arrayContaining([
+      'standard_al_5',
+      'standard_al_6',
+      'standard_ar_5',
+      'standard_ar_6',
+      'standard_bl_5',
+      'standard_bl_7',
+      'standard_bl_10',
+      'standard_br_5',
+      'standard_br_7',
+      'standard_br_10',
+    ]));
+    expect(ids).not.toContain('standard_al_10');
+    expect(ids).not.toContain('standard_ar_10');
   });
 
-  it('has 4 distinct endpoints at level 10', () => {
-    const endpoints = UPGRADE_TREES[WeaponType.Standard].nodes.filter(n => n.nodeIndex === 10);
-    expect(endpoints.length).toBe(4);
-    const branches = endpoints.map(n => n.branch).sort();
-    expect(branches).toEqual(['al', 'ar', 'bl', 'br']);
+  it('has one terminal capstone per rebuilt Standard sub-branch', () => {
+    const tree = UPGRADE_TREES[WeaponType.Standard];
+    const parentIds = new Set(
+      tree.nodes
+        .map(n => getImplicitParent(n, tree)?.id)
+        .filter((id): id is string => Boolean(id)),
+    );
+    const endpoints = tree.nodes.filter(n => !parentIds.has(n.id)).map(n => n.id).sort();
+    expect(endpoints).toEqual([
+      'standard_al_6',
+      'standard_ar_6',
+      'standard_bl_10',
+      'standard_br_10',
+    ]);
   });
 });
 
-describe('Homing 10-level branch node ids', () => {
-  it('has nodes a_1 through a_10 and b_1 through b_10', () => {
+describe('Homing rebuilt branch node ids', () => {
+  it('has lean Intercept and Warhead paths without old railshot/carpet filler', () => {
     const ids = UPGRADE_TREES[WeaponType.Homing].nodes.map(n => n.id);
-    for (let i = 1; i <= 10; i++) {
+    for (let i = 1; i <= 5; i++) {
       expect(ids).toContain(`homing_a_${i}`);
       expect(ids).toContain(`homing_b_${i}`);
     }
+    expect(ids).not.toContain('homing_a_10');
+    expect(ids).not.toContain('homing_b_10');
   });
 });
 

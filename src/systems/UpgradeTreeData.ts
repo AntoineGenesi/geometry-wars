@@ -148,72 +148,55 @@ function node(
 
 export const UPGRADE_TREES: Record<WeaponType, UpgradeTree> = {
   // -------------------------------------------------------------------------
-  // 1. Standard (Blaster) — 4-endpoint branching tree
+  // 1. Standard (Blaster) — broad starter weapon with four readable finishers.
   //
-  //    Branch A trunk (a_1..a_4): Multi-bolt fan theme, diverges at level 4
-  //      Sub-branch AL (al_5..al_10): "Scatter" — explosive multi-bolt spread [cost:1]
-  //      Sub-branch AR (ar_5..ar_10): "Rapid Fire" — extreme fire rate [cost:2]
+  //    Branch A trunk (a_1..a_4): Volley — more forward bolts.
+  //      Sub-branch AL (al_5..al_6): Scatter — wider fan payoff.
+  //      Sub-branch AR (ar_5..ar_6): Cadence — faster sustained fire.
   //
-  //    Branch B trunk (b_1..b_4): Damage theme, diverges at level 4
-  //      Sub-branch BL (bl_5..bl_10): "Seeking" — homing bolts [cost:1]
-  //      Sub-branch BR (br_5..br_10): "Devastation" — raw damage [cost:2]
-  //
-  //    SVG viewBox: 280 × 390
-  //    4 endpoints at level 10: al_10, ar_10, bl_10, br_10
+  //    Branch B trunk (b_1..b_4): Focus — tighter bolts and payload.
+  //      Sub-branch BL (bl_5/bl_7/bl_10): Guidance — homing reliability.
+  //      Sub-branch BR (br_5/br_7/br_10): Payload — damage and kill payoff.
   // -------------------------------------------------------------------------
   [WeaponType.Standard]: {
     weaponType: WeaponType.Standard,
-    branchAName: 'Multi-Bolt',
-    branchBName: 'Damage',
+    branchAName: 'Volley',
+    branchBName: 'Focus',
     branchALName: 'Scatter',
-    branchARName: 'Rapid Fire',
-    branchBLName: 'Seeking',
-    branchBRName: 'Devastation',
-    svgHeight: 390,
+    branchARName: 'Cadence',
+    branchBLName: 'Guidance',
+    branchBRName: 'Payload',
+    svgHeight: 318,
     nodes: [
-      // ── Trunk A (Multi-Bolt fan theme) ──
+      // Volley trunk: direct, readable extra-bolt progression.
       node(WeaponType.Standard, 'a', 1, 'Dual bolts',    'Fires 2 bolts side by side (+1 bullet)',          { x: 103, y:  46 }),
       node(WeaponType.Standard, 'a', 2, 'Triple spray',  'Fires 3 bolts in a narrow fan (+2 bullets)',      { x:  80, y:  78 }),
       node(WeaponType.Standard, 'a', 3, 'Quad burst',    'Fires 4 bolts, fan widens slightly (+3 bullets)', { x:  57, y: 110 }),
       node(WeaponType.Standard, 'a', 4, 'Rapid burst',   '+30% fire rate; fires 5 bolts in tight burst',    { x:  35, y: 142 }),
 
-      // ── Sub-branch AL: Scatter (cost:1) ──
-      node(WeaponType.Standard, 'al', 5, 'Shotgun spread',  'Fires 5 bolts in a 25° arc (+4 bullets)',              { parentId: 'standard_a_4', x:  10, y: 178 }),
-      node(WeaponType.Standard, 'al', 6, 'Nova burst',      'Fires 9 bolts in a 55° arc (+8 bullets)',              { parentId: 'standard_al_5', x:   8, y: 214 }),
-      node(WeaponType.Standard, 'al', 7, 'Ring shot',       'Fires 12 bolts in a full 360° ring burst',             { parentId: 'standard_al_6', x:  10, y: 250 }),
-      node(WeaponType.Standard, 'al', 8, 'Bullet wall',     '360° ring + forward 5-bolt dense fan simultaneously',  { parentId: 'standard_al_7', x:  15, y: 285 }),
-      node(WeaponType.Standard, 'al', 9, 'Annihilator',     'Bullet wall with +30% damage per bolt',                { parentId: 'standard_al_8', x:  23, y: 318 }),
-      node(WeaponType.Standard, 'al', 10,'Omega scatter',   'Dual-phase ring burst then 15-bolt fan; +50% damage',  { parentId: 'standard_al_9', x:  14, y: 352 }),
+      // Scatter: retain the proven fan shapes instead of speculative ring/final forms.
+      node(WeaponType.Standard, 'al', 5, 'Shotgun spread', 'Fires 5 bolts in a 25 deg arc (+4 bullets)', { parentId: 'standard_a_4', x:  10, y: 184 }),
+      node(WeaponType.Standard, 'al', 6, 'Nova fan',       'Capstone: fires 9 bolts in a 55 deg arc',    { parentId: 'standard_al_5', x:   8, y: 226 }),
 
-      // ── Sub-branch AR: Rapid Fire (cost:2 — premium path) ──
-      node(WeaponType.Standard, 'ar', 5, 'Overclock',      '+50% fire rate',                                        { parentId: 'standard_a_4',  cost: 2, x:  63, y: 178 }),
-      node(WeaponType.Standard, 'ar', 6, 'Hyperclock',     '+80% fire rate; bullets pierce 1 enemy',               { parentId: 'standard_ar_5', cost: 2, x:  66, y: 214 }),
-      node(WeaponType.Standard, 'ar', 7, 'Machine gun',    '+120% fire rate; bolts gain slight homing',             { parentId: 'standard_ar_6', cost: 2, x:  63, y: 250 }),
-      node(WeaponType.Standard, 'ar', 8, 'Railgun charge', 'Every 10th shot fires a high-damage piercing bolt',     { parentId: 'standard_ar_7', cost: 2, x:  56, y: 285 }),
-      node(WeaponType.Standard, 'ar', 9, 'Minigun',        '+200% fire rate; enters rapid-fire mode',               { parentId: 'standard_ar_8', cost: 2, x:  48, y: 318 }),
-      node(WeaponType.Standard, 'ar', 10,'Infinity burst', 'Unlimited rapid fire for 3s on kill; +30% bolt speed', { parentId: 'standard_ar_9', cost: 2, x:  56, y: 352 }),
+      // Cadence: premium path for fire-rate players.
+      node(WeaponType.Standard, 'ar', 5, 'Overclock',  '+50% fire rate',                          { parentId: 'standard_a_4',  cost: 2, x:  63, y: 184 }),
+      node(WeaponType.Standard, 'ar', 6, 'Hyperclock', 'Capstone: +80% total fire-rate pressure', { parentId: 'standard_ar_5', cost: 2, x:  66, y: 226 }),
 
-      // ── Trunk B (Damage theme) ──
+      // Focus trunk: tight extra bolts and a real damage step.
       node(WeaponType.Standard, 'b', 1, 'Focused pair',   'Fires 2 bolts in a tight 5° cone (+1 bullet)',   { x: 177, y:  46 }),
       node(WeaponType.Standard, 'b', 2, 'Triple needle',  'Fires 3 bolts in a 5° cone (+2 bullets)',        { x: 200, y:  78 }),
       node(WeaponType.Standard, 'b', 3, 'Quad lance',     'Fires 4 tightly-grouped bolts (+3 bullets)',     { x: 223, y: 110 }),
-      node(WeaponType.Standard, 'b', 4, 'Heavy bolt',     'Bolts deal +40% damage; penetrate 1 enemy',     { x: 245, y: 142 }),
+      node(WeaponType.Standard, 'b', 4, 'Heavy bolt',     'Bolts deal +40% damage',                                { x: 245, y: 142 }),
 
-      // ── Sub-branch BL: Seeking (cost:1) ──
-      node(WeaponType.Standard, 'bl', 5, 'Seeking bolts',  'Fires 4 bolts with mild homing bias',                  { parentId: 'standard_b_4',  x: 217, y: 178 }),
-      node(WeaponType.Standard, 'bl', 6, 'Smart swarm',    'Fires 5 bolts, each auto-corrects toward nearest enemy',{ parentId: 'standard_bl_5', x: 214, y: 214 }),
-      node(WeaponType.Standard, 'bl', 7, 'Precision burst','Fires 6 homing bolts with +10% speed',                  { parentId: 'standard_bl_6', x: 217, y: 250 }),
-      node(WeaponType.Standard, 'bl', 8, 'Lock-on volley', 'Fires 8 homing bolts split among 2 enemies',            { parentId: 'standard_bl_7', x: 224, y: 285 }),
-      node(WeaponType.Standard, 'bl', 9, 'Guided cluster', 'Homing bolts + secondary seeker per bolt on impact',    { parentId: 'standard_bl_8', x: 232, y: 318 }),
-      node(WeaponType.Standard, 'bl', 10,'Apex hunter',    'Near-perfect homing; bolts loop back once on miss',     { parentId: 'standard_bl_9', x: 224, y: 352 }),
+      // Guidance: fewer steps, each mapped to existing homing behavior.
+      node(WeaponType.Standard, 'bl', 5, 'Seeking bolts',   'Mild homing bias for focused bolts',                    { parentId: 'standard_b_4',  x: 217, y: 184 }),
+      node(WeaponType.Standard, 'bl', 7, 'Precision burst', 'Faster homing bolts with stronger correction',          { parentId: 'standard_bl_5', x: 222, y: 226 }),
+      node(WeaponType.Standard, 'bl', 10,'Apex hunter',     'Capstone: strongest homing with one loop-back on miss', { parentId: 'standard_bl_7', x: 224, y: 270 }),
 
-      // ── Sub-branch BR: Devastation (cost:2 — premium path) ──
-      node(WeaponType.Standard, 'br', 5, 'Power shot',     '+60% damage per bolt',                                  { parentId: 'standard_b_4',  cost: 2, x: 268, y: 178 }),
-      node(WeaponType.Standard, 'br', 6, 'Explosive round','Bolts detonate on impact; +30% AoE splash',             { parentId: 'standard_br_5', cost: 2, x: 272, y: 214 }),
-      node(WeaponType.Standard, 'br', 7, 'Supercharged',   '+100% damage; bolts leave ignite trail',                { parentId: 'standard_br_6', cost: 2, x: 270, y: 250 }),
-      node(WeaponType.Standard, 'br', 8, 'Armor-pierce',   'Ignores 50% enemy damage resistance',                   { parentId: 'standard_br_7', cost: 2, x: 264, y: 285 }),
-      node(WeaponType.Standard, 'br', 9, 'Death bolt',     'Each bolt has 5% chance to instant-kill enemy',         { parentId: 'standard_br_8', cost: 2, x: 256, y: 318 }),
-      node(WeaponType.Standard, 'br', 10,'Annihilator',    '+150% damage; kills trigger mini-shockwave',            { parentId: 'standard_br_9', cost: 2, x: 266, y: 352 }),
+      // Payload: premium damage path with the speculative middle filler removed.
+      node(WeaponType.Standard, 'br', 5, 'Power shot',    '+60% damage per bolt',                          { parentId: 'standard_b_4',  cost: 2, x: 268, y: 184 }),
+      node(WeaponType.Standard, 'br', 7, 'Supercharged',  '+40% additional bolt damage',                  { parentId: 'standard_br_5', cost: 2, x: 270, y: 226 }),
+      node(WeaponType.Standard, 'br', 10,'Shockwave kill','Capstone: high damage; kills trigger shockwave',{ parentId: 'standard_br_7', cost: 2, x: 266, y: 270 }),
     ],
     // Cross-branch shortcuts: Multi-Bolt trunk tier 2 → Damage trunk tier 3 (and vice versa).
     // Unlocking Triple spray (a_2) grants shortcut access to Quad lance (b_3),
@@ -257,8 +240,8 @@ export const UPGRADE_TREES: Record<WeaponType, UpgradeTree> = {
       node(WeaponType.Spread, 'al', 5, 'Pellet storm',     '+5 pellets (10 total), +15% damage/pellet',              { parentId: 'spread_al_4', x:  16, y: 186 }),
 
       // ── Sub-branch AR: Explosive (pellets with AoE splash) ──
-      node(WeaponType.Spread, 'ar', 4, 'Explosive pellets','Each pellet deals small AoE splash on impact',            { parentId: 'spread_a_3', cost: 2, x:  68, y: 148 }),
-      node(WeaponType.Spread, 'ar', 5, 'Nova burst',       'Each pellet triggers a shockwave — devastating at close range', { parentId: 'spread_ar_4', cost: 2, x:  66, y: 186 }),
+      node(WeaponType.Spread, 'ar', 4, 'Explosive pellets','Pellet hits add a small splash burst',                    { parentId: 'spread_a_3', cost: 2, x:  68, y: 148 }),
+      node(WeaponType.Spread, 'ar', 5, 'Nova burst',       'Capstone: stronger close-range splash from each pellet',  { parentId: 'spread_ar_4', cost: 2, x:  66, y: 186 }),
 
       // ── Trunk B (Tight Cluster theme) ──
       node(WeaponType.Spread, 'b', 1, 'Tight pattern',     '-10% cone width, denser grouping',                       { x: 177, y:  46 }),
@@ -270,8 +253,8 @@ export const UPGRADE_TREES: Record<WeaponType, UpgradeTree> = {
       node(WeaponType.Spread, 'bl', 5, 'Needle volley',    '-30% cone, +50% dmg/pellet, pellets pierce 2 enemies',   { parentId: 'spread_bl_4', x: 214, y: 186 }),
 
       // ── Sub-branch BR: Sniper (extreme damage, ultra-tight focus) ──
-      node(WeaponType.Spread, 'br', 4, 'Sniper spread',    'Ultra-tight 5° cone, +50% damage per pellet',            { parentId: 'spread_b_3', cost: 2, x: 250, y: 148 }),
-      node(WeaponType.Spread, 'br', 5, 'Railgun burst',    '4 rapid-fire precise shots, +80% damage, pierce 1 enemy',{ parentId: 'spread_br_4', cost: 2, x: 264, y: 186 }),
+      node(WeaponType.Spread, 'br', 4, 'Sniper spread',    'Ultra-tight 5 deg cone, +50% damage per pellet',         { parentId: 'spread_b_3', cost: 2, x: 250, y: 148 }),
+      node(WeaponType.Spread, 'br', 5, 'Needle burst',     'Capstone: queued focused shots with a damage bump',      { parentId: 'spread_br_4', cost: 2, x: 264, y: 186 }),
     ],
   },
 
@@ -301,11 +284,11 @@ export const UPGRADE_TREES: Record<WeaponType, UpgradeTree> = {
       // ── Trunk A (Range theme) ──
       node(WeaponType.Piercing, 'a', 1, 'Extended beam',   '+40% beam length',                                         { x: 103, y:  46 }),
       node(WeaponType.Piercing, 'a', 2, 'Long reach',      '+80% beam length',                                         { x:  80, y:  78 }),
-      node(WeaponType.Piercing, 'a', 3, 'Full sweep',      '+130% beam length',                                        { x:  57, y: 110 }),
+      node(WeaponType.Piercing, 'a', 3, 'Full sweep',      '+130% beam length for safer line clears',                 { x:  57, y: 110 }),
 
       // ── Sub-branch AL: Reach (extreme range and topology-wrap) ──
-      node(WeaponType.Piercing, 'al', 4, 'Arc beam',       '+200% beam length, beam curves to hit 2nd target off-axis',{ parentId: 'piercing_a_3', x:  30, y: 148 }),
-      node(WeaponType.Piercing, 'al', 5, 'Cross surface',  'Beam wraps across entire surface topology',                { parentId: 'piercing_al_4', x:  16, y: 186 }),
+      node(WeaponType.Piercing, 'al', 4, 'Arc beam',       'Longer beam path with a secondary off-axis hit',           { parentId: 'piercing_a_3', x:  30, y: 148 }),
+      node(WeaponType.Piercing, 'al', 5, 'Deep trace',     'Capstone: maximum retained beam path length',              { parentId: 'piercing_al_4', x:  16, y: 186 }),
 
       // ── Sub-branch AR: Multi-Beam (fire multiple beams simultaneously) ──
       node(WeaponType.Piercing, 'ar', 4, 'Twin beams',     'Fires 2 parallel beams simultaneously',                    { parentId: 'piercing_a_3', cost: 2, x:  68, y: 148 }),
@@ -321,8 +304,8 @@ export const UPGRADE_TREES: Record<WeaponType, UpgradeTree> = {
       node(WeaponType.Piercing, 'bl', 5, 'Beam burst',     'Fires 4 beams per trigger pull at +70% total fire rate',   { parentId: 'piercing_bl_4', x: 214, y: 186 }),
 
       // ── Sub-branch BR: Charged (devastating charged shots) ──
-      node(WeaponType.Piercing, 'br', 4, 'Charged bolt',   '0.5s charge releases a megabeam dealing 5× damage',        { parentId: 'piercing_b_3', cost: 2, x: 250, y: 148 }),
-      node(WeaponType.Piercing, 'br', 5, 'Overcharge',     'Rapid fire + every 5th shot is an auto-charged megabeam',  { parentId: 'piercing_br_4', cost: 2, x: 264, y: 186 }),
+      node(WeaponType.Piercing, 'br', 4, 'Charged bolt',   'Delayed heavy beam shot for burst damage',                 { parentId: 'piercing_b_3', cost: 2, x: 250, y: 148 }),
+      node(WeaponType.Piercing, 'br', 5, 'Overcharge',     'Capstone: periodic auto-charged beam shot',                { parentId: 'piercing_br_4', cost: 2, x: 264, y: 186 }),
     ],
   },
 
@@ -339,46 +322,36 @@ export const UPGRADE_TREES: Record<WeaponType, UpgradeTree> = {
       node(WeaponType.ChainLightning, 'a', 1, 'Extra arc',   '+2 chain targets (8 total)'),
       node(WeaponType.ChainLightning, 'a', 2, 'Wide arcs',   '+3 chain targets (9 total), +15% jump range'),
       node(WeaponType.ChainLightning, 'a', 3, 'Storm arcs',  '+5 chain targets (11 total), +25% jump range'),
-      node(WeaponType.ChainLightning, 'a', 4, 'Mega chain',  '+7 chain targets (13 total), +40% jump range'),
-      node(WeaponType.ChainLightning, 'a', 5, 'Uberstorm',   '+10 chain targets (16 total), chains re-arc for bonus damage'),
+      node(WeaponType.ChainLightning, 'a', 4, 'Mega chain',  '+7 chain targets, +40% jump range'),
+      node(WeaponType.ChainLightning, 'a', 5, 'Storm relay', 'Capstone: maximum chain count with bonus re-arc pressure'),
       node(WeaponType.ChainLightning, 'b', 1, 'High voltage','+25% damage per arc'),
       node(WeaponType.ChainLightning, 'b', 2, 'Overcharge',  '+60% damage per arc'),
       node(WeaponType.ChainLightning, 'b', 3, 'Supercharge', '+80% damage per arc'),
-      node(WeaponType.ChainLightning, 'b', 4, 'Stun bolt',   '+100% dmg/arc, hit enemies are slowed 30% for 1s'),
-      node(WeaponType.ChainLightning, 'b', 5, 'Overload',    '+130% dmg/arc, enemies killed by chain explode in mini-shockwave'),
+      node(WeaponType.ChainLightning, 'b', 4, 'Stun bolt',   '+100% damage per arc; hit enemies are slowed briefly'),
+      node(WeaponType.ChainLightning, 'b', 5, 'Overload',    'Capstone: highest voltage with a small overload burst on hit'),
     ],
   },
 
   // -------------------------------------------------------------------------
   // 5. Homing Missiles
-  //    Branch A "SPEED"   — faster missiles, tighter tracking (10 levels)
-  //    Branch B "WARHEAD" — bigger explosion, area effects (10 levels)
+  //    Branch A "INTERCEPT" — faster, tighter tracking to reach targets.
+  //    Branch B "WARHEAD"   — bigger detonations and area denial.
   // -------------------------------------------------------------------------
   [WeaponType.Homing]: {
     weaponType: WeaponType.Homing,
-    branchAName: 'Speed',
+    branchAName: 'Intercept',
     branchBName: 'Warhead',
     nodes: [
-      node(WeaponType.Homing, 'a', 1,  'Afterburner',    '+25% missile speed per rank (up to 2 ranks = +50%)', 2),
+      node(WeaponType.Homing, 'a', 1,  'Afterburner',    '+25% missile speed'),
       node(WeaponType.Homing, 'a', 2,  'Hyperdrive',     '+50% missile speed'),
       node(WeaponType.Homing, 'a', 3,  'Laser-guided',   '+80% speed, tighter turn radius'),
       node(WeaponType.Homing, 'a', 4,  'Mach strike',    '+100% speed, tighter turn radius'),
-      node(WeaponType.Homing, 'a', 5,  'Hypersonic',     '+150% speed, missiles cannot be outrun'),
-      node(WeaponType.Homing, 'a', 6,  'Ramjet',         '+200% speed, missile explodes on near-miss for 50% damage'),
-      node(WeaponType.Homing, 'a', 7,  'Railshot',       'Missiles travel in straight line (instant) to target'),
-      node(WeaponType.Homing, 'a', 8,  'Twin rails',     'Fires 2 railshots per trigger pull'),
-      node(WeaponType.Homing, 'a', 9,  'Quad rails',     'Fires 4 railshots that fan slightly'),
-      node(WeaponType.Homing, 'a', 10, 'Gauss barrage',  '6 railshots; each penetrates through first target'),
-      node(WeaponType.Homing, 'b', 1,  'Bigger warhead', '+30% explosion radius per rank (up to 2 ranks = +60%)', 2),
+      node(WeaponType.Homing, 'a', 5,  'Hypersonic',     'Capstone: +150% speed for hard target interception'),
+      node(WeaponType.Homing, 'b', 1,  'Bigger warhead', '+30% explosion radius'),
       node(WeaponType.Homing, 'b', 2,  'Shockwave',      '+60% explosion radius'),
       node(WeaponType.Homing, 'b', 3,  'Cluster bomb',   'On detonation, spawns 3 child missiles'),
       node(WeaponType.Homing, 'b', 4,  'Napalm',         'Explosion leaves gas cloud (3s, 3 dmg/tick)'),
-      node(WeaponType.Homing, 'b', 5,  'Nova burst',     '+100% explosion radius + napalm cloud + shockwave stun'),
-      node(WeaponType.Homing, 'b', 6,  'Thermobaric',    'Nova burst + secondary explosion 0.5s later'),
-      node(WeaponType.Homing, 'b', 7,  'Fuel-air bomb',  'Thermobaric + napalm cloud is double-size and lasts 5s'),
-      node(WeaponType.Homing, 'b', 8,  'Carpet bombing', 'Each missile splits into 3 sub-munitions mid-flight'),
-      node(WeaponType.Homing, 'b', 9,  'Devastator',     'Carpet bomb sub-munitions each have nova burst'),
-      node(WeaponType.Homing, 'b', 10, 'Armageddon',     'Devastator + screen-wide shockwave on first hit'),
+      node(WeaponType.Homing, 'b', 5,  'Nova burst',     'Capstone: large blast plus persistent gas cloud'),
     ],
   },
 
@@ -395,13 +368,13 @@ export const UPGRADE_TREES: Record<WeaponType, UpgradeTree> = {
       node(WeaponType.PlasmaMortar, 'a', 1, 'Wide blast',   '+30% AoE radius'),
       node(WeaponType.PlasmaMortar, 'a', 2, 'Mega blast',   '+60% AoE radius'),
       node(WeaponType.PlasmaMortar, 'a', 3, 'Shockwave',    '+100% AoE radius'),
-      node(WeaponType.PlasmaMortar, 'a', 4, 'Chain blast',  '+100% AoE radius, explosion triggers secondary blast in 0.3s'),
-      node(WeaponType.PlasmaMortar, 'a', 5, 'Carpet bomb',  'Fires 3 mortars per shot in a spread'),
+      node(WeaponType.PlasmaMortar, 'a', 4, 'Chain blast',  '+100% AoE radius with delayed secondary blast'),
+      node(WeaponType.PlasmaMortar, 'a', 5, 'Carpet bomb',  'Capstone: fires 3 mortars per shot in a spread'),
       node(WeaponType.PlasmaMortar, 'b', 1, 'Dense plasma', '+25% explosion damage'),
       node(WeaponType.PlasmaMortar, 'b', 2, 'Heavy payload','+50% explosion damage'),
       node(WeaponType.PlasmaMortar, 'b', 3, 'Critical mass','+80% explosion damage'),
-      node(WeaponType.PlasmaMortar, 'b', 4, 'Armor pierce', '+100% dmg, bypasses enemy damage resistance'),
-      node(WeaponType.PlasmaMortar, 'b', 5, 'Annihilator',  '+150% dmg, instant-kill weak enemies, devastating vs elites'),
+      node(WeaponType.PlasmaMortar, 'b', 4, 'Armor crack',  '+100% damage with extra pressure against tough enemies'),
+      node(WeaponType.PlasmaMortar, 'b', 5, 'Annihilator',  'Capstone: highest payload damage for elite cracking'),
     ],
   },
 
@@ -419,12 +392,12 @@ export const UPGRADE_TREES: Record<WeaponType, UpgradeTree> = {
       node(WeaponType.GravityGun, 'a', 2, 'Extended pull',    '+60% pull radius'),
       node(WeaponType.GravityGun, 'a', 3, 'Mega pull',        '+100% pull radius'),
       node(WeaponType.GravityGun, 'a', 4, 'Mass capture',     '+100% pull radius, holds up to 8 enemies simultaneously'),
-      node(WeaponType.GravityGun, 'a', 5, 'Event gravity',    '+150% pull radius, enemies pulled together collide for bonus damage'),
+      node(WeaponType.GravityGun, 'a', 5, 'Event gravity',    'Capstone: widest pull field for crowd control'),
       node(WeaponType.GravityGun, 'b', 1, 'Kinetic crush',    'Pulled enemies take 2 dmg/s'),
       node(WeaponType.GravityGun, 'b', 2, 'Heavy crush',      'Pulled enemies take 5 dmg/s'),
-      node(WeaponType.GravityGun, 'b', 3, 'Implosion',        'Pulled enemies take 10 dmg/s + collision damage'),
-      node(WeaponType.GravityGun, 'b', 4, 'Singularity',      'Pulled enemies take 15 dmg/s; collisions deal 3x damage'),
-      node(WeaponType.GravityGun, 'b', 5, 'Black compression','20 dmg/s; enemies that die in field explode, damaging others'),
+      node(WeaponType.GravityGun, 'b', 3, 'Implosion',        'Pulled enemies take 10 damage per second'),
+      node(WeaponType.GravityGun, 'b', 4, 'Singularity',      'Pulled enemies take 15 damage per second'),
+      node(WeaponType.GravityGun, 'b', 5, 'Black compression','Capstone: strongest sustained crush damage'),
     ],
   },
 
@@ -442,43 +415,39 @@ export const UPGRADE_TREES: Record<WeaponType, UpgradeTree> = {
       node(WeaponType.LaserBeam, 'a', 2, 'Hot start',    '+60% ramp-up speed'),
       node(WeaponType.LaserBeam, 'a', 3, 'Instant peak', 'Beam immediately fires at max damage'),
       node(WeaponType.LaserBeam, 'a', 4, 'Overdriven',   'Max damage is 50% higher than baseline max'),
-      node(WeaponType.LaserBeam, 'a', 5, 'Meltdown',     'Max damage is 100% higher; beam ignites enemies (DoT 2s)'),
+      node(WeaponType.LaserBeam, 'a', 5, 'Meltdown',     'Capstone: max damage is 100% higher with heat damage'),
       node(WeaponType.LaserBeam, 'b', 1, 'Extended beam','+20% beam duration'),
       node(WeaponType.LaserBeam, 'b', 2, 'Sustained fire','+40% beam duration'),
       node(WeaponType.LaserBeam, 'b', 3, 'Endurance mode','+70% beam duration'),
       node(WeaponType.LaserBeam, 'b', 4, 'Wide beam',    '+100% duration, beam width doubles (hits nearby enemies)'),
-      node(WeaponType.LaserBeam, 'b', 5, 'Sweep mode',   '+150% duration, wide beam, slowly sweeps ±15° automatically'),
+      node(WeaponType.LaserBeam, 'b', 5, 'Sweep mode',   'Capstone: longest wide beam with automatic sweep'),
     ],
   },
 
   // -------------------------------------------------------------------------
-  // 9. Black Hole — 4-endpoint branching tree
+  // 9. Black Hole — 4-endpoint branching tree built around the proven
+  // travelling vortex bolt that becomes a temporary black hole on contact.
   //
-  //    Branch A trunk (a_1..a_3): Size theme, diverges at level 3
-  //      a_1 has maxPoints: 3 (multi-upgrade demo)
-  //      Sub-branch AL (al_4..al_5): "Multi Void" — multiple simultaneous black holes [cost:1]
-  //      Sub-branch AR (ar_4..ar_5): "Giant Void" — single massive black hole [cost:2]
+  //    Branch A trunk (a_1..a_3): Persistence, diverges at level 3.
+  //      Sub-branch AL (al_4..al_5): Multi Void — more simultaneous fields.
+  //      Sub-branch AR (ar_4..ar_5): Giant Void — one larger/longer field.
   //
-  //    Branch B trunk (b_1..b_3): Gravity theme, diverges at level 3
-  //      b_1 has maxPoints: 3 (multi-upgrade demo)
-  //      Sub-branch BL (bl_4..bl_5): "Gravity Well" — mass capture [cost:1]
-  //      Sub-branch BR (br_4..br_5): "Event Horizon" — maximum gravitational damage [cost:2]
-  //
-  //    SVG viewBox: 280 × 224
+  //    Branch B trunk (b_1..b_3): Pull, diverges at level 3.
+  //      Sub-branch BL (bl_4..bl_5): Capture — hold and collide enemies.
+  //      Sub-branch BR (br_4..br_5): Crush — damage inside the field.
   // -------------------------------------------------------------------------
   [WeaponType.BlackHole]: {
     weaponType: WeaponType.BlackHole,
-    branchAName: 'Size',
-    branchBName: 'Gravity',
+    branchAName: 'Persistence',
+    branchBName: 'Pull',
     branchALName: 'Multi Void',
     branchARName: 'Giant Void',
-    branchBLName: 'Gravity Well',
-    branchBRName: 'Event Horizon',
+    branchBLName: 'Capture',
+    branchBRName: 'Crush',
     svgHeight: 224,
     nodes: [
-      // ── Trunk A (Size theme) ──
-      // a_1: maxPoints=3 — "Bigger void" can be upgraded up to 3 times
-      node(WeaponType.BlackHole, 'a', 1, 'Bigger void',   '+30% duration per rank (up to 3 ranks = +90%)', { maxPoints: 3, x: 103, y:  46 }),
+      // Persistence trunk.
+      node(WeaponType.BlackHole, 'a', 1, 'Bigger void',   '+30% duration',                                 { x: 103, y:  46 }),
       node(WeaponType.BlackHole, 'a', 2, 'Deep void',     '+60% duration, +1 shot',                        { x:  80, y:  78 }),
       node(WeaponType.BlackHole, 'a', 3, 'Singularity',   '+100% duration, +2 shots',                      { x:  57, y: 110 }),
 
@@ -488,21 +457,20 @@ export const UPGRADE_TREES: Record<WeaponType, UpgradeTree> = {
 
       // ── Sub-branch AR: Giant Void (single massive long-duration black hole) ──
       node(WeaponType.BlackHole, 'ar', 4, 'Mega void',    '+200% duration; black hole is 40% larger',     { parentId: 'black_hole_a_3', cost: 2, x:  68, y: 148 }),
-      node(WeaponType.BlackHole, 'ar', 5, 'Eternal collapse','Black hole persists until all enemies absorbed; collapses in a shockwave', { parentId: 'black_hole_ar_4', cost: 2, x:  66, y: 186 }),
+      node(WeaponType.BlackHole, 'ar', 5, 'Collapse wave','Capstone: larger long-duration field with collapse shockwave', { parentId: 'black_hole_ar_4', cost: 2, x:  66, y: 186 }),
 
-      // ── Trunk B (Gravity theme) ──
-      // b_1: maxPoints=3 — "Stronger pull" can be upgraded up to 3 times
-      node(WeaponType.BlackHole, 'b', 1, 'Stronger pull', '+30% pull radius per rank (up to 3 ranks = +90%)', { maxPoints: 3, x: 177, y:  46 }),
+      // Pull trunk.
+      node(WeaponType.BlackHole, 'b', 1, 'Stronger pull', '+30% pull radius',                                { x: 177, y:  46 }),
       node(WeaponType.BlackHole, 'b', 2, 'Deep pull',     '+60% pull radius',                              { x: 200, y:  78 }),
       node(WeaponType.BlackHole, 'b', 3, 'Inescapable',   '+100% pull radius',                             { x: 223, y: 110 }),
 
       // ── Sub-branch BL: Gravity Well (mass capture & collision damage) ──
       node(WeaponType.BlackHole, 'bl', 4, 'Mass capture', 'Can hold up to 12 enemies simultaneously',     { parentId: 'black_hole_b_3', x: 212, y: 148 }),
-      node(WeaponType.BlackHole, 'bl', 5, 'Event gravity','Pulled enemies collide for bonus damage',       { parentId: 'black_hole_bl_4', x: 214, y: 186 }),
+      node(WeaponType.BlackHole, 'bl', 5, 'Event gravity','Capstone: captured enemies collide for bonus damage', { parentId: 'black_hole_bl_4', x: 214, y: 186 }),
 
       // ── Sub-branch BR: Event Horizon (maximum gravitational damage) ──
       node(WeaponType.BlackHole, 'br', 4, 'Crushing void','+100% radius; trapped enemies take 5 dmg/s',  { parentId: 'black_hole_b_3', cost: 2, x: 250, y: 148 }),
-      node(WeaponType.BlackHole, 'br', 5, 'Event horizon','+150% radius; enemies cannot escape; 10 dmg/s',{ parentId: 'black_hole_br_4', cost: 2, x: 264, y: 186 }),
+      node(WeaponType.BlackHole, 'br', 5, 'Event horizon','Capstone: +150% radius and 10 damage per second',{ parentId: 'black_hole_br_4', cost: 2, x: 264, y: 186 }),
     ],
     // Multi Void fires multiple simultaneous black holes; Giant Void is the
     // single massive/eternal black-hole path. The root pair blocks the split.
@@ -524,13 +492,13 @@ export const UPGRADE_TREES: Record<WeaponType, UpgradeTree> = {
       node(WeaponType.TeslaCoil, 'a', 1, 'Wider arc',   '+25% AoE radius'),
       node(WeaponType.TeslaCoil, 'a', 2, 'Storm field', '+50% AoE radius'),
       node(WeaponType.TeslaCoil, 'a', 3, 'Mega storm',  '+80% AoE radius'),
-      node(WeaponType.TeslaCoil, 'a', 4, 'Arc reach',   '+80% radius, arcs jump 20% beyond the field edge'),
-      node(WeaponType.TeslaCoil, 'a', 5, 'Tempest',     '+120% AoE radius'),
+      node(WeaponType.TeslaCoil, 'a', 4, 'Arc reach',   '+80% radius with extended edge arcs'),
+      node(WeaponType.TeslaCoil, 'a', 5, 'Tempest',     'Capstone: widest sustained shock field'),
       node(WeaponType.TeslaCoil, 'b', 1, 'Higher voltage','+25% dmg/tick'),
       node(WeaponType.TeslaCoil, 'b', 2, 'Overcharge',  '+60% dmg/tick'),
       node(WeaponType.TeslaCoil, 'b', 3, 'Overload',    '+80% dmg/tick'),
-      node(WeaponType.TeslaCoil, 'b', 4, 'Rapid tick',  '+100% dmg/tick, tick frequency doubles'),
-      node(WeaponType.TeslaCoil, 'b', 5, 'Surge overload','+150% dmg/tick, rapid tick, stuns enemies briefly'),
+      node(WeaponType.TeslaCoil, 'b', 4, 'Rapid tick',  '+100% damage per tick with faster pulses'),
+      node(WeaponType.TeslaCoil, 'b', 5, 'Surge overload','Capstone: highest pulse damage with brief stun'),
     ],
   },
 };
