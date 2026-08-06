@@ -577,19 +577,16 @@ export class PerformanceLogger {
 
   /**
    * Get cumulative kill timeline by enemy type for stacked area chart.
-   * Returns time-series data: for each data point time, cumulative kills per enemy type.
-   * Only includes top N types; remainder lumped as "other".
+   * Returns one series for every killed enemy type; it never emits an
+   * aggregate "other" bucket because the postgame breakdown is used as an
+   * exact session review.
    */
-  getKillTimelineByEnemyType(topN = 6): {
+  getKillTimelineByEnemyType(): {
     times: number[];
     types: string[];
     series: number[][];  // series[typeIndex][timeIndex] = cumulative kills
   } {
-    // Get top N enemy types by total kills
-    const allTypes = this.getKillsByEnemyType();
-    const topTypes = allTypes.slice(0, topN).map(t => t.enemyType);
-    const hasOther = allTypes.length > topN;
-    const types = hasOther ? [...topTypes, 'other'] : [...topTypes];
+    const types = this.getKillsByEnemyType().map(t => t.enemyType);
 
     // Build cumulative counts at each data point time
     const dataPoints = this.getDataPoints();
@@ -606,8 +603,6 @@ export class PerformanceLogger {
     for (let i = 0; i < types.length; i++) {
       typeIndexMap.set(types[i], i);
     }
-    const otherIdx = hasOther ? types.length - 1 : -1;
-
     let eventIdx = 0;
     const cumulative = new Array(types.length).fill(0);
 
@@ -619,8 +614,6 @@ export class PerformanceLogger {
         const idx = typeIndexMap.get(ev.label);
         if (idx !== undefined) {
           cumulative[idx]++;
-        } else if (otherIdx >= 0) {
-          cumulative[otherIdx]++;
         }
         eventIdx++;
       }

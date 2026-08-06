@@ -578,7 +578,7 @@ describe('PerformanceLogger', () => {
       logger.setFrameData(60, 10, 5);
       logger.recordFrame(0.5);
 
-      const timeline = logger.getKillTimelineByEnemyType(3);
+      const timeline = logger.getKillTimelineByEnemyType();
       expect(timeline.types.length).toBeGreaterThan(0);
       expect(timeline.times.length).toBe(3);
       expect(timeline.series.length).toBe(timeline.types.length);
@@ -591,8 +591,9 @@ describe('PerformanceLogger', () => {
       expect(wandererSeries[wandererSeries.length - 1]).toBe(3);
     });
 
-    it('should lump excess types as "other" in timeline', () => {
-      // Create kills for 4 different types, use topN=2
+    it('lists every killed type in the timeline without an "other" aggregate', () => {
+      // Create kills for 4 different types. Session review must name all of
+      // them instead of hiding lower-count kills behind "other".
       logger.setFrameData(60, 10, 5);
       logger.recordFrame(0.5);
       logger.recordEvent('kill', 'wanderer');
@@ -603,15 +604,22 @@ describe('PerformanceLogger', () => {
       logger.setFrameData(60, 10, 5);
       logger.recordFrame(0.5);
 
-      const timeline = logger.getKillTimelineByEnemyType(2);
-      // Should have top 2 types + "other"
-      expect(timeline.types.length).toBe(3);
-      expect(timeline.types[0]).toBe('wanderer');
-      expect(timeline.types[timeline.types.length - 1]).toBe('other');
+      const timeline = logger.getKillTimelineByEnemyType();
+      expect(timeline.types).toEqual(['wanderer', 'grunt', 'spinner', 'rocket']);
+      expect(timeline.types).not.toContain('other');
 
-      // "other" should include spinner + rocket = 2
-      const otherSeries = timeline.series[timeline.types.length - 1];
-      expect(otherSeries[otherSeries.length - 1]).toBe(2);
+      const lastValues = Object.fromEntries(
+        timeline.types.map((type, index) => [
+          type,
+          timeline.series[index][timeline.series[index].length - 1],
+        ]),
+      );
+      expect(lastValues).toEqual({
+        wanderer: 2,
+        grunt: 1,
+        spinner: 1,
+        rocket: 1,
+      });
     });
   });
 

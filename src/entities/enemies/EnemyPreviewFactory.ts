@@ -1,51 +1,7 @@
 import * as THREE from 'three';
-import { EnemySpawner, type EnemyType } from './EnemySpawner';
+import { ENEMY_TYPES, EnemySpawner, type EnemyType } from './EnemySpawner';
 
-export const PREVIEW_ENEMY_TYPES: readonly EnemyType[] = [
-  'wanderer',
-  'grunt',
-  'duck',
-  'mayfly',
-  'rocket',
-  'neutron',
-  'weaver',
-  'spinner',
-  'snake',
-  'repulsor',
-  'gravity_well',
-  'gravity_well_red',
-  'gate',
-  'painter',
-  'virus',
-  'spawner',
-  'titan_grunt',
-  'titan_spinner',
-  'titan_weaver',
-  'giant_wanderer',
-  'giant_rocket',
-  'giant_snake',
-  'giant_neutron',
-  'cluster',
-  'helix',
-  'fractal',
-  'swarm',
-  'lurker',
-  'orbiter',
-  'splitter',
-  'phaser',
-  'approach_glow',
-  'stealth_stalker',
-  'fractal_snake',
-  'prism_lancer',
-  'sentinel_orb',
-  'shatter_bloom',
-  'boss_sapphire',
-  'boss_ruby',
-  'boss_emerald',
-  'boss_topaz',
-  'boss_amethyst',
-  'boss_opal',
-];
+export const PREVIEW_ENEMY_TYPES: readonly EnemyType[] = ENEMY_TYPES;
 
 const previewTransform = {
   position: new THREE.Vector3(0, 0, 0),
