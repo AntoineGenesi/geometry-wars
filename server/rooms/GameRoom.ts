@@ -1347,6 +1347,12 @@ export class GameRoom extends Room<GameState> {
       if (player) this.setupBlackHoleProof(player);
     });
 
+    this.onMessage('cube_face_transition_aim_proof_setup', (client, data: { targetDistance?: unknown }) => {
+      if (process.env.GEOMETRY_WARS_MP_PROOF_CONTROLS !== '1') return;
+      const result = this.setupCubeFaceTransitionAimProof(client.sessionId, data);
+      client.send('cube_face_transition_aim_proof_setup_result', result);
+    });
+
     this.onMessage('start', (client, data?: { choice?: string; settings?: Partial<GameSettings> }) => {
       // Only the host can start the game
       if (client.sessionId !== this.state.hostId) {
@@ -3634,6 +3640,179 @@ export class GameRoom extends Room<GameState> {
     bullet.age = 0;
 
     this.state.bullets.push(bullet);
+  }
+
+  private vectorTuple(x: number, y: number, z: number): [number, number, number] {
+    return [x, y, z];
+  }
+
+  private locationSummary(location: ServerMeshLocation): {
+    faceIndex: number;
+    world: [number, number, number];
+    normal: [number, number, number];
+  } {
+    return {
+      faceIndex: location.faceIndex,
+      world: this.vectorTuple(location.wx, location.wy, location.wz),
+      normal: this.vectorTuple(location.nx, location.ny, location.nz),
+    };
+  }
+
+  private findCubeFaceTransitionForProof(
+    start: ServerMeshLocation,
+  ): { before: ServerMeshLocation; after: ServerMeshLocation; aimAngle: number; distance: number } | null {
+    const surface = this.surfaceManager.getMeshSurface();
+    if (!surface) return null;
+
+    const startNormal = new THREE.Vector3(start.nx, start.ny, start.nz).normalize();
+    const startTangent = new THREE.Vector3(start.tangentX, start.tangentY, start.tangentZ).normalize();
+    const startBitangent = new THREE.Vector3(start.bitangentX, start.bitangentY, start.bitangentZ).normalize();
+    const candidateAngles = [
+      0,
+      Math.PI / 2,
+      -Math.PI / 2,
+      Math.PI,
+      Math.PI / 4,
+      -Math.PI / 4,
+      3 * Math.PI / 4,
+      -3 * Math.PI / 4,
+    ];
+
+    for (const candidateAngle of candidateAngles) {
+      const walker = new ServerMeshWalker(
+        surface,
+        new THREE.Vector3(start.wx, start.wy, start.wz),
+        1,
+      );
+      walker.teleportToLocation(start);
+      const direction = new THREE.Vector3()
+        .addScaledVector(startTangent, Math.cos(candidateAngle))
+        .addScaledVector(startBitangent, Math.sin(candidateAngle))
+        .normalize();
+
+      let distance = 0;
+      for (let step = 0; step < 120; step++) {
+        walker.moveInWorldDirection(direction.x, direction.y, direction.z, 0.15);
+        distance += 0.15;
+        const location = walker.getLocation();
+        const normal = new THREE.Vector3(location.nx, location.ny, location.nz).normalize();
+        const normalDot = normal.dot(startNormal);
+        if (normalDot < 0.75) {
+          for (let settle = 0; settle < 4; settle++) {
+            walker.moveInWorldDirection(direction.x, direction.y, direction.z, 0.15);
+            distance += 0.15;
+          }
+          const after = walker.getLocation();
+          const afterTangent = new THREE.Vector3(after.tangentX, after.tangentY, after.tangentZ).normalize();
+          const afterBitangent = new THREE.Vector3(after.bitangentX, after.bitangentY, after.bitangentZ).normalize();
+          const aimX = direction.dot(afterTangent);
+          const aimY = direction.dot(afterBitangent);
+          const aimAngle = Math.atan2(aimY, aimX);
+          return { before: start, after, aimAngle, distance };
+        }
+      }
+    }
+
+    return null;
+  }
+
+  /** Build a bounded deterministic scene for the opt-in MP cube transition aim proof. */
+  private setupCubeFaceTransitionAimProof(
+    sessionId: string,
+    data?: { targetDistance?: unknown },
+  ): {
+    ok: boolean;
+    reason?: string;
+    before?: ReturnType<GameRoom['locationSummary']>;
+    after?: ReturnType<GameRoom['locationSummary']>;
+    aimAngle?: number;
+    targetEnemyId?: string;
+    targetDistance?: number;
+  } {
+    if (sessionId !== this.state.hostId) return { ok: false, reason: 'not_host' };
+    if (this.state.roomPhase !== 'playing') return { ok: false, reason: 'not_playing' };
+    if (this.state.surfaceType !== 'cube') return { ok: false, reason: `wrong_surface:${this.state.surfaceType}` };
+
+    const player = this.state.players.get(sessionId);
+    const walker = this.surfaceManager.getWalker(sessionId);
+    const surface = this.surfaceManager.getMeshSurface();
+    if (!player || !walker || !surface) return { ok: false, reason: 'missing_player_or_surface' };
+
+    const before = walker.getLocation();
+    const transition = this.findCubeFaceTransitionForProof(before);
+    if (!transition) {
+      return {
+        ok: false,
+        reason: 'transition_not_found',
+        before: this.locationSummary(before),
+      };
+    }
+
+    this.spawnGeneration++;
+    this.pendingEnemyCount = 0;
+    this.waveElapsed = 0;
+    this.nextWaveAt = Number.POSITIVE_INFINITY;
+    this.state.bullets.clear();
+    this.clearBlackHoleBolts();
+    this.state.blackHoleFields?.clear();
+    this.bulletDamageTracker.clear();
+    this.state.enemies.clear();
+    this.enemyAI.clear();
+    this.enemyWalkers.clear();
+
+    this.surfaceManager.teleportWalkerToLocation(sessionId, transition.after);
+    const after = this.surfaceManager.getWalkerLocation(sessionId) ?? transition.after;
+    this.applyWalkerStateToPlayer(player, after);
+    player.aimAngle = transition.aimAngle;
+    player.weaponType = 'standard';
+    player.weaponAmmo = -1;
+    this.playerWeaponInventory.set(sessionId, [{ type: 'standard', ammo: -1 }]);
+    this.playerWeaponIndex.set(sessionId, 0);
+    (player as unknown as { lastBlasterShotTime?: number; lastShotTime?: number }).lastBlasterShotTime = -Infinity;
+    (player as unknown as { lastBlasterShotTime?: number; lastShotTime?: number }).lastShotTime = -Infinity;
+
+    const requestedTargetDistance = typeof data?.targetDistance === 'number' && Number.isFinite(data.targetDistance)
+      ? data.targetDistance
+      : 2.4;
+    const targetDistance = Math.max(1.4, Math.min(5.0, requestedTargetDistance));
+    const targetLocation = this.surfaceManager.createLocationNearWalker(sessionId, targetDistance, transition.aimAngle);
+    let targetEnemyId: string | undefined;
+    if (targetLocation) {
+      const enemy = this.makeEnemyState('wanderer', player.surfaceU, player.surfaceV);
+      enemy.health = 1;
+      enemy.maxHealth = 1;
+      const enemyWalker = new ServerMeshWalker(
+        surface,
+        new THREE.Vector3(targetLocation.wx, targetLocation.wy, targetLocation.wz),
+        1,
+      );
+      enemyWalker.teleportToLocation(targetLocation);
+      this.enemyWalkers.set(enemy.id, enemyWalker);
+      this.applyWalkerStateToEnemy(enemy, enemyWalker.getLocation());
+      this.enemyAI.set(enemy.id, {
+        directionU: 0,
+        directionV: 0,
+        directionChangeTimer: 0,
+        nextDirectionChange: 999,
+      });
+      this.state.enemies.push(enemy);
+      targetEnemyId = enemy.id;
+    }
+
+    this.logger.log(
+      `[GameRoom] Cube face-transition aim proof setup: player=${sessionId} `
+      + `face ${before.faceIndex}->${after.faceIndex} aim=${transition.aimAngle.toFixed(3)} `
+      + `target=${targetEnemyId ?? 'none'}`,
+    );
+
+    return {
+      ok: true,
+      before: this.locationSummary(before),
+      after: this.locationSummary(after),
+      aimAngle: transition.aimAngle,
+      targetEnemyId,
+      targetDistance,
+    };
   }
 
   /** Build a bounded deterministic Waves scene for the opt-in browser proof. */

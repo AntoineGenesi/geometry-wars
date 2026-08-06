@@ -108,6 +108,7 @@ import {
   NetworkGameState,
   NetworkMeshLocation,
   ClientMetricsPayload,
+  CubeFaceTransitionAimProofSetupResult,
 } from './network/NetworkClient';
 import {
   filterMpBuildChoiceNodeIds,
@@ -232,6 +233,8 @@ interface GameDebugAPI {
   startChevronAimProofGame: (surfaceType: string) => boolean;
   resumeChevronAimProofGame: () => boolean;
   fireChevronAimProofShot: () => boolean;
+  setupCubeFaceTransitionAimProof: (targetDistance?: number) => boolean;
+  fireCubeFaceTransitionAimProofShot: () => boolean;
   getUpgradeProofState: () => Record<string, unknown>;
   setupUpgradeProof: (weaponType: string, killCount: number) => boolean;
   requestUpgradeProofActivation: (weaponType: string, nodeId: string, unlockedNodeIds: string[]) => boolean;
@@ -1331,6 +1334,8 @@ async function main() {
     weaponType: string;
     reason?: string;
   } | null = null;
+  let lastCubeFaceTransitionAimProofSetupResult: CubeFaceTransitionAimProofSetupResult | null = null;
+  let cubeFaceTransitionAimProofForcedAimAngle: number | null = null;
 
   function wireBuildChoiceCallback(): void {
     matchUpgradeTracker.onBuildChoiceAvailable = (weaponType, availableNodeIds) => {
@@ -5171,6 +5176,19 @@ async function main() {
                 positionWorld: closest.point.clone(),
                 dirWorld: bulletWorldDir,
               });
+              if (_netMainDebug) {
+                _mpTelBulletTrajectorySamples.set(bullet.id, [{
+                  frame: _mpTelFrameCount,
+                  time: game.clock.totalTime,
+                  faceIndex: closest.faceIndex,
+                  world: { x: closest.point.x, y: closest.point.y, z: closest.point.z },
+                  dirWorld: { x: bulletWorldDir.x, y: bulletWorldDir.y, z: bulletWorldDir.z },
+                }]);
+                if (_mpTelBulletTrajectorySamples.size > 30) {
+                  const oldest = _mpTelBulletTrajectorySamples.keys().next().value;
+                  if (oldest) _mpTelBulletTrajectorySamples.delete(oldest);
+                }
+              }
             }
 
             // Track server-returned bullet direction for debug proof.
@@ -5185,8 +5203,10 @@ async function main() {
                   ownerId: bullet.ownerId,
                   origin: { x: bulletWorldPos.x, y: bulletWorldPos.y, z: bulletWorldPos.z },
                   playerPos: { x: ownerMesh.position.x, y: ownerMesh.position.y, z: ownerMesh.position.z },
+                  originUV: { u: bullet.x, v: bullet.y },
                   uvDir: { x: bullet.dirX, y: bullet.dirY, z: bullet.dirZ },
                   worldDir: { x: bulletWorldDir.x, y: bulletWorldDir.y, z: bulletWorldDir.z },
+                  faceIndex: closest?.faceIndex ?? -1,
                   distToPlayer: dist,
                 });
                 // Keep only last 50 spawns to avoid memory growth
@@ -6449,6 +6469,27 @@ async function main() {
           netMainLog(`[NetworkMain] Ignored stale upgrade activation result with no pending request: ${data.weaponType}/${data.nodeId}`);
         }
       },
+      onCubeFaceTransitionAimProofSetupResult: (data) => {
+        lastCubeFaceTransitionAimProofSetupResult = { ...data };
+        if (data.ok && Number.isFinite(data.aimAngle)) {
+          cubeFaceTransitionAimProofForcedAimAngle = data.aimAngle!;
+          const proofInput = {
+            ...(lastSentInput ?? { moveX: 0, moveY: 0, shooting: false, bomb: false, boost: false }),
+            moveX: 0,
+            moveY: 0,
+            aimAngle: data.aimAngle!,
+            shooting: false,
+          };
+          lastSentInput = proofInput;
+          network.sendInput(proofInput);
+        }
+        if (data.ok) {
+          netMainLog(`[NetworkMain] Cube face-transition aim proof setup accepted: target=${data.targetEnemyId ?? 'none'}`);
+        } else {
+          cubeFaceTransitionAimProofForcedAimAngle = null;
+          console.warn(`[NetworkMain] Cube face-transition aim proof setup rejected: ${data.reason ?? 'unknown'}`);
+        }
+      },
       onPvpKill: (data) => {
         netMainLog(`[PvP] ${data.killerName} killed ${data.victimName} (streak: ${data.streakCount})`);
         mpPerfLogger.recordPvpKill({
@@ -6853,9 +6894,29 @@ async function main() {
     ownerId: string;
     origin: { x: number; y: number; z: number };
     playerPos: { x: number; y: number; z: number };
+    originUV: { u: number; v: number };
     uvDir: { x: number; y: number; z: number };
     worldDir: { x: number; y: number; z: number };
+    faceIndex: number;
     distToPlayer: number;
+  }> = [];
+  const _mpTelBulletTrajectorySamples = new Map<string, Array<{
+    frame: number;
+    time: number;
+    faceIndex: number;
+    world: { x: number; y: number; z: number };
+    dirWorld: { x: number; y: number; z: number };
+  }>>();
+  const _mpTelBulletHitReports: Array<{
+    frame: number;
+    time: number;
+    bulletId: string;
+    enemyId: string;
+    weaponType: string;
+    ownerId: string;
+    bulletWorld: { x: number; y: number; z: number };
+    enemyWorld: { x: number; y: number; z: number };
+    distanceSq: number;
   }> = [];
   const _mpTelCameraPos = new THREE.Vector3();
   const _mpTelCameraQuat = new THREE.Quaternion();
@@ -6939,6 +7000,9 @@ async function main() {
           );
         }
       }
+    }
+    if (_netMainTestMode && cubeFaceTransitionAimProofForcedAimAngle !== null) {
+      aimAngle = cubeFaceTransitionAimProofForcedAimAngle;
     }
 
     lastInputSendTime += dt;
@@ -8399,6 +8463,23 @@ async function main() {
         geoState.dirWorld.copy(result.direction);
         _netTempPos.copy(result.position).addScaledVector(result.normal, 0.02);
         _netTempDir.copy(result.direction);
+        if (_netMainDebug) {
+          let samples = _mpTelBulletTrajectorySamples.get(id);
+          if (!samples) {
+            samples = [];
+            _mpTelBulletTrajectorySamples.set(id, samples);
+          }
+          if (samples.length < 14 || _mpTelFrameCount % 4 === 0) {
+            samples.push({
+              frame: _mpTelFrameCount,
+              time: game.clock.totalTime,
+              faceIndex: result.facePosition.faceIndex,
+              world: { x: result.position.x, y: result.position.y, z: result.position.z },
+              dirWorld: { x: result.direction.x, y: result.direction.y, z: result.direction.z },
+            });
+            if (samples.length > 20) samples.splice(0, samples.length - 20);
+          }
+        }
 
         const weapType = bulletWeaponType.get(id) ?? WeaponType.Standard;
 
@@ -8425,6 +8506,22 @@ async function main() {
               // Record this enemy as hit by this bullet
               if (!bulletHitEnemies.has(id)) bulletHitEnemies.set(id, new Set());
               bulletHitEnemies.get(id)!.add(enemyId);
+              if (_netMainDebug) {
+                _mpTelBulletHitReports.push({
+                  frame: _mpTelFrameCount,
+                  time: game.clock.totalTime,
+                  bulletId: id,
+                  enemyId,
+                  weaponType: weapType,
+                  ownerId: localPlayerId,
+                  bulletWorld: { x: _netTempPos.x, y: _netTempPos.y, z: _netTempPos.z },
+                  enemyWorld: { x: enemy.mesh.position.x, y: enemy.mesh.position.y, z: enemy.mesh.position.z },
+                  distanceSq: _netTempPos.distanceToSquared(enemy.mesh.position),
+                });
+                if (_mpTelBulletHitReports.length > 30) {
+                  _mpTelBulletHitReports.splice(0, _mpTelBulletHitReports.length - 30);
+                }
+              }
               network.sendBulletHit({ bulletId: id, enemyId, weaponType: weapType, ownerId: localPlayerId });
             }
           });
@@ -9092,12 +9189,18 @@ async function main() {
             inView: Math.abs(projected.x) <= 1
               && Math.abs(projected.y) <= 1
               && projected.z >= -1
-              && projected.z <= 1,
+            && projected.z <= 1,
           };
         };
+        camera.getWorldPosition(_mpTelCameraPos);
+        camera.getWorldQuaternion(_mpTelCameraQuat);
+        const cameraRight = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 0).normalize();
+        const cameraUp = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 1).normalize();
+        const cameraForward = new THREE.Vector3(0, 0, -1).applyQuaternion(_mpTelCameraQuat).normalize();
         const players: Record<string, unknown>[] = [];
         networkPlayers.forEach((player, id) => {
           if (!surface) return;
+          const serverPlayer = latestGameState?.players.get(id);
           const position = new THREE.Vector3();
           const worldQuaternion = new THREE.Quaternion();
           player.mesh.getWorldPosition(position);
@@ -9148,6 +9251,13 @@ async function main() {
             aimAngle,
             aimSource: isLocal ? 'mouse-derived-last-sent-input' : 'server-replicated-player-state',
             position: position.toArray(),
+            correctedUV: { u: uv.u, v: uv.v },
+            serverUV: serverPlayer ? { u: serverPlayer.surfaceU, v: serverPlayer.surfaceV } : null,
+            serverWorld: serverPlayer ? [serverPlayer.wx, serverPlayer.wy, serverPlayer.wz] : null,
+            serverNormal: serverPlayer ? [serverPlayer.nx, serverPlayer.ny, serverPlayer.nz] : null,
+            serverTangent: serverPlayer ? [serverPlayer.tx, serverPlayer.ty, serverPlayer.tz] : null,
+            serverBitangent: serverPlayer ? [serverPlayer.bx, serverPlayer.by, serverPlayer.bz] : null,
+            serverFaceIndex: serverPlayer?.walkerFaceIndex ?? null,
             surfaceNormal: normal.toArray(),
             tangentU: tangentU.toArray(),
             tangentV: tangentV.toArray(),
@@ -9164,6 +9274,29 @@ async function main() {
             tailScreen: projectWorldPoint(tailWorld),
           });
         });
+        const proofEnemies: Record<string, unknown>[] = [];
+        networkEnemies.forEach((enemy, id) => {
+          let serverWorld: [number, number, number] | null = null;
+          let serverFaceIndex: number | null = null;
+          latestGameState?.enemies.forEach((candidate) => {
+            if (candidate.id === id) {
+              serverWorld = [candidate.wx, candidate.wy, candidate.wz];
+              serverFaceIndex = candidate.walkerFaceIndex ?? null;
+            }
+          });
+          const enemyWorld = enemy.mesh?.position ?? enemy.position;
+          proofEnemies.push({
+            id,
+            type: enemy.baseTypeName || enemy.constructor.name || 'unknown',
+            alive: enemy.alive,
+            health: enemy.health,
+            radius: enemy.radius,
+            world: enemyWorld.toArray(),
+            serverWorld,
+            serverFaceIndex,
+            screen: projectWorldPoint(enemyWorld),
+          });
+        });
         return {
           frame: _mpTelFrameCount,
           time: game.clock.totalTime,
@@ -9173,7 +9306,15 @@ async function main() {
           isPaused,
           surface: lastCreatedSurfaceType,
           localPlayerId,
+          camera: {
+            position: _mpTelCameraPos.toArray(),
+            right: cameraRight.toArray(),
+            up: cameraUp.toArray(),
+            forward: cameraForward.toArray(),
+          },
+          cubeFaceTransitionAimProofSetup: lastCubeFaceTransitionAimProofSetupResult,
           players,
+          proofEnemies,
           recentServerBulletSpawns: _mpTelBulletSpawns.slice(-50).map((spawn) => {
             const origin = new THREE.Vector3(spawn.origin.x, spawn.origin.y, spawn.origin.z);
             const directionEnd = origin.clone().add(new THREE.Vector3(
@@ -9187,6 +9328,10 @@ async function main() {
               directionEndScreen: projectWorldPoint(directionEnd),
             };
           }),
+          recentClientBulletTrajectorySamples: Array.from(_mpTelBulletTrajectorySamples.entries())
+            .slice(-20)
+            .map(([bulletId, samples]) => ({ bulletId, samples })),
+          recentClientBulletHitReports: _mpTelBulletHitReports.slice(-30),
         };
       },
       startChevronAimProofGame: (surfaceType) => {
@@ -9212,6 +9357,36 @@ async function main() {
         setTimeout(() => network.sendInput(proofInput), 75);
         setTimeout(() => network.sendInput(proofInput), 150);
         setTimeout(() => network.sendInput({ ...proofInput, shooting: false }), 300);
+        return true;
+      },
+      setupCubeFaceTransitionAimProof: (targetDistance) => {
+        if (!_netMainTestMode || !isHost || !network.isConnected()) return false;
+        lastCubeFaceTransitionAimProofSetupResult = null;
+        cubeFaceTransitionAimProofForcedAimAngle = null;
+        network.sendCubeFaceTransitionAimProofSetup({ targetDistance });
+        return true;
+      },
+      fireCubeFaceTransitionAimProofShot: () => {
+        if (!_netMainTestMode || !network.isConnected()) return false;
+        const localServerPlayer = localPlayerId ? latestGameState?.players.get(localPlayerId) : null;
+        const aimAngle = localServerPlayer?.aimAngle ?? lastSentInput?.aimAngle ?? 0;
+        const baseInput = lastSentInput ?? {
+          moveX: 0,
+          moveY: 0,
+          bomb: false,
+          boost: false,
+          weaponSwap: false,
+        };
+        const proofInput = { ...baseInput, moveX: 0, moveY: 0, aimAngle, shooting: true };
+        lastSentInput = proofInput;
+        network.sendInput(proofInput);
+        setTimeout(() => network.sendInput(proofInput), 75);
+        setTimeout(() => network.sendInput(proofInput), 150);
+        setTimeout(() => {
+          const stopInput = { ...proofInput, shooting: false };
+          lastSentInput = stopInput;
+          network.sendInput(stopInput);
+        }, 300);
         return true;
       },
       getUpgradeProofState: () => {
