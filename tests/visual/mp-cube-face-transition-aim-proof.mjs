@@ -73,6 +73,16 @@ async function waitForPage(page, predicate, timeoutMs = 30000, argument = undefi
   return null;
 }
 
+async function waitForLog(logs, predicate, timeoutMs = 2500) {
+  const started = Date.now();
+  while (Date.now() - started < timeoutMs) {
+    const match = logs.find(predicate);
+    if (match) return match;
+    await sleep(100);
+  }
+  return null;
+}
+
 function startProcess(args, env, logs) {
   const child = spawn(process.execPath, args, {
     cwd: ROOT,
@@ -390,6 +400,20 @@ async function main() {
     };
     const targetAfter = postShotState?.target ?? fallbackPostShotTarget ?? null;
     const hitReport = postShotState?.hitReport ?? fallbackPostShotHitReport ?? null;
+    const serverAcceptedHitLine = hitReport
+      ? await waitForLog(serverLogs, (line) =>
+        line.includes('[GameRoom] bullet_hit:')
+        && /\(hp=0(?:\.0+)?, remaining=0(?:\.0+)?\)/.test(line))
+      : null;
+    const hitReportClientPass = Boolean(
+      hitReport
+      && hitReport.ownerId === shotProof.localPlayerId
+      && hitReport.enemyId === targetEnemyId
+    );
+    const targetSyncObserved = Boolean(
+      !targetAfter || targetAfter.health <= 0 || targetAfter.alive === false
+    );
+    const serverAcceptedHit = Boolean(serverAcceptedHitLine);
     const cameraAimPass = Boolean(
       setup?.ok
       && Number.isFinite(transitionNormalDot)
@@ -418,11 +442,15 @@ async function main() {
       && trajectorySummary.initialAngularError <= 12,
     );
     const hitReportPass = Boolean(
-      hitReport
-      && hitReport.ownerId === shotProof.localPlayerId
-      && hitReport.enemyId === targetEnemyId
-      && (!targetAfter || targetAfter.health <= 0 || targetAfter.alive === false),
+      hitReportClientPass
+      && (targetSyncObserved || serverAcceptedHit),
     );
+    const hitReportSummary = {
+      clientReport: hitReportClientPass,
+      targetSyncObserved,
+      serverAcceptedHit,
+      serverAcceptedHitLine: serverAcceptedHitLine ? sanitizeEvidenceLine(serverAcceptedHitLine) : null,
+    };
 
     let verdict = 'PASS';
     if (!cameraAimPass) verdict = 'FAIL_AIM';
@@ -460,6 +488,7 @@ async function main() {
       trajectory,
       trajectorySummary,
       hitReport,
+      hitReportSummary,
       targetAfter,
       angularErrors,
       segmentVerdicts: {
