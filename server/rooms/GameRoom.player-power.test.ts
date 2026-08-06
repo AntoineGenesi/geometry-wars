@@ -4,9 +4,13 @@ import { GameRoom } from './GameRoom';
 function makePlayer(overrides: Record<string, unknown> = {}) {
   return {
     id: 'p1',
+    name: 'Test Player',
     alive: true,
     score: 0,
+    multiplier: 1,
     playerLevel: 0,
+    playerKills: 0,
+    enemyKills: 0,
     weaponType: 'standard',
     guardianCount: 0,
     hunterCount: 0,
@@ -32,8 +36,11 @@ function makeRoom(player: ReturnType<typeof makePlayer>) {
     enemyDifficultyPerPlayer: 'medium',
   };
   room.playerActiveUpgradeNodes = new Map();
+  room.playerUpgradeKillCounts = new Map();
   room.playerPowerStreaks = new Map([[player.id, 0]]);
   room.playerPowerLastDeathAt = new Map([[player.id, 600]]);
+  room.playerPowerRawScores = new Map([[player.id, 0]]);
+  room.broadcast = vi.fn();
   return room;
 }
 
@@ -128,5 +135,22 @@ describe('GameRoom authoritative player-power integration', () => {
     const du = Math.min(Math.abs(spawn.u - player.surfaceU), 1 - Math.abs(spawn.u - player.surfaceU));
     const dv = Math.abs(spawn.v - player.surfaceV);
     expect(Math.hypot(du, dv)).toBeGreaterThanOrEqual(0.35);
+  });
+
+  it('feeds MP raw score, multiplied score, and total kills into player power', () => {
+    const player = makePlayer({ multiplier: 4 });
+    const room = makeRoom(player);
+
+    room.creditPlayerEnemyKill(player, 25, 'standard', 3);
+    const snapshot = room.collectPlayerPower(player);
+    const dominance = room.getRoomDominance();
+
+    expect(player.score).toBe(300);
+    expect(snapshot.rawScore).toBe(75);
+    expect(snapshot.multipliedScore).toBe(300);
+    expect(snapshot.totalKills).toBe(3);
+    expect(dominance.rawScore).toBe(75);
+    expect(dominance.multipliedScore).toBe(300);
+    expect(dominance.killPressure).toBeGreaterThan(0);
   });
 });
