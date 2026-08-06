@@ -12,6 +12,16 @@ const BASE_URL = `http://127.0.0.1:${PORT}`;
 const SCREENSHOT_DIR = resolve(PROJECT_ROOT, 'test-screenshots/endgame-session-review-ui');
 const RUN_ID = new Date().toISOString().replace(/[:.]/g, '-');
 const REPORT_PATH = resolve(PROJECT_ROOT, `reports/endgame-session-review-ui-redo-${RUN_ID}.json`);
+const EXPECTED_KILLED_TYPES = [
+  'Wanderer',
+  'Prism Lancer',
+  'Shatter Bloom',
+  'Sentinel Orb',
+  'Grunt',
+  'Rocket',
+  'Spinner',
+  'Titan Grunt',
+];
 const CHROME_CANDIDATES = [
   process.env.CHROME_PATH,
   process.env.PUPPETEER_EXECUTABLE_PATH,
@@ -244,10 +254,17 @@ async function main() {
       .every(item => item.frameCount >= 8 && item.uniqueFrameCount >= 4);
     const previewAnimationAdvanced = JSON.stringify(previewAnimationBefore) !== JSON.stringify(previewAnimationAfter);
     const byTypeHasModelLegend = (
-      byTypeEvidence.entryCount >= 4 &&
-      byTypeEvidence.previewCount >= 4 &&
+      byTypeEvidence.entryCount >= EXPECTED_KILLED_TYPES.length &&
+      byTypeEvidence.previewCount >= EXPECTED_KILLED_TYPES.length &&
       byTypeEvidence.swatchCount >= byTypeEvidence.entryCount &&
-      byTypeEvidence.frameCounts.filter(item => item.frameCount >= 8).length >= 4
+      byTypeEvidence.frameCounts.filter(item => item.frameCount >= 8).length >= EXPECTED_KILLED_TYPES.length
+    );
+    const killsTabMatchesExpectedTypes = (
+      JSON.stringify(killsEvidence.visibleNames) === JSON.stringify(EXPECTED_KILLED_TYPES)
+    );
+    const byTypeMatchesExpectedTypes = (
+      JSON.stringify(byTypeEvidence.legendText) === JSON.stringify(EXPECTED_KILLED_TYPES) &&
+      !byTypeEvidence.legendText.includes('Other')
     );
     const dragZoomWorked = (
       zoomBefore.start === '0.0000' &&
@@ -270,7 +287,9 @@ async function main() {
       graphEvidence.legendText.includes('PvP Kill') &&
       graphEvidence.hasCanvas &&
       byTypeHasModelLegend &&
-      dragZoomWorked
+      dragZoomWorked &&
+      killsTabMatchesExpectedTypes &&
+      byTypeMatchesExpectedTypes
     ) ? 'PASS' : 'FAILED';
     report.screenshots = {
       killsTab: killsScreenshot,
@@ -291,6 +310,9 @@ async function main() {
       previewFramesAreDistinct,
       previewAnimationAdvanced,
       byTypeHasModelLegend,
+      killsTabMatchesExpectedTypes,
+      byTypeMatchesExpectedTypes,
+      expectedKilledTypes: EXPECTED_KILLED_TYPES,
       dragZoomWorked,
     };
   } finally {

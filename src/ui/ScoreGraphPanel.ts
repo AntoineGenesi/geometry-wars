@@ -176,7 +176,7 @@ export class ScoreGraphPanel {
 
     // Store reference for kill timeline computation
     this.perfLoggerRef = perfLogger;
-    this.killTimeline = perfLogger.getKillTimelineByEnemyType(6);
+    this.killTimeline = perfLogger.getKillTimelineByEnemyType();
 
     // Reset zoom/hover
     this.zoomStart = 0;
@@ -404,14 +404,10 @@ export class ScoreGraphPanel {
     if (this.viewMode === 'kills' && this.killsSubMode === 'byType' && this.killTimeline) {
       for (const typeName of this.killTimeline.types) {
         const color = ENEMY_TYPE_COLORS[typeName] ?? '#666688';
-        const displayName = typeName === 'other'
-          ? 'Other'
-          : (ENEMY_DISPLAY[typeName] ?? (typeName.charAt(0).toUpperCase() + typeName.slice(1).replace(/_/g, ' ')));
+        const displayName = ENEMY_DISPLAY[typeName] ?? (typeName.charAt(0).toUpperCase() + typeName.slice(1).replace(/_/g, ' '));
         const entry = document.createElement('div');
         entry.className = 'sgp-legend-entry sgp-legend-entry-by-type';
-        if (typeName !== 'other') {
-          entry.appendChild(createEnemyModelPreviewElement(typeName, displayName, color));
-        }
+        entry.appendChild(createEnemyModelPreviewElement(typeName, displayName, color));
         const swatch = document.createElement('span');
         swatch.className = 'sgp-legend-swatch';
         swatch.style.background = color;

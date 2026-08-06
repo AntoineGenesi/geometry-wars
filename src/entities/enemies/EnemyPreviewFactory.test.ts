@@ -5,8 +5,13 @@ import {
   disposePreviewObject,
   PREVIEW_ENEMY_TYPES,
 } from './EnemyPreviewFactory';
+import { ENEMY_TYPES } from './EnemySpawner';
 
 describe('EnemyPreviewFactory', () => {
+  it('keeps preview coverage aligned with the full enemy roster', () => {
+    expect(PREVIEW_ENEMY_TYPES).toEqual(ENEMY_TYPES);
+  });
+
   it('creates a real preview mesh for every known enemy type', () => {
     const missing: string[] = [];
     const created: THREE.Object3D[] = [];

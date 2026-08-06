@@ -55,16 +55,53 @@ import type { MeshSurface } from '../../surfaces/MeshSurface';
 import { profiler } from '../../core/PerformanceProfiler';
 import { waveComposer } from './WaveComposer';
 
-export type EnemyType =
-  | 'wanderer' | 'grunt' | 'duck' | 'mayfly' | 'rocket' | 'neutron'
-  | 'weaver' | 'spinner' | 'snake' | 'repulsor' | 'gravity_well' | 'gravity_well_red' | 'gate'
-  | 'painter' | 'virus' | 'spawner' | 'titan_grunt' | 'titan_spinner' | 'titan_weaver'
-  | 'giant_wanderer' | 'giant_rocket' | 'giant_snake' | 'giant_neutron'
-  | 'cluster' | 'helix' | 'fractal' | 'swarm'
-  | 'lurker' | 'orbiter' | 'splitter' | 'phaser'
-  | 'approach_glow' | 'stealth_stalker' | 'fractal_snake'
-  | 'prism_lancer' | 'sentinel_orb' | 'shatter_bloom'
-  | 'boss_sapphire' | 'boss_ruby' | 'boss_emerald' | 'boss_topaz' | 'boss_amethyst' | 'boss_opal';
+export const ENEMY_TYPES = [
+  'wanderer',
+  'grunt',
+  'duck',
+  'mayfly',
+  'rocket',
+  'neutron',
+  'weaver',
+  'spinner',
+  'snake',
+  'repulsor',
+  'gravity_well',
+  'gravity_well_red',
+  'gate',
+  'painter',
+  'virus',
+  'spawner',
+  'titan_grunt',
+  'titan_spinner',
+  'titan_weaver',
+  'giant_wanderer',
+  'giant_rocket',
+  'giant_snake',
+  'giant_neutron',
+  'cluster',
+  'helix',
+  'fractal',
+  'swarm',
+  'lurker',
+  'orbiter',
+  'splitter',
+  'phaser',
+  'approach_glow',
+  'stealth_stalker',
+  'fractal_snake',
+  'prism_lancer',
+  'sentinel_orb',
+  'shatter_bloom',
+  'boss_sapphire',
+  'boss_ruby',
+  'boss_emerald',
+  'boss_topaz',
+  'boss_amethyst',
+  'boss_opal',
+] as const;
+
+export type EnemyType = typeof ENEMY_TYPES[number];
 
 export interface SpawnRegion {
   minU?: number;

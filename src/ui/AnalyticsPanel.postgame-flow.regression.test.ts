@@ -13,9 +13,20 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { AnalyticsPanel } from './AnalyticsPanel';
+import { ENEMY_DISPLAY, ENEMY_TYPE_COLORS, AnalyticsPanel } from './AnalyticsPanel';
+import { ENEMY_TYPES } from '../entities/enemies/EnemySpawner';
 
 const describeWithDom = typeof document === 'undefined' ? describe.skip : describe;
+
+describe('AnalyticsPanel enemy roster mapping', () => {
+  it('has display names and colors for every current enemy type', () => {
+    const missingDisplay = ENEMY_TYPES.filter(type => !ENEMY_DISPLAY[type]);
+    const missingColor = ENEMY_TYPES.filter(type => !ENEMY_TYPE_COLORS[type]);
+
+    expect(missingDisplay).toEqual([]);
+    expect(missingColor).toEqual([]);
+  });
+});
 
 // Minimal PerformanceLogger stub that satisfies getWeaponAnalytics()
 const makeLogger = () => ({
@@ -153,4 +164,5 @@ describeWithDom('AnalyticsPanel — post-game flow regression (s44r20-05)', () =
     expect(rows[3].querySelector('[data-enemy-preview="shatter_bloom"]')).not.toBeNull();
     expect(document.querySelector('.ap-kills-list')).not.toBeNull();
   });
+
 });
