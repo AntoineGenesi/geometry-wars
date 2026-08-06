@@ -9,7 +9,13 @@
  */
 
 import { WeaponType, WEAPON_CONFIGS } from '../weapons/WeaponTypes';
-import { UPGRADE_TREES, getNodeById, UpgradeNode, UpgradeTree } from '../systems/UpgradeTreeData';
+import { UPGRADE_TREES, getNodeById, getImplicitParent, UpgradeNode, UpgradeTree } from '../systems/UpgradeTreeData';
+import { getMpUpgradeNodeSupport } from '../shared/WeaponUpgradeEffects';
+
+export interface BuildChoiceScreenOptions {
+  mode?: 'sp' | 'mp';
+  unsupportedNodeIds?: readonly string[];
+}
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -102,12 +108,13 @@ export class BuildChoiceScreen {
     activeIds: ReadonlySet<string>,
     killCount: number,
     onConfirm: (nodeId: string) => void,
+    options: BuildChoiceScreenOptions = {},
   ): void {
     const tree = UPGRADE_TREES[weaponType];
     if (!tree) return;
 
     const weaponName = WEAPON_CONFIGS[weaponType]?.name ?? String(weaponType);
-    this._render(weaponName, weaponType, availableNodeIds, tree, activeIds, killCount, onConfirm);
+    this._render(weaponName, weaponType, availableNodeIds, tree, activeIds, killCount, onConfirm, options);
 
     this.overlay.classList.remove('hidden');
 
@@ -178,8 +185,11 @@ export class BuildChoiceScreen {
     activeIds: ReadonlySet<string>,
     killCount: number,
     onConfirm: (nodeId: string) => void,
+    options: BuildChoiceScreenOptions,
   ): void {
     const color = '#' + (WEAPON_CONFIGS[weaponType]?.color ?? 0xffffff).toString(16).padStart(6, '0');
+    const explicitlyUnsupported = new Set(options.unsupportedNodeIds ?? []);
+    const mpMode = options.mode === 'mp';
 
     this.cards = [];
     this.selectableIndices = [];
@@ -203,25 +213,34 @@ export class BuildChoiceScreen {
       const excluded = isExcludedByActive(nodeId, tree, activeIds);
       const conflictName = excluded ? conflictingNodeName(nodeId, tree, activeIds) : null;
       const isPremium = (node.cost ?? 1) > 1;
+      const support = mpMode ? getMpUpgradeNodeSupport(nodeId) : null;
+      const mpUnsupported = explicitlyUnsupported.has(nodeId) || support?.status === 'unsupported';
+      const isCapstone = !tree.nodes.some(candidate => getImplicitParent(candidate, tree)?.id === node.id);
+      const selectable = !excluded && !mpUnsupported;
 
-      if (!excluded) {
+      if (selectable) {
         if (this.selectedIndex === -1) this.selectedIndex = idx;
         this.selectableIndices.push(idx);
       }
 
       const card = document.createElement('div');
-      card.className = 'bcs-card' + (excluded ? ' bcs-excluded' : '');
+      card.className = 'bcs-card' + (!selectable ? ' bcs-excluded' : '');
       card.dataset.idx = String(idx);
 
       card.innerHTML = `
-        ${isPremium ? '<div class="bcs-premium">★ PREMIUM</div>' : ''}
+        <div class="bcs-meta">
+          ${isPremium ? '<span class="bcs-chip bcs-chip-premium">2pt path</span>' : '<span class="bcs-chip">1pt</span>'}
+          ${isCapstone ? '<span class="bcs-chip bcs-chip-capstone">capstone</span>' : ''}
+          ${mpMode && !mpUnsupported ? '<span class="bcs-chip bcs-chip-mp">MP proven</span>' : ''}
+        </div>
         <div class="bcs-node-name">${node.description}</div>
         <div class="bcs-node-effect">${node.effect}</div>
         <div class="bcs-node-threshold">${node.killThreshold} kills required</div>
         ${excluded ? `<div class="bcs-conflict">✕ conflicts with: ${conflictName ?? 'another node'}</div>` : ''}
+        ${mpUnsupported ? `<div class="bcs-conflict">✕ MP unsupported: ${support?.reason ?? 'not server-authoritative'}</div>` : ''}
       `;
 
-      if (!excluded) {
+      if (selectable) {
         card.addEventListener('click', () => {
           this.hide();
           onConfirm(nodeId);
@@ -365,6 +384,34 @@ export class BuildChoiceScreen {
         border-color: rgba(255, 60, 60, 0.5);
         box-shadow: 0 0 12px rgba(255, 60, 60, 0.2) inset;
         transform: none !important;
+      }
+
+      .bcs-meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px;
+        min-height: 18px;
+      }
+      .bcs-chip {
+        border: 1px solid rgba(255,255,255,0.12);
+        color: #778899;
+        font-size: 10px;
+        line-height: 1;
+        padding: 3px 5px;
+        text-transform: uppercase;
+        white-space: nowrap;
+      }
+      .bcs-chip-premium {
+        border-color: rgba(255, 204, 68, 0.38);
+        color: #ffcc66;
+      }
+      .bcs-chip-capstone {
+        border-color: rgba(136, 204, 255, 0.35);
+        color: #aaddff;
+      }
+      .bcs-chip-mp {
+        border-color: rgba(68, 255, 136, 0.28);
+        color: #88ffbb;
       }
 
       .bcs-premium {

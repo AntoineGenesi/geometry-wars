@@ -286,6 +286,30 @@ describe('WeaponMasteryScreen — constellation UI', () => {
     expect(html).toContain('DPS');       // TeslaCoil branchBName
   });
 
+  it('show() HTML contains compact branch purpose and capstone metadata', () => {
+    screen.show();
+    const html = mockBody.children[0].innerHTML;
+
+    expect(html).toContain('wms-branch-purpose-grid');
+    expect(html).toContain('wide fan clear');
+    expect(html).toContain('premium fire-rate pressure');
+    expect(html).toContain('Cap: Nova fan');
+    expect(html).toContain('wms-branch-chip--premium');
+  });
+
+  it('show() marks terminal nodes as capstones and premium nodes as 2-point paths', () => {
+    screen.show();
+    const html = mockBody.children[0].innerHTML;
+    const standardAl6 = html.match(/<div[^>]*data-node-id="standard_al_6"[^>]*>/)?.[0] ?? '';
+    const standardAr5 = html.match(/<div[^>]*data-node-id="standard_ar_5"[^>]*>/)?.[0] ?? '';
+
+    expect(standardAl6).toContain('wms-node--capstone');
+    expect(standardAl6).toContain('data-branch-name="Scatter"');
+    expect(standardAl6).toContain('data-capstone="true"');
+    expect(standardAr5).toContain('wms-node--premium');
+    expect(standardAr5).toContain('data-branch-name="Cadence"');
+  });
+
   it('show() HTML contains available points display', () => {
     screen.show();
     const html = mockBody.children[0].innerHTML;

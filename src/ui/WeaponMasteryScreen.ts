@@ -368,9 +368,80 @@ function injectStyles(): void {
       text-transform: uppercase;
       opacity: 0.7;
     }
+    #weapon-mastery-screen .wms-branch-purpose-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+      min-height: 42px;
+      margin: 4px 0 8px;
+    }
+    #weapon-mastery-screen .wms-branch-purpose-grid--4 {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+    #weapon-mastery-screen .wms-branch-purpose {
+      min-width: 0;
+      border-top: 1px solid color-mix(in srgb, var(--wc, #888) 28%, transparent);
+      padding-top: 5px;
+      display: grid;
+      gap: 2px;
+    }
+    #weapon-mastery-screen .wms-branch-purpose-name {
+      color: color-mix(in srgb, var(--wc, #888) 82%, white);
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    #weapon-mastery-screen .wms-branch-purpose-summary {
+      color: #7f91a3;
+      font-size: 9px;
+      line-height: 1.25;
+      min-height: 22px;
+    }
+    #weapon-mastery-screen .wms-branch-purpose-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 3px;
+      min-height: 16px;
+    }
+    #weapon-mastery-screen .wms-branch-chip {
+      border: 1px solid rgba(255,255,255,0.12);
+      color: #8998a8;
+      font-size: 8px;
+      line-height: 1;
+      padding: 3px 4px;
+      text-transform: uppercase;
+      white-space: nowrap;
+      max-width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    #weapon-mastery-screen .wms-branch-chip--premium {
+      border-color: rgba(255,204,68,0.38);
+      color: #ffcc66;
+    }
+    #weapon-mastery-screen .wms-branch-chip--conflict {
+      border-color: rgba(255,88,88,0.38);
+      color: #ff7777;
+    }
     /* Premium-cost node indicator — slightly brighter border */
     #weapon-mastery-screen .wms-node--premium {
       border-style: double;
+    }
+    #weapon-mastery-screen .wms-node--capstone {
+      box-shadow: 0 0 0 2px rgba(255,255,255,0.12), 0 0 10px color-mix(in srgb, var(--wc, #888) 35%, transparent);
+    }
+    #weapon-mastery-screen .wms-node--capstone::before {
+      content: '';
+      position: absolute;
+      inset: -5px;
+      border: 1px solid color-mix(in srgb, var(--wc, #888) 55%, white);
+      transform: rotate(45deg);
+      opacity: 0.45;
+      pointer-events: none;
     }
 
     /* ── Constellation area ── */
@@ -550,6 +621,28 @@ function injectStyles(): void {
       letter-spacing: 1px;
       margin-bottom: 5px;
     }
+    #wms-tooltip .wms-tt-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      margin: 0 0 6px;
+    }
+    #wms-tooltip .wms-tt-chip {
+      border: 1px solid rgba(255,255,255,0.12);
+      color: #9fb1c2;
+      font-size: 9px;
+      line-height: 1;
+      padding: 3px 5px;
+      text-transform: uppercase;
+    }
+    #wms-tooltip .wms-tt-chip--premium {
+      border-color: rgba(255,204,68,0.38);
+      color: #ffcc66;
+    }
+    #wms-tooltip .wms-tt-chip--capstone {
+      border-color: rgba(136,204,255,0.35);
+      color: #aaddff;
+    }
     #wms-tooltip .wms-tt-desc {
       font-size: 11px;
       color: #778;
@@ -591,6 +684,32 @@ function injectStyles(): void {
       letter-spacing: 2px;
       margin-top: 36px;
     }
+    @media (max-width: 480px) {
+      #weapon-mastery-screen .wms-content {
+        padding-left: 12px;
+        padding-right: 12px;
+      }
+      #weapon-mastery-screen .wms-points-bar {
+        flex-wrap: wrap;
+        gap: 10px 16px;
+      }
+      #weapon-mastery-screen .wms-points-secondary {
+        flex-basis: 100%;
+        margin-left: 0;
+      }
+      #weapon-mastery-screen .wms-branch-labels--4 {
+        display: none;
+      }
+      #weapon-mastery-screen .wms-branch-purpose-grid--4 {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+      #weapon-mastery-screen .wms-branch-purpose-name {
+        font-size: 8px;
+      }
+      #weapon-mastery-screen .wms-branch-purpose-summary {
+        min-height: 18px;
+      }
+    }
   `;
   document.head.appendChild(style);
 }
@@ -600,6 +719,51 @@ function injectStyles(): void {
 // Branching weapons (e.g. Standard) use explicit x/y per node instead.
 
 interface NodePos { x: number; y: number; }
+interface BranchDisplayInfo {
+  id: string;
+  name: string;
+  summary: string;
+  capstoneName: string;
+  premium: boolean;
+  hasConflict: boolean;
+}
+
+const BRANCH_PURPOSE_COPY: Record<string, string> = {
+  Volley: 'forward bolt volume',
+  Scatter: 'wide fan clear',
+  Cadence: 'premium fire-rate pressure',
+  Focus: 'tight reliable bolts',
+  Guidance: 'homing reliability',
+  Payload: 'premium kill payoff',
+  'More Pellets': 'wider pellet count',
+  Storm: 'max pellet storm',
+  Explosive: 'premium splash pellets',
+  'Tight Cluster': 'denser close grouping',
+  Piercing: 'pellets punch through',
+  Sniper: 'premium focused burst',
+  Range: 'safer line clears',
+  Reach: 'maximum beam path',
+  'Multi-Beam': 'premium parallel beams',
+  'Rapid Fire': 'more trigger pressure',
+  Burst: 'multi-shot beam burst',
+  Charged: 'premium heavy shots',
+  Virality: 'more chain targets',
+  Voltage: 'stronger arc hits',
+  Intercept: 'faster target reach',
+  Warhead: 'bigger detonations',
+  Explosion: 'larger area denial',
+  Strength: 'elite-cracking damage',
+  Crush: 'sustained compression',
+  Ramp: 'faster peak damage',
+  Duration: 'longer beam control',
+  Persistence: 'longer void fields',
+  'Multi Void': 'multiple fields',
+  'Giant Void': 'premium single field',
+  Pull: 'larger gravity reach',
+  Capture: 'hold and collide',
+  Radius: 'larger shock field',
+  DPS: 'faster kill ticks',
+};
 
 /** Fallback positions for legacy linear-branch nodes (branch 'a' or 'b', depth 1-10). */
 const NODE_POSITIONS: Record<string, NodePos> = {
@@ -797,6 +961,7 @@ export class WeaponMasteryScreen {
           <span class="wms-branch-label">${tree.branchAName}</span>
           <span class="wms-branch-label">${tree.branchBName}</span>
         </div>`}
+        ${this._buildBranchPurposeGrid(tree)}
         ${constellationHTML}
       </div>
     `;
@@ -924,21 +1089,26 @@ export class WeaponMasteryScreen {
       const topPct = ((pos.y / SVG_H) * 100).toFixed(2);
       const state = this._nodeState(n, ps, hasPoints, weaponType, tree);
       const stateClass = `wms-node--${state}`;
+      const extraClasses = this._nodeExtraClasses(n, tree);
       const label = this._nodeLabel(n, ps);
       const maxPts = getNodeMaxPoints(n);
       const cost = n.cost ?? 1;
+      const branchName = this._branchNameForNode(n, tree);
+      const isCapstone = this._isCapstoneNode(n, tree);
 
       // Prereq info for tooltip
       const implicitParent = getImplicitParent(n, tree);
       const prereqName = implicitParent ? this._esc(implicitParent.description) : '';
 
       nodes.push(`
-        <div class="wms-node ${stateClass}"
+        <div class="wms-node ${stateClass}${extraClasses}"
           style="left: ${leftPct}%; top: ${topPct}%; --wc: ${color}"
           data-node-id="${n.id}"
           data-node-name="${this._esc(n.description)}"
           data-node-effect="${this._esc(n.effect)}"
           data-node-state="${state}"
+          data-branch-name="${this._esc(branchName)}"
+          data-capstone="${isCapstone ? 'true' : 'false'}"
           data-kill-threshold="${n.killThreshold}"
           data-max-points="${maxPts}"
           data-cost="${cost}"
@@ -963,6 +1133,71 @@ export class WeaponMasteryScreen {
         ${nodes.join('\n        ')}
       </div>
     `;
+  }
+
+  private _buildBranchPurposeGrid(tree: UpgradeTree): string {
+    const branches = this._branchDisplayInfos(tree);
+    const gridClass = branches.length > 2 ? ' wms-branch-purpose-grid--4' : '';
+    return `
+      <div class="wms-branch-purpose-grid${gridClass}">
+        ${branches.map(branch => `
+          <div class="wms-branch-purpose" data-branch-purpose="${branch.id}">
+            <div class="wms-branch-purpose-name">${this._esc(branch.name)}</div>
+            <div class="wms-branch-purpose-summary">${this._esc(branch.summary)}</div>
+            <div class="wms-branch-purpose-meta">
+              <span class="wms-branch-chip">Cap: ${this._esc(branch.capstoneName)}</span>
+              ${branch.premium ? '<span class="wms-branch-chip wms-branch-chip--premium">2pt path</span>' : ''}
+              ${branch.hasConflict ? '<span class="wms-branch-chip wms-branch-chip--conflict">exclusive</span>' : ''}
+            </div>
+          </div>
+        `).join('')}
+      </div>
+    `;
+  }
+
+  private _branchDisplayInfos(tree: UpgradeTree): BranchDisplayInfo[] {
+    const branchOrder = tree.branchALName
+      ? ['al', 'ar', 'bl', 'br']
+      : ['a', 'b'];
+
+    return branchOrder.map(id => {
+      const nodes = tree.nodes.filter(node => node.branch === id);
+      const capstone = nodes.find(node => this._isCapstoneNode(node, tree)) ?? nodes[nodes.length - 1];
+      const name = this._branchName(id, tree);
+      const conflictIds = new Set(tree.exclusionPairs?.flat() ?? []);
+      return {
+        id,
+        name,
+        summary: BRANCH_PURPOSE_COPY[name] ?? capstone?.effect.replace(/^Capstone:\s*/i, '') ?? 'upgrade path',
+        capstoneName: capstone?.description ?? 'finish',
+        premium: nodes.some(node => (node.cost ?? 1) > 1),
+        hasConflict: nodes.some(node => conflictIds.has(node.id) || (node.excludes?.length ?? 0) > 0),
+      };
+    });
+  }
+
+  private _branchNameForNode(node: UpgradeNode, tree: UpgradeTree): string {
+    return this._branchName(node.branch, tree);
+  }
+
+  private _branchName(branch: string, tree: UpgradeTree): string {
+    if (branch === 'al') return tree.branchALName ?? tree.branchAName;
+    if (branch === 'ar') return tree.branchARName ?? tree.branchAName;
+    if (branch === 'bl') return tree.branchBLName ?? tree.branchBName;
+    if (branch === 'br') return tree.branchBRName ?? tree.branchBName;
+    if (branch === 'a') return tree.branchAName;
+    return tree.branchBName;
+  }
+
+  private _isCapstoneNode(node: UpgradeNode, tree: UpgradeTree): boolean {
+    return !tree.nodes.some(candidate => getImplicitParent(candidate, tree)?.id === node.id);
+  }
+
+  private _nodeExtraClasses(node: UpgradeNode, tree: UpgradeTree | null): string {
+    const classes: string[] = [];
+    if ((node.cost ?? 1) > 1) classes.push('wms-node--premium');
+    if (tree && this._isCapstoneNode(node, tree)) classes.push('wms-node--capstone');
+    return classes.length > 0 ? ` ${classes.join(' ')}` : '';
   }
 
   /** Returns explicit position if the node has one; falls back to NODE_POSITIONS for legacy linear-branch nodes. */
@@ -1084,7 +1319,7 @@ export class WeaponMasteryScreen {
     const tree = weaponType ? (UPGRADE_TREES[weaponType] ?? null) : null;
     const state = this._nodeState(fullNode, ps, hasPoints, weaponType, tree);
 
-    nodeEl.className = `wms-node wms-node--${state}`;
+    nodeEl.className = `wms-node wms-node--${state}${this._nodeExtraClasses(fullNode, tree)}`;
     nodeEl.dataset.nodeState = state;
 
     // Update label: N/Max for multi-level, else just the index
@@ -1283,7 +1518,7 @@ export class WeaponMasteryScreen {
       const fullNode = getNodeById(nodeId) ?? ({ id: nodeId, maxPoints, cost } as UpgradeNode);
       const tree = weaponType ? (UPGRADE_TREES[weaponType] ?? null) : null;
       const state = this._nodeState(fullNode, ps, hasPoints, weaponType, tree);
-      nodeEl.className = `wms-node wms-node--${state}`;
+      nodeEl.className = `wms-node wms-node--${state}${this._nodeExtraClasses(fullNode, tree)}`;
       nodeEl.dataset.nodeState = state;
       if (maxPoints > 1) {
         const current = ps.getNodePoints(nodeId);
@@ -1302,6 +1537,8 @@ export class WeaponMasteryScreen {
     const nodeId = nodeEl.dataset.nodeId!;
     const name = nodeEl.dataset.nodeName ?? '';
     const effect = nodeEl.dataset.nodeEffect ?? '';
+    const branchName = nodeEl.dataset.branchName ?? '';
+    const isCapstone = nodeEl.dataset.capstone === 'true';
     const state = nodeEl.dataset.nodeState as string;
     const maxPoints = parseInt(nodeEl.dataset.maxPoints ?? '1', 10);
     const currentPoints = ps.getNodePoints(nodeId);
@@ -1353,6 +1590,11 @@ export class WeaponMasteryScreen {
 
     this.tooltip.innerHTML = `
       <div class="wms-tt-name">${name}</div>
+      <div class="wms-tt-meta">
+        ${branchName ? `<span class="wms-tt-chip">${branchName}</span>` : ''}
+        ${isCapstone ? '<span class="wms-tt-chip wms-tt-chip--capstone">capstone</span>' : ''}
+        ${cost > 1 ? `<span class="wms-tt-chip wms-tt-chip--premium">${cost}pt path</span>` : ''}
+      </div>
       <div class="wms-tt-effect">${effect}</div>
       ${synergyHtml}
       ${costHtml}

@@ -142,4 +142,42 @@ describe('BuildChoiceScreen conflict filtering', () => {
     expect(onConfirm).toHaveBeenCalledWith('standard_ar_5');
     screen.dispose();
   });
+
+  it('blocks unsupported MP choices even if a caller passes one through', () => {
+    const screen = new BuildChoiceScreen();
+    const onConfirm = vi.fn();
+
+    screen.show(
+      WeaponType.BlackHole,
+      ['black_hole_a_1'],
+      new Set(),
+      10,
+      onConfirm,
+      { mode: 'mp' },
+    );
+    vi.advanceTimersByTime(1500);
+
+    expect(onConfirm).not.toHaveBeenCalled();
+    expect(body.children[0].innerHTML).toContain('MP unsupported');
+    screen.dispose();
+  });
+
+  it('renders compact cost, capstone, and MP-proven chips for supported MP choices', () => {
+    const screen = new BuildChoiceScreen();
+    const onConfirm = vi.fn();
+
+    screen.show(
+      WeaponType.Standard,
+      ['standard_al_6'],
+      new Set(),
+      175,
+      onConfirm,
+      { mode: 'mp' },
+    );
+
+    expect(body.children[0].innerHTML).toContain('bcs-chip-capstone');
+    expect(body.children[0].innerHTML).toContain('MP proven');
+    expect(body.children[0].innerHTML).toContain('1pt');
+    screen.dispose();
+  });
 });
