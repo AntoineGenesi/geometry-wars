@@ -3,6 +3,7 @@ import { MasteryPointStore, weaponTypeFromNodeId } from '../systems/MasteryPoint
 import { MatchUpgradeTracker } from '../systems/MatchUpgradeTracker';
 import { WeaponType } from '../weapons/WeaponTypes';
 import {
+  filterMpBuildChoiceNodeIds,
   reconcileActiveUpgradeSnapshot,
   reconcileUpgradeActivationResult,
   upgradeActivationKey,
@@ -124,5 +125,34 @@ describe('MP upgrade activation client reconciliation', () => {
     expect(activeKeys).toEqual(['standard:standard_a_1']);
     expect([...tracker.getActiveUpgrades(WeaponType.Standard)]).toEqual(['standard_a_1']);
     expect(tracker.getActiveUpgrades(WeaponType.Spread).size).toBe(0);
+  });
+
+  it('filters unsupported retained nodes before MP build-choice UI sends requests', () => {
+    const result = filterMpBuildChoiceNodeIds([
+      'standard_a_1',
+      'standard_b_4',
+      'spread_b_2',
+      'black_hole_a_1',
+    ]);
+
+    expect(result).toEqual({
+      supportedNodeIds: ['standard_a_1', 'spread_b_2'],
+      unsupportedNodeIds: ['standard_b_4', 'black_hole_a_1'],
+      shouldShowChoiceScreen: true,
+    });
+  });
+
+  it('lets the MP build-choice caller clear pending state without pausing when all offers are unsupported', () => {
+    const result = filterMpBuildChoiceNodeIds([
+      'standard_b_4',
+      'standard_ar_5',
+      'black_hole_a_1',
+    ]);
+
+    expect(result).toEqual({
+      supportedNodeIds: [],
+      unsupportedNodeIds: ['standard_b_4', 'standard_ar_5', 'black_hole_a_1'],
+      shouldShowChoiceScreen: false,
+    });
   });
 });
