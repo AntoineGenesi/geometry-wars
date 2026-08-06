@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
+import { getAllNodes } from '../systems/UpgradeTreeData';
 import { WeaponType } from '../weapons/WeaponTypes';
 import {
+  MP_SUPPORTED_UPGRADE_NODE_IDS,
+  filterMpSupportedUpgradeNodeIds,
+  getMpUpgradeNodeSupport,
   getSpreadUpgradePattern,
   getStandardUpgradePattern,
   getUpgradeDamageMultiplier,
@@ -45,5 +49,32 @@ describe('shared weapon upgrade effects', () => {
     expect(getUpgradeFireRateMultiplier(WeaponType.Standard, new Set(['standard_b_1']))).toBeCloseTo(1);
     expect(getUpgradeDamageMultiplier(WeaponType.Spread, new Set(['spread_al_5']))).toBeCloseTo(1.15);
     expect(getUpgradeFireRateMultiplier(WeaponType.Standard, new Set(['standard_ar_5']))).toBeCloseTo(1.5);
+  });
+
+  it('keeps all MP-supported ids present in the rebuilt retained tree', () => {
+    const retainedNodeIds = new Set(getAllNodes().map(node => node.id));
+
+    for (const nodeId of MP_SUPPORTED_UPGRADE_NODE_IDS) {
+      expect(retainedNodeIds.has(nodeId)).toBe(true);
+      expect(getMpUpgradeNodeSupport(nodeId).status).toBe('server_authoritative');
+    }
+  });
+
+  it('returns unsupported reasons for retained nodes without MP support', () => {
+    for (const nodeId of ['standard_b_4', 'black_hole_al_4', 'plasma_mortar_a_4']) {
+      const support = getMpUpgradeNodeSupport(nodeId);
+      expect(support.status).toBe('unsupported');
+      expect(support.reason.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('filters unsupported MP build-choice ids while preserving supported ids', () => {
+    expect(filterMpSupportedUpgradeNodeIds([
+      'standard_a_1',
+      'standard_b_4',
+      'black_hole_al_4',
+      'spread_b_2',
+      'plasma_mortar_a_4',
+    ])).toEqual(['standard_a_1', 'spread_b_2']);
   });
 });

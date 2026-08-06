@@ -1,4 +1,5 @@
 import { MatchUpgradeTracker } from '../systems/MatchUpgradeTracker';
+import { filterMpSupportedUpgradeNodeIds } from '../shared/WeaponUpgradeEffects';
 import { WeaponType } from '../weapons/WeaponTypes';
 
 export interface PendingUpgradeActivation {
@@ -12,8 +13,26 @@ export interface ActiveUpgradeNodeSnapshot {
   forEach(cb: (value: number, key: string) => void): void;
 }
 
+export interface MpBuildChoiceSupportFilterResult {
+  supportedNodeIds: string[];
+  unsupportedNodeIds: string[];
+  shouldShowChoiceScreen: boolean;
+}
+
 export function upgradeActivationKey(nodeId: string, weaponType: WeaponType): string {
   return `${weaponType}:${nodeId}`;
+}
+
+export function filterMpBuildChoiceNodeIds(
+  availableNodeIds: readonly string[],
+): MpBuildChoiceSupportFilterResult {
+  const supportedNodeIds = filterMpSupportedUpgradeNodeIds(availableNodeIds);
+  const supported = new Set(supportedNodeIds);
+  return {
+    supportedNodeIds,
+    unsupportedNodeIds: availableNodeIds.filter(nodeId => !supported.has(nodeId)),
+    shouldShowChoiceScreen: supportedNodeIds.length > 0,
+  };
 }
 
 export function reconcileActiveUpgradeSnapshot(options: {

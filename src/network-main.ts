@@ -110,6 +110,7 @@ import {
   ClientMetricsPayload,
 } from './network/NetworkClient';
 import {
+  filterMpBuildChoiceNodeIds,
   reconcileActiveUpgradeSnapshot,
   reconcileUpgradeActivationResult,
   upgradeActivationKey,
@@ -1333,13 +1334,20 @@ async function main() {
 
   function wireBuildChoiceCallback(): void {
     matchUpgradeTracker.onBuildChoiceAvailable = (weaponType, availableNodeIds) => {
+      const supportFilter = filterMpBuildChoiceNodeIds(availableNodeIds);
+      if (!supportFilter.shouldShowChoiceScreen) {
+        matchUpgradeTracker.clearPendingChoice();
+        buildChoiceActive = false;
+        return;
+      }
+
       buildChoiceActive = true;
       game.pause();
 
       const activeIds = matchUpgradeTracker.getActiveUpgrades(weaponType);
       const killCount = matchUpgradeTracker.getKillCount(weaponType);
 
-      buildChoiceScreen.show(weaponType, availableNodeIds, activeIds, killCount, (chosenNodeId) => {
+      buildChoiceScreen.show(weaponType, supportFilter.supportedNodeIds, activeIds, killCount, (chosenNodeId) => {
         const key = upgradeActivationKey(chosenNodeId, weaponType);
         pendingUpgradeActivations.set(key, { nodeId: chosenNodeId, weaponType });
         network.sendUpgradeActivation({

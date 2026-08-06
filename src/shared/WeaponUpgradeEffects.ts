@@ -1,3 +1,4 @@
+import { getNodeById } from '../systems/UpgradeTreeData';
 import { WeaponType } from '../weapons/WeaponTypes';
 
 export interface StandardUpgradePattern {
@@ -12,9 +13,16 @@ export interface SpreadUpgradePattern {
   spreadAngle: number;
 }
 
+export type MpUpgradeNodeSupportStatus = 'server_authoritative' | 'client_safe' | 'unsupported';
+
+export interface MpUpgradeNodeSupport {
+  status: MpUpgradeNodeSupportStatus;
+  reason: string;
+}
+
 // MP accepts only nodes whose projectile/damage behavior is implemented by
 // GameRoom.tryShoot() and its authoritative bullet damage paths.
-const MP_SUPPORTED_UPGRADE_NODE_IDS = new Set([
+export const MP_SUPPORTED_UPGRADE_NODE_IDS = new Set([
   'standard_a_1', 'standard_a_2', 'standard_a_3', 'standard_a_4',
   'standard_b_1', 'standard_b_2', 'standard_b_3',
   'standard_al_5', 'standard_al_6',
@@ -23,7 +31,33 @@ const MP_SUPPORTED_UPGRADE_NODE_IDS = new Set([
 ]);
 
 export function isMpUpgradeNodeSupported(nodeId: string): boolean {
-  return MP_SUPPORTED_UPGRADE_NODE_IDS.has(nodeId);
+  return getMpUpgradeNodeSupport(nodeId).status !== 'unsupported';
+}
+
+export function getMpUpgradeNodeSupport(nodeId: string): MpUpgradeNodeSupport {
+  if (MP_SUPPORTED_UPGRADE_NODE_IDS.has(nodeId)) {
+    return {
+      status: 'server_authoritative',
+      reason: 'MP server applies this retained node from authoritative active-upgrade state.',
+    };
+  }
+
+  const node = getNodeById(nodeId);
+  if (node) {
+    return {
+      status: 'unsupported',
+      reason: 'Retained mastery node has no MP server-authoritative or client-safe runtime support yet.',
+    };
+  }
+
+  return {
+    status: 'unsupported',
+    reason: 'Unknown or stale removed upgrade node id is not supported in MP.',
+  };
+}
+
+export function filterMpSupportedUpgradeNodeIds(nodeIds: readonly string[]): string[] {
+  return nodeIds.filter(isMpUpgradeNodeSupported);
 }
 
 /** Numeric upgrade effects shared by the SP WeaponManager and MP authority. */
