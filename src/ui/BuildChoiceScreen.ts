@@ -15,6 +15,8 @@ import { getMpUpgradeNodeSupport } from '../shared/WeaponUpgradeEffects';
 export interface BuildChoiceScreenOptions {
   mode?: 'sp' | 'mp';
   unsupportedNodeIds?: readonly string[];
+  autoDismissMs?: number;
+  onDismiss?: () => void;
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -117,6 +119,7 @@ export class BuildChoiceScreen {
     this._render(weaponName, weaponType, availableNodeIds, tree, activeIds, killCount, onConfirm, options);
 
     this.overlay.classList.remove('hidden');
+    this.overlay.classList.toggle('bcs-mp-mode', options.mode === 'mp');
 
     // Auto-confirm if only one selectable option
     const onlyOne = this.selectableIndices.length === 1 && availableNodeIds.length <= 1;
@@ -129,6 +132,12 @@ export class BuildChoiceScreen {
           onConfirm(nodeId);
         }, 1200);
       }
+    } else if (options.mode === 'mp') {
+      const dismissMs = Math.max(1000, options.autoDismissMs ?? 6000);
+      this.autoTimer = setTimeout(() => {
+        this.hide();
+        options.onDismiss?.();
+      }, dismissMs);
     }
 
     // Keyboard handler
@@ -163,6 +172,7 @@ export class BuildChoiceScreen {
       document.removeEventListener('keydown', this.keyHandler, true);
       this.keyHandler = null;
     }
+    this.overlay.classList.remove('bcs-mp-mode');
     this.overlay.classList.add('hidden');
     this.overlay.innerHTML = '';
     this.cards = [];
@@ -274,7 +284,9 @@ export class BuildChoiceScreen {
 
     const hint = document.createElement('div');
     hint.className = 'bcs-hint';
-    hint.textContent = 'Click a card or use ← → + Enter to choose';
+    hint.textContent = options.mode === 'mp'
+      ? 'Click or press Enter to lock in'
+      : 'Click a card or use ← → + Enter to choose';
 
     this.overlay.innerHTML = '';
     const panel = document.createElement('div');
@@ -318,6 +330,13 @@ export class BuildChoiceScreen {
         backdrop-filter: blur(8px);
       }
       #build-choice-screen.hidden { display: none; }
+      #build-choice-screen.bcs-mp-mode {
+        inset: auto 0 18px 0;
+        background: transparent;
+        align-items: flex-end;
+        pointer-events: none;
+        backdrop-filter: none;
+      }
 
       .bcs-panel {
         max-width: 860px;
@@ -326,6 +345,18 @@ export class BuildChoiceScreen {
         flex-direction: column;
         align-items: center;
         gap: 28px;
+      }
+      #build-choice-screen.bcs-mp-mode .bcs-panel {
+        max-width: min(760px, calc(100vw - 24px));
+        width: auto;
+        margin: 0 auto;
+        padding: 12px 14px;
+        border: 1px solid rgba(0, 200, 255, 0.34);
+        border-radius: 8px;
+        background: rgba(2, 8, 18, 0.9);
+        box-shadow: 0 8px 30px rgba(0, 0, 0, 0.42), 0 0 18px rgba(0, 180, 255, 0.18);
+        gap: 10px;
+        pointer-events: auto;
       }
 
       .bcs-header { text-align: center; }
@@ -354,6 +385,13 @@ export class BuildChoiceScreen {
         flex-wrap: wrap;
         justify-content: center;
       }
+      #build-choice-screen.bcs-mp-mode .bcs-cards {
+        gap: 8px;
+        flex-wrap: nowrap;
+        max-width: 100%;
+        overflow-x: auto;
+        padding: 1px 2px 5px;
+      }
 
       .bcs-card {
         background: rgba(0, 10, 30, 0.9);
@@ -367,6 +405,13 @@ export class BuildChoiceScreen {
         flex-direction: column;
         gap: 10px;
         position: relative;
+      }
+      #build-choice-screen.bcs-mp-mode .bcs-card {
+        width: 168px;
+        min-width: 168px;
+        padding: 10px 12px;
+        gap: 6px;
+        background: rgba(0, 12, 26, 0.94);
       }
       .bcs-card:not(.bcs-excluded):hover,
       .bcs-card.bcs-selected {
@@ -427,11 +472,33 @@ export class BuildChoiceScreen {
         color: #ddeeff;
         line-height: 1.2;
       }
+      #build-choice-screen.bcs-mp-mode .bcs-title {
+        font-size: 10px;
+        letter-spacing: 3px;
+        margin-bottom: 2px;
+      }
+      #build-choice-screen.bcs-mp-mode .bcs-weapon {
+        font-size: 20px;
+        letter-spacing: 2px;
+      }
+      #build-choice-screen.bcs-mp-mode .bcs-kills {
+        font-size: 11px;
+        letter-spacing: 1px;
+      }
+      #build-choice-screen.bcs-mp-mode .bcs-node-name {
+        font-size: 13px;
+      }
       .bcs-node-effect {
         font-size: 13px;
         color: #7799bb;
         line-height: 1.4;
         flex: 1;
+      }
+      #build-choice-screen.bcs-mp-mode .bcs-node-effect {
+        font-size: 11px;
+        line-height: 1.25;
+        max-height: 42px;
+        overflow: hidden;
       }
       .bcs-node-threshold {
         font-size: 11px;
@@ -448,6 +515,23 @@ export class BuildChoiceScreen {
         font-size: 12px;
         color: #334455;
         letter-spacing: 2px;
+      }
+      #build-choice-screen.bcs-mp-mode .bcs-hint {
+        font-size: 10px;
+        letter-spacing: 1px;
+      }
+      @media (max-width: 640px) {
+        #build-choice-screen.bcs-mp-mode {
+          inset: auto 0 10px 0;
+        }
+        #build-choice-screen.bcs-mp-mode .bcs-panel {
+          max-width: calc(100vw - 12px);
+          padding: 10px;
+        }
+        #build-choice-screen.bcs-mp-mode .bcs-card {
+          width: 142px;
+          min-width: 142px;
+        }
       }
     `;
     document.head.appendChild(style);

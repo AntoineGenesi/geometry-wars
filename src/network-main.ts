@@ -68,6 +68,7 @@ import { WeaponMasteryManager } from './buffs/WeaponMasteryManager';
 import { MasteryStore } from './systems/MasteryStore';
 import { MasteryPointStore } from './systems/MasteryPointStore';
 import { MatchUpgradeTracker } from './systems/MatchUpgradeTracker';
+import { getNodeById } from './systems/UpgradeTreeData';
 import { UpgradeNotification } from './ui/UpgradeNotification';
 import { BuildChoiceScreen } from './ui/BuildChoiceScreen';
 import { WeaponMasteryScreen } from './ui/WeaponMasteryScreen';
@@ -245,6 +246,7 @@ interface GameDebugAPI {
   getUpgradeProofState: () => Record<string, unknown>;
   setupUpgradeProof: (weaponType: string, killCount: number) => boolean;
   requestUpgradeProofActivation: (weaponType: string, nodeId: string, unlockedNodeIds: string[]) => boolean;
+  triggerBuildChoiceProof: (weaponType?: string, nodeIds?: string | string[]) => boolean;
   fireUpgradeProofShot: () => boolean;
   getScore: () => number;
   isConnected: () => boolean;
@@ -1336,8 +1338,7 @@ async function main() {
   let matchUpgradeTracker = new MatchUpgradeTracker(masteryPointStore);
   const upgradeNotification = new UpgradeNotification();
   const buildChoiceScreen = new BuildChoiceScreen();
-  // Local-only pause flag used while a build-choice card is shown.
-  // We do NOT touch isPaused (which would sync with the server) — only this client pauses.
+  // Local flag used while a build-choice card is shown. SP pauses; MP stays live.
   let buildChoiceActive = false;
   const pendingUpgradeActivations = new Map<string, PendingUpgradeActivation>();
   let latestLocalActiveUpgradeKeys: string[] = [];
@@ -1369,7 +1370,6 @@ async function main() {
       }
 
       buildChoiceActive = true;
-      game.pause();
 
       const activeIds = matchUpgradeTracker.getActiveUpgrades(weaponType);
       const killCount = matchUpgradeTracker.getKillCount(weaponType);
@@ -1388,9 +1388,16 @@ async function main() {
             unlockedNodeIds: Array.from(masteryPointStore.getUnlockedNodes()),
           });
           buildChoiceActive = false;
-          game.resume();
         },
-        { mode: 'mp', unsupportedNodeIds: supportFilter.unsupportedNodeIds },
+        {
+          mode: 'mp',
+          unsupportedNodeIds: supportFilter.unsupportedNodeIds,
+          autoDismissMs: 6000,
+          onDismiss: () => {
+            matchUpgradeTracker.clearPendingChoice();
+            buildChoiceActive = false;
+          },
+        },
       );
     };
     matchUpgradeTracker.onUpgradeActivated = (nodeId, weaponType) => {
@@ -9468,7 +9475,8 @@ async function main() {
       resumeChevronAimProofGame: () => {
         if (!_netMainTestMode || !network.isConnected()) return false;
         network.sendPause(false);
-        game.resume();
+        network.sendResumeTimer();
+        showPauseOverlay(false);
         return true;
       },
       fireChevronAimProofShot: () => {
@@ -9543,11 +9551,16 @@ async function main() {
           bulletCounts[weaponType] = (bulletCounts[weaponType] ?? 0) + 1;
         });
         return {
+          isPaused,
           currentWeapon: localPlayerWeaponType,
           schemaActiveUpgradeNodes: [...latestLocalActiveUpgradeKeys],
           trackerActiveUpgradeNodes: {
             standard: [...matchUpgradeTracker.getActiveUpgrades(WeaponType.Standard)],
             spread: [...matchUpgradeTracker.getActiveUpgrades(WeaponType.Spread)],
+          },
+          buildChoice: {
+            active: buildChoiceActive,
+            pending: matchUpgradeTracker.getPendingChoice(),
           },
           lastActivationResult: lastUpgradeActivationResult,
           bulletCounts,
@@ -9569,6 +9582,32 @@ async function main() {
         lastUpgradeActivationResult = null;
         network.sendUpgradeActivation({ nodeId, weaponType, unlockedNodeIds });
         return true;
+      },
+      triggerBuildChoiceProof: (weaponType = 'standard', nodeIds: string | string[] = ['standard_a_1', 'standard_b_1']) => {
+        if (!_netMainTestMode) return false;
+        const mappedWeapon = SERVER_TO_WEAPON_TYPE[weaponType];
+        if (!mappedWeapon) return false;
+        const proofNodeIds = (Array.isArray(nodeIds) ? nodeIds : String(nodeIds).split(','))
+          .map((nodeId) => nodeId.trim())
+          .filter(Boolean);
+        if (proofNodeIds.length === 0) return false;
+        for (const nodeId of proofNodeIds) {
+          if (!getNodeById(nodeId)) return false;
+          if (!nodeId.startsWith(`${mappedWeapon}_`)) return false;
+        }
+
+        for (const nodeId of proofNodeIds) {
+          while (masteryPointStore.getAvailablePoints(mappedWeapon) < 1) {
+            masteryPointStore.earnPoint(mappedWeapon);
+          }
+          masteryPointStore.spendPoint(nodeId);
+        }
+        matchUpgradeTracker.refreshFromStore(masteryPointStore);
+        const targetKills = Math.max(...proofNodeIds.map((nodeId) => getNodeById(nodeId)?.killThreshold ?? 10));
+        while (matchUpgradeTracker.getKillCount(mappedWeapon) < targetKills) {
+          matchUpgradeTracker.recordKill(mappedWeapon);
+        }
+        return buildChoiceActive;
       },
       fireUpgradeProofShot: () => {
         if (!_netMainTestMode || !network.isConnected()) return false;
