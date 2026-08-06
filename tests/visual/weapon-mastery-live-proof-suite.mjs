@@ -17,17 +17,17 @@ const DEFAULT_TIMEOUT_MS = Number(process.env.SUITE_STEP_TIMEOUT_MS || 180_000);
 
 const proofSteps = [
   {
-    id: 'sp-standard-mastery-runtime',
-    command: ['node', 'tests/visual/standard-weapon-mastery-baseline-proof.mjs'],
-    env: { PORT: process.env.SP_STANDARD_PORT || '3050' },
-    claim: 'SP real src/main.ts testArena can activate retained Standard mastery nodes and observe projectile-count deltas with screenshots.',
+    id: 'sp-retained-mastery-runtime',
+    command: ['node', 'tests/visual/weapon-mastery-sp-live-proof.mjs'],
+    env: { SP_DEV_PORT: process.env.SP_MASTERY_DEV_PORT || '3050' },
+    claim: 'SP real src/main.ts testArena can activate representative retained Standard, Spread, and Black Hole mastery nodes and observe weapon/effect deltas with screenshots.',
   },
   {
     id: 'mp-supported-upgrade-parity',
-    command: ['node', 'scripts/probe-mp-weapon-upgrade-parity.mjs'],
+    command: ['node', 'tests/visual/weapon-mastery-mp-live-proof.mjs'],
     env: {
-      DEV_PORT: process.env.MP_PARITY_DEV_PORT || '3051',
-      SERVER_PORT: process.env.MP_PARITY_SERVER_PORT || '2571',
+      MP_DEV_PORT: process.env.MP_PARITY_DEV_PORT || '3051',
+      MP_SERVER_PORT: process.env.MP_PARITY_SERVER_PORT || '2571',
     },
     claim: 'MP real server/network authority accepts supported Standard/Spread mastery nodes and observes server-synced projectile deltas.',
   },
@@ -149,7 +149,7 @@ async function main() {
   const report = {
     generatedAt: new Date().toISOString(),
     runId: RUN_ID,
-    suiteBoundary: 'Reusable orchestration over existing live/headless proof harnesses. SP proves representative retained Standard mastery node activation through src/main.ts testArena; MP proves current server-authoritative Standard/Spread support through src/network-main.ts and server/rooms/GameRoom.ts; UI proves actual WeaponMasteryScreen pixels. This does not prove every retained node, Windows BAT, WebGPU, LAN two-client feel, or human balance.',
+    suiteBoundary: 'Reusable orchestration over existing live/headless proof harnesses. SP proves representative retained Standard, Spread, and Black Hole mastery node activation through src/main.ts testArena; MP proves current server-authoritative Standard/Spread support through src/network-main.ts and server/rooms/GameRoom.ts; UI proves actual WeaponMasteryScreen pixels. This does not prove every retained node, Windows BAT, WebGPU, LAN two-client feel, or human balance.',
     selectedSteps: steps.map(step => step.id),
     results,
   };
