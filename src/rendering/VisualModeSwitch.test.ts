@@ -189,22 +189,22 @@ describe('Game.setVisualMode', () => {
     game.stop();
   });
 
-  it('setVisualMode("modern") sets bloomResolutionScale to 1.0', () => {
+  it('setVisualMode("modern") keeps bloomResolutionScale at 0.5', () => {
     const game = new Game({ bloom: { strength: 1.0 } });
     game.setVisualMode('modern');
-    expect(game.bloomResolutionScale).toBe(1.0);
-    game.stop();
-  });
-
-  it('setVisualMode("pixelated") sets bloomResolutionScale to 0.5', () => {
-    const game = new Game({ bloom: { strength: 1.0 } });
-    game.setVisualMode('modern');
-    game.setVisualMode('pixelated');
     expect(game.bloomResolutionScale).toBe(0.5);
     game.stop();
   });
 
-  it('setVisualMode("modern") resizes composer to full resolution', () => {
+  it('setVisualMode("pixelated") sets bloomResolutionScale to 0.4', () => {
+    const game = new Game({ bloom: { strength: 1.0 } });
+    game.setVisualMode('modern');
+    game.setVisualMode('pixelated');
+    expect(game.bloomResolutionScale).toBe(0.4);
+    game.stop();
+  });
+
+  it('setVisualMode("modern") resizes composer to half resolution', () => {
     const game = new Game({ bloom: { strength: 1.0 } });
     composerSetSizeCalls.length = 0; // clear construction calls
 
@@ -212,13 +212,13 @@ describe('Game.setVisualMode', () => {
 
     expect(composerSetSizeCalls.length).toBeGreaterThan(0);
     const call = composerSetSizeCalls[composerSetSizeCalls.length - 1];
-    expect(call[0]).toBe(1920); // full width
-    expect(call[1]).toBe(1080); // full height
+    expect(call[0]).toBe(960);
+    expect(call[1]).toBe(540);
 
     game.stop();
   });
 
-  it('setVisualMode("pixelated") resizes composer to half resolution', () => {
+  it('setVisualMode("pixelated") resizes composer to 40% resolution', () => {
     const game = new Game({ bloom: { strength: 1.0 } });
     // First switch to modern so we have a clean state
     game.setVisualMode('modern');
@@ -228,8 +228,8 @@ describe('Game.setVisualMode', () => {
 
     expect(composerSetSizeCalls.length).toBeGreaterThan(0);
     const call = composerSetSizeCalls[composerSetSizeCalls.length - 1];
-    expect(call[0]).toBe(960);  // half of 1920
-    expect(call[1]).toBe(540);  // half of 1080
+    expect(call[0]).toBe(768);
+    expect(call[1]).toBe(432);
 
     game.stop();
   });
@@ -238,13 +238,13 @@ describe('Game.setVisualMode', () => {
     const game = new Game({ bloom: { strength: 1.0 } });
 
     game.setVisualMode('modern');
-    expect(game.bloomResolutionScale).toBe(1.0);
-
-    game.setVisualMode('pixelated');
     expect(game.bloomResolutionScale).toBe(0.5);
 
+    game.setVisualMode('pixelated');
+    expect(game.bloomResolutionScale).toBe(0.4);
+
     game.setVisualMode('modern');
-    expect(game.bloomResolutionScale).toBe(1.0);
+    expect(game.bloomResolutionScale).toBe(0.5);
 
     game.stop();
   });
@@ -267,11 +267,11 @@ describe('Game.setVisualMode — WebGPU path', () => {
     return new Game({ bloom: { strength: 1.0 }, _isWebGPU: true });
   }
 
-  it('setVisualMode("pixelated") sets pixelRatio to 0.375 on WebGPU', () => {
+  it('setVisualMode("pixelated") sets pixelRatio to 0.3 on WebGPU', () => {
     const game = makeWebGPUGame();
     const renderer = game.renderer as any;
     game.setVisualMode('pixelated');
-    expect(renderer.getPixelRatio()).toBe(0.375);
+    expect(renderer.getPixelRatio()).toBe(0.3);
     game.stop();
   });
 
@@ -297,9 +297,9 @@ describe('Game.setVisualMode — WebGPU path', () => {
   it('sets bloomResolutionScale correctly on WebGPU', () => {
     const game = makeWebGPUGame();
     game.setVisualMode('modern');
-    expect(game.bloomResolutionScale).toBe(1.0);
-    game.setVisualMode('pixelated');
     expect(game.bloomResolutionScale).toBe(0.5);
+    game.setVisualMode('pixelated');
+    expect(game.bloomResolutionScale).toBe(0.4);
     game.stop();
   });
 

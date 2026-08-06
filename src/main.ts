@@ -106,7 +106,8 @@ import { DDALogger } from './difficulty/DDALogger';
 import { EntityAudit } from './core/EntityAudit';
 import { computePlayerPower, type PlayerPowerRuntimeState } from './shared/PlayerPowerModel';
 import { PerformanceLogger } from './core/PerformanceLogger';
-import { loadVisualStyle, loadVisualMode, saveVisualMode, type VisualMode } from './ui/VisualStyleSettings';
+import { loadVisualStyle, loadVisualMode, saveVisualMode, getVisualModeFeaturedPreset } from './ui/VisualStyleSettings';
+import { applyVisualPresetToLiveGame, getAdjustedBloomStrength } from './ui/VisualStyleApplication';
 import { UIHelpers } from './ui/UIHelpers';
 import { CollisionSystem } from './core/CollisionSystem';
 import { PickupSpawner } from './core/PickupSpawner';
@@ -244,28 +245,6 @@ function weaponToBulletVisual(weapon: WeaponType): BulletVisualType {
 
 // Pre-allocated temp vector for bullet instance sync (zero per-frame allocation)
 const _bulletSyncDir = new THREE.Vector3();
-
-// ---------------------------------------------------------------------------
-// Bloom helpers for pixelated mode
-// ---------------------------------------------------------------------------
-
-/**
- * Adjust bloom strength based on visual mode.
- * Pixelated mode (half-res bloom) needs reduced strength to prevent oversaturation.
- * Modern mode uses full-res bloom and benefits from normal strength values.
- */
-function getAdjustedBloomStrength(baseStrength: number, visualMode: VisualMode): number {
-  if (visualMode === 'pixelated') {
-    // Recommended pixelated bloom strength: ~0.4
-    // Scale base strength down proportionally: multiply by 0.4 / 1.0 = 0.4x
-    return Math.max(0, baseStrength * 0.4);
-  }
-  if (visualMode === 'desktop-defender') {
-    // Minimal bloom on light background — bright particles don't need glow to stand out.
-    return Math.max(0, baseStrength * 0.25);
-  }
-  return baseStrength; // Modern mode uses full strength
-}
 
 // ---------------------------------------------------------------------------
 // Surface transform helper — now using shared module (SharedGameSetup.ts)
@@ -552,8 +531,9 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
       }
     : ADVENTURE_LEVELS[levelIndex];
 
-  // -- Visual style (user-selected from Visual Styles playground) --
-  const savedStyle = loadVisualStyle();
+  const savedVisualMode = loadVisualMode();
+  // -- Visual style (explicit gallery choice wins; otherwise mode supplies a featured style) --
+  const savedStyle = loadVisualStyle() ?? getVisualModeFeaturedPreset(savedVisualMode);
 
   // -- Game engine --
   // On mobile: reduce bloom, cap pixel ratio, apply mobile entity limits
@@ -616,7 +596,6 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
   SettingsMenu.setGlobalRendererInfo(game.backend, game.isWebGPU);
 
   // Apply saved visual mode (pixelated = half-res bloom, modern = full-res bloom)
-  const savedVisualMode = loadVisualMode();
   game.setVisualMode(savedVisualMode);
   // Apply visual mode bloom strength multiplier at startup.
   // game.setVisualMode() resizes the render target but does not adjust bloom strength.
@@ -632,14 +611,13 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
   SettingsMenu.setGlobalVisualStyleChangeCallback((preset) => {
     const currentVisualMode = loadVisualMode();
     if (preset) {
-      // Adjust bloom strength based on visual mode (pixelated vs modern)
-      const adjustedStrength = getAdjustedBloomStrength(preset.bloomStrength, currentVisualMode);
-      // Use setBloomSettings for strength/threshold (works for both WebGL2 and WebGPU)
-      game.setBloomSettings(adjustedStrength, preset.bloomThreshold ?? 0.85);
-      // Radius is WebGL2-only (no equivalent in WebGPU TSL bloom approximation)
-      if (game.bloomPass && preset.bloomRadius !== undefined) {
-        game.bloomPass.radius = preset.bloomRadius;
-      }
+      applyVisualPresetToLiveGame({
+        game,
+        surface,
+        preset,
+        visualMode: currentVisualMode,
+        effectiveSurfaceOpacity: getEffectiveSurfaceOpacity(loadGraphicsSettings()),
+      });
     } else {
       // Reset to defaults, adjusted for visual mode
       const defaultStrength = mobile ? 0.4 : 0.7;
@@ -655,14 +633,13 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
   // Live-apply visual preset when user selects from VisualPlayground gallery (pause menu)
   VisualPlayground.setGlobalPresetApplyCallback((preset) => {
     if (!preset) return;
-    const currentVisualMode = loadVisualMode();
-    const adjustedStrength = getAdjustedBloomStrength(preset.bloomStrength, currentVisualMode);
-    game.setBloomSettings(adjustedStrength, preset.bloomThreshold ?? 0.85);
-    if (game.bloomPass && preset.bloomRadius !== undefined) {
-      game.bloomPass.radius = preset.bloomRadius;
-    }
-    surface.setSurfaceOpacity(getEffectiveSurfaceOpacity(loadGraphicsSettings()));
-    surface.setSurfaceColor(preset.surfaceColor);
+    applyVisualPresetToLiveGame({
+      game,
+      surface,
+      preset,
+      visualMode: loadVisualMode(),
+      effectiveSurfaceOpacity: getEffectiveSurfaceOpacity(loadGraphicsSettings()),
+    });
   });
 
   // Effects demo panel (press G to toggle)
@@ -732,6 +709,15 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
     const gfxSettings = loadGraphicsSettings();
     surface.setSurfaceOpacity(getEffectiveSurfaceOpacity(gfxSettings));
     surface.setSurfaceColor(gfxSettings.surfaceColor);
+    if (savedStyle) {
+      applyVisualPresetToLiveGame({
+        game,
+        surface,
+        preset: savedStyle,
+        visualMode: savedVisualMode,
+        effectiveSurfaceOpacity: getEffectiveSurfaceOpacity(gfxSettings),
+      });
+    }
   }
 
   // Log which surface/level is being used
@@ -1743,16 +1729,18 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
   pauseMenu.onVisualModeChange((mode) => {
     saveVisualMode(mode);
     game.setVisualMode(mode);
-    if (mode === 'crt') {
-      // CRT mode: apply CRT Arcade preset (green bloom, dark surface)
-      game.setBloomSettings(1.4, 0.82);
-      if (game.bloomPass) game.bloomPass.radius = 0.8;
-      surface.setSurfaceOpacity(getEffectiveSurfaceOpacity(loadGraphicsSettings()));
-      surface.setSurfaceColor(0x001a08);
+    const featuredPreset = getVisualModeFeaturedPreset(mode);
+    if (featuredPreset) {
+      applyVisualPresetToLiveGame({
+        game,
+        surface,
+        preset: featuredPreset,
+        visualMode: mode,
+        effectiveSurfaceOpacity: getEffectiveSurfaceOpacity(loadGraphicsSettings()),
+      });
     } else {
-      // Re-apply bloom settings adjusted for new visual mode
       const adjustedStrength = getAdjustedBloomStrength(bloomStrength, mode);
-      game.setBloomSettings(adjustedStrength, 0.6);
+      game.setBloomSettings(adjustedStrength, savedStyle?.bloomThreshold ?? 0.6);
     }
     // Adjust particle brightness per visual mode:
     // - pixelated: 0.5× (prevents additive stacking from hiding the player)

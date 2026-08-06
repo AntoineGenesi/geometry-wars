@@ -5,7 +5,14 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { loadVisualMode, saveVisualMode, type VisualMode } from './VisualStyleSettings';
+import {
+  getNextVisualMode,
+  getVisualModeDefinition,
+  getVisualModeFeaturedPreset,
+  loadVisualMode,
+  saveVisualMode,
+  type VisualMode,
+} from './VisualStyleSettings';
 
 // ---------------------------------------------------------------------------
 // localStorage mock
@@ -91,7 +98,7 @@ describe('VisualMode persistence', () => {
     });
 
     it('round-trips both modes', () => {
-      const modes: VisualMode[] = ['pixelated', 'modern'];
+      const modes: VisualMode[] = ['pixelated', 'modern', 'crt', 'desktop-defender'];
       for (const mode of modes) {
         saveVisualMode(mode);
         expect(loadVisualMode()).toBe(mode);
@@ -103,8 +110,8 @@ describe('VisualMode persistence', () => {
       expect(store['gw3d-visual-mode']).toBe('desktop-defender');
     });
 
-    it('round-trips all three modes including desktop-defender', () => {
-      const modes: VisualMode[] = ['pixelated', 'modern', 'desktop-defender'];
+    it('round-trips all modes including desktop-defender and crt', () => {
+      const modes: VisualMode[] = ['pixelated', 'modern', 'crt', 'desktop-defender'];
       for (const mode of modes) {
         saveVisualMode(mode);
         expect(loadVisualMode()).toBe(mode);
@@ -122,5 +129,21 @@ describe('desktop-defender mode', () => {
   it('falls back to modern if unknown value stored (not desktop-defender)', () => {
     store['gw3d-visual-mode'] = 'desktop';
     expect(loadVisualMode()).toBe('modern');
+  });
+});
+
+describe('visual mode featured presets', () => {
+  it('cycles through the stronger mode order used by the pause menu', () => {
+    expect(getNextVisualMode('modern')).toBe('pixelated');
+    expect(getNextVisualMode('pixelated')).toBe('crt');
+    expect(getNextVisualMode('crt')).toBe('desktop-defender');
+    expect(getNextVisualMode('desktop-defender')).toBe('modern');
+  });
+
+  it('maps weak legacy modes to named readable featured presets', () => {
+    expect(getVisualModeDefinition('crt').label).toBe('STYLE: CRT PHOSPHOR');
+    expect(getVisualModeDefinition('desktop-defender').label).toBe('STYLE: TACTICAL GRID');
+    expect(getVisualModeFeaturedPreset('crt')?.name).toBe('CRT Phosphor');
+    expect(getVisualModeFeaturedPreset('desktop-defender')?.name).toBe('Tactical Grid');
   });
 });

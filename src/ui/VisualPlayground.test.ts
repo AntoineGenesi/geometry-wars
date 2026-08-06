@@ -13,8 +13,8 @@ import { test, expect, describe } from 'vitest';
 import { VISUAL_PRESETS } from './VisualPlayground';
 
 describe('Visual Styles Consistency', () => {
-  test('total preset count is 42', () => {
-    expect(VISUAL_PRESETS.length).toBe(42);
+  test('total preset count is 54', () => {
+    expect(VISUAL_PRESETS.length).toBe(54);
   });
 
   test('all Sektori styles with low opacity have "Dark" in name', () => {

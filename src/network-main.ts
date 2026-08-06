@@ -138,7 +138,8 @@ import {
   loadGraphicsSettings,
 } from './ui/SettingsMenu';
 import { VisualPlayground } from './ui/VisualPlayground';
-import { loadVisualStyle, loadVisualMode, saveVisualMode, type VisualMode } from './ui/VisualStyleSettings';
+import { loadVisualStyle, loadVisualMode, saveVisualMode, getVisualModeFeaturedPreset } from './ui/VisualStyleSettings';
+import { applyVisualPresetToLiveGame, getAdjustedBloomStrength } from './ui/VisualStyleApplication';
 import { PerformanceTracker } from './core/PerformanceTracker';
 import { PerformanceLogger } from './core/PerformanceLogger';
 import { AnalyticsPanel } from './ui/AnalyticsPanel';
@@ -177,27 +178,6 @@ import {
   createPickupVisualProofDebug,
   type PickupVisualProofRecord,
 } from './debug/PickupVisualProofDebug';
-
-// ---------------------------------------------------------------------------
-// Bloom helper — mirrors main.ts (not exported; each entry point owns its bloom state)
-// ---------------------------------------------------------------------------
-
-/**
- * Adjust bloom strength based on visual mode.
- * Pixelated mode (half-res bloom) needs reduced strength to prevent oversaturation.
- * Desktop Defender uses minimal bloom on a light background.
- * Modern mode uses full-res bloom and benefits from normal strength values.
- */
-function getAdjustedBloomStrength(baseStrength: number, visualMode: VisualMode): number {
-  if (visualMode === 'pixelated') {
-    return Math.max(0, baseStrength * 0.4);
-  }
-  if (visualMode === 'desktop-defender') {
-    // Minimal bloom on light background — bright particles don't need glow to stand out.
-    return Math.max(0, baseStrength * 0.25);
-  }
-  return baseStrength; // Modern mode uses full strength
-}
 
 // ---------------------------------------------------------------------------
 // Bullet visual type helper (mirrors main.ts — no server weapon type in state)
@@ -720,8 +700,9 @@ async function main() {
 
   const bgMusic = new BackgroundMusic();
 
-  // -- Visual style (user-selected from Visual Styles playground) --
-  const savedStyle = loadVisualStyle();
+  const savedVisualMode = loadVisualMode();
+  // -- Visual style (explicit gallery choice wins; otherwise mode supplies a featured style) --
+  const savedStyle = loadVisualStyle() ?? getVisualModeFeaturedPreset(savedVisualMode);
 
   // -- Game engine (same config as co-op, mobile reduces bloom) --
   // Use Game.create() so WebGPU capability detection and ?renderer=webgpu URL param work.
@@ -787,7 +768,6 @@ async function main() {
   });
 
   // Apply saved visual mode (pixelated = half-res bloom, modern = full-res bloom)
-  const savedVisualMode = loadVisualMode();
   game.setVisualMode(savedVisualMode);
   // Apply visual mode bloom strength multiplier at startup.
   // game.setVisualMode() resizes the render target but does not adjust bloom strength.
@@ -996,6 +976,15 @@ async function main() {
       networkOpaqueSurfaces = areOpaqueSurfacesEnabled(gfxSettings);
       surface.setSurfaceOpacity(getEffectiveSurfaceOpacity(gfxSettings));
       surface.setSurfaceColor(gfxSettings.surfaceColor);
+      if (savedStyle) {
+        applyVisualPresetToLiveGame({
+          game,
+          surface,
+          preset: savedStyle,
+          visualMode: savedVisualMode,
+          effectiveSurfaceOpacity: getEffectiveSurfaceOpacity(gfxSettings),
+        });
+      }
     }
 
     // CRITICAL: updateMatrixWorld before MeshSurface construction so the BVH
@@ -2856,16 +2845,16 @@ async function main() {
   pauseMenu.onVisualModeChange((mode) => {
     saveVisualMode(mode);
     game.setVisualMode(mode);
-    if (mode === 'crt') {
-      // CRT mode: apply CRT Arcade preset (green bloom, dark surface)
-      game.setBloomSettings(1.4, 0.82);
-      if (game.bloomPass) game.bloomPass.radius = 0.8;
-      if (surface) {
-        surface.setSurfaceOpacity(getEffectiveSurfaceOpacity(loadGraphicsSettings()));
-        surface.setSurfaceColor(0x001a08);
-      }
+    const featuredPreset = getVisualModeFeaturedPreset(mode);
+    if (featuredPreset) {
+      applyVisualPresetToLiveGame({
+        game,
+        surface,
+        preset: featuredPreset,
+        visualMode: mode,
+        effectiveSurfaceOpacity: getEffectiveSurfaceOpacity(loadGraphicsSettings()),
+      });
     } else {
-      // Re-apply bloom strength adjusted for the new visual mode.
       const baseBloomStrength = savedStyle?.bloomStrength ?? (mobile ? 0.4 : 0.7);
       const adjustedStrength = getAdjustedBloomStrength(baseBloomStrength, mode);
       game.setBloomSettings(adjustedStrength, savedStyle?.bloomThreshold ?? 0.6);
@@ -2889,16 +2878,13 @@ async function main() {
   // Live-apply visual preset when user selects from VisualPlayground gallery (pause menu)
   VisualPlayground.setGlobalPresetApplyCallback((preset) => {
     if (!preset) return;
-    const currentVisualMode = loadVisualMode();
-    const adjustedStrength = getAdjustedBloomStrength(preset.bloomStrength, currentVisualMode);
-    game.setBloomSettings(adjustedStrength, preset.bloomThreshold ?? 0.85);
-    if (game.bloomPass && preset.bloomRadius !== undefined) {
-      game.bloomPass.radius = preset.bloomRadius;
-    }
-    if (surface) {
-      surface.setSurfaceOpacity(getEffectiveSurfaceOpacity(loadGraphicsSettings()));
-      surface.setSurfaceColor(preset.surfaceColor);
-    }
+    applyVisualPresetToLiveGame({
+      game,
+      surface,
+      preset,
+      visualMode: loadVisualMode(),
+      effectiveSurfaceOpacity: getEffectiveSurfaceOpacity(loadGraphicsSettings()),
+    });
   });
 
   // Show short code QR in pause menu — 5-digit code is smaller and more reliable than full URL.
