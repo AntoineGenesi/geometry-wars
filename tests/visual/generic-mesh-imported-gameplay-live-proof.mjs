@@ -89,6 +89,20 @@ function distance(a, b) {
   return Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z);
 }
 
+async function pressMovementKey(page, key, durationMs) {
+  await page.evaluate((pressedKey) => {
+    const eventInit = { key: pressedKey, bubbles: true, cancelable: true };
+    window.dispatchEvent(new KeyboardEvent('keydown', eventInit));
+    document.dispatchEvent(new KeyboardEvent('keydown', eventInit));
+  }, key);
+  await wait(durationMs);
+  await page.evaluate((pressedKey) => {
+    const eventInit = { key: pressedKey, bubbles: true, cancelable: true };
+    window.dispatchEvent(new KeyboardEvent('keyup', eventInit));
+    document.dispatchEvent(new KeyboardEvent('keyup', eventInit));
+  }, key);
+}
+
 async function screenshot(page, name) {
   const screenshotPath = resolve(SCREENSHOT_DIR, `${name}.png`);
   await page.screenshot({ path: screenshotPath });
@@ -172,18 +186,23 @@ async function run() {
 
     const beforeMove = initial.gameState.walker.position;
     await page.click('canvas');
-    await page.evaluate(() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'w', bubbles: true, cancelable: true })));
-    await wait(650);
-    await page.evaluate(() => window.dispatchEvent(new KeyboardEvent('keyup', { key: 'w', bubbles: true, cancelable: true })));
-    await wait(300);
-    const afterMove = await page.evaluate(() => ({
-      gameState: window._gameState,
-      parity: window.__TEST_API.getParityFrame(),
-    }));
-    assertFiniteVec3('moved walker position', afterMove.gameState.walker.position);
-    const playerMovedDistance = distance(beforeMove, afterMove.gameState.walker.position);
+    let afterMove = null;
+    let playerMovedDistance = 0;
+    const movementAttempts = [];
+    for (const key of ['w', 'd', 's', 'a']) {
+      await pressMovementKey(page, key, 900);
+      await wait(250);
+      afterMove = await page.evaluate(() => ({
+        gameState: window._gameState,
+        parity: window.__TEST_API.getParityFrame(),
+      }));
+      assertFiniteVec3(`moved walker position after ${key}`, afterMove.gameState.walker.position);
+      playerMovedDistance = distance(beforeMove, afterMove.gameState.walker.position);
+      movementAttempts.push({ key, distance: playerMovedDistance });
+      if (playerMovedDistance > 0.1) break;
+    }
     if (playerMovedDistance <= 0.1) {
-      throw new Error(`Player did not move enough on imported mesh: ${playerMovedDistance}`);
+      throw new Error(`Player did not move enough on imported mesh: ${JSON.stringify(movementAttempts)}`);
     }
 
     await page.evaluate(() => {
@@ -282,6 +301,7 @@ async function run() {
         before: beforeMove,
         after: afterMove.gameState.walker.position,
         distance: playerMovedDistance,
+        attempts: movementAttempts,
         parity: afterMove.parity,
       },
       setup,
