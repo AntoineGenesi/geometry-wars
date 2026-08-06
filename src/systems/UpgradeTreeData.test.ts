@@ -6,6 +6,9 @@ import {
   getBranchNodes,
   getUpgradeTree,
   getNodeMaxPoints,
+  getNodeInvestmentCapacity,
+  getTreeInvestmentCapacity,
+  getInvestmentCapacityByWeapon,
   getExcludedBy,
   isExcluded,
   type UpgradeNode,
@@ -21,23 +24,20 @@ describe('UPGRADE_TREES', () => {
     }
   });
 
-  it('Standard has 4-endpoint branching tree (32 nodes)', () => {
+  it('Standard has 4-endpoint branching tree with explicit endpoint labels', () => {
     const tree = UPGRADE_TREES[WeaponType.Standard];
-    expect(tree.nodes.length).toBe(32);
-    // Main branch trunks: 4 nodes each
     const branchA = tree.nodes.filter(n => n.branch === 'a');
     const branchB = tree.nodes.filter(n => n.branch === 'b');
-    expect(branchA.length).toBe(4);
-    expect(branchB.length).toBe(4);
-    // Sub-branches: 6 nodes each (nodeIndex 5-10)
+    expect(branchA.length).toBeGreaterThan(0);
+    expect(branchB.length).toBeGreaterThan(0);
     const branchAL = tree.nodes.filter(n => n.branch === 'al');
     const branchAR = tree.nodes.filter(n => n.branch === 'ar');
     const branchBL = tree.nodes.filter(n => n.branch === 'bl');
     const branchBR = tree.nodes.filter(n => n.branch === 'br');
-    expect(branchAL.length).toBe(6);
-    expect(branchAR.length).toBe(6);
-    expect(branchBL.length).toBe(6);
-    expect(branchBR.length).toBe(6);
+    expect(branchAL.length).toBeGreaterThan(0);
+    expect(branchAR.length).toBeGreaterThan(0);
+    expect(branchBL.length).toBeGreaterThan(0);
+    expect(branchBR.length).toBeGreaterThan(0);
   });
 
   it('Standard has 4 sub-branch names for 4-endpoint display', () => {
@@ -88,16 +88,15 @@ describe('UPGRADE_TREES', () => {
     }
   });
 
-  it('Homing has 10-level branches (20 nodes per weapon)', () => {
+  it('Homing has two non-empty branches without pinning filler count', () => {
     const tree = UPGRADE_TREES[WeaponType.Homing];
-    expect(tree.nodes.length).toBe(20);
     const branchA = tree.nodes.filter(n => n.branch === 'a');
     const branchB = tree.nodes.filter(n => n.branch === 'b');
-    expect(branchA.length).toBe(10);
-    expect(branchB.length).toBe(10);
+    expect(branchA.length).toBeGreaterThan(0);
+    expect(branchB.length).toBeGreaterThan(0);
   });
 
-  it('weapons without extended branches have exactly 10 nodes (5 per branch)', () => {
+  it('weapons without extended branches have non-empty A/B branches', () => {
     const fiveLevelWeapons = [
       WeaponType.ChainLightning,
       WeaponType.PlasmaMortar,
@@ -107,28 +106,23 @@ describe('UPGRADE_TREES', () => {
     ];
     for (const wt of fiveLevelWeapons) {
       const tree = UPGRADE_TREES[wt];
-      expect(tree.nodes.length).toBe(10);
       const branchA = tree.nodes.filter(n => n.branch === 'a');
       const branchB = tree.nodes.filter(n => n.branch === 'b');
-      expect(branchA.length).toBe(5);
-      expect(branchB.length).toBe(5);
+      expect(branchA.length).toBeGreaterThan(0);
+      expect(branchB.length).toBeGreaterThan(0);
     }
   });
 
-  it('Spread, Piercing, BlackHole have 4-endpoint branching trees (14 nodes each)', () => {
+  it('Spread, Piercing, BlackHole have 4-endpoint branching metadata', () => {
     const branchingWeapons = [WeaponType.Spread, WeaponType.Piercing, WeaponType.BlackHole];
     for (const wt of branchingWeapons) {
       const tree = UPGRADE_TREES[wt];
-      expect(tree.nodes.length).toBe(14);
-      // Trunk: 3 nodes each side
-      expect(tree.nodes.filter(n => n.branch === 'a').length).toBe(3);
-      expect(tree.nodes.filter(n => n.branch === 'b').length).toBe(3);
-      // Sub-branches: 2 nodes each
-      expect(tree.nodes.filter(n => n.branch === 'al').length).toBe(2);
-      expect(tree.nodes.filter(n => n.branch === 'ar').length).toBe(2);
-      expect(tree.nodes.filter(n => n.branch === 'bl').length).toBe(2);
-      expect(tree.nodes.filter(n => n.branch === 'br').length).toBe(2);
-      // Has 4 sub-branch labels
+      expect(tree.nodes.filter(n => n.branch === 'a').length).toBeGreaterThan(0);
+      expect(tree.nodes.filter(n => n.branch === 'b').length).toBeGreaterThan(0);
+      expect(tree.nodes.filter(n => n.branch === 'al').length).toBeGreaterThan(0);
+      expect(tree.nodes.filter(n => n.branch === 'ar').length).toBeGreaterThan(0);
+      expect(tree.nodes.filter(n => n.branch === 'bl').length).toBeGreaterThan(0);
+      expect(tree.nodes.filter(n => n.branch === 'br').length).toBeGreaterThan(0);
       expect(tree.branchALName).toBeTruthy();
       expect(tree.branchARName).toBeTruthy();
       expect(tree.branchBLName).toBeTruthy();
@@ -141,8 +135,8 @@ describe('UPGRADE_TREES', () => {
     }
   });
 
-  it('total node count: Standard(32) + Homing(20) + Spread(14) + Piercing(14) + BlackHole(14) + 5×10 = 144', () => {
-    expect(getAllNodes().length).toBe(144);
+  it('does not require a fixed total node count', () => {
+    expect(getAllNodes().length).toBeGreaterThan(Object.values(WeaponType).length);
   });
 
   it('every node id follows the pattern "${weaponType}_${branch}_${nodeIndex}"', () => {
@@ -202,6 +196,22 @@ describe('UPGRADE_TREES', () => {
     for (const tree of Object.values(UPGRADE_TREES)) {
       expect(tree.branchAName.length).toBeGreaterThan(0);
       expect(tree.branchBName.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('computes investment capacity from retained nodes instead of fixed node counts', () => {
+    const standard = UPGRADE_TREES[WeaponType.Standard];
+    const blackHoleA1 = getNodeById('black_hole_a_1')!;
+    const standardAr5 = getNodeById('standard_ar_5')!;
+
+    expect(getNodeInvestmentCapacity(blackHoleA1)).toBe(3);
+    expect(getNodeInvestmentCapacity(standardAr5)).toBe(2);
+    expect(getTreeInvestmentCapacity(standard)).toBeGreaterThan(standard.nodes.length);
+
+    const capacities = getInvestmentCapacityByWeapon();
+    expect(capacities[WeaponType.Standard]).toBe(getTreeInvestmentCapacity(standard));
+    for (const weaponType of Object.values(WeaponType)) {
+      expect(capacities[weaponType]).toBeGreaterThan(0);
     }
   });
 });

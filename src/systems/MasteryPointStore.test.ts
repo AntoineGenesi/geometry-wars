@@ -197,6 +197,24 @@ describe('MasteryPointStore', () => {
     expect(store.getSpentPoints(WeaponType.Standard)).toBe(0);
   });
 
+  it('refundPoint returns the full cost for premium nodes', () => {
+    const tree = UPGRADE_TREES[WeaponType.Standard];
+    const ar5 = tree.nodes.find(n => n.id === 'standard_ar_5')!;
+
+    for (let i = 0; i < 6; i++) store.earnPoint(WeaponType.Standard);
+    for (const nodeId of ['standard_a_1', 'standard_a_2', 'standard_a_3', 'standard_a_4']) {
+      const node = tree.nodes.find(n => n.id === nodeId)!;
+      expect(store.spendPoint(nodeId, node.maxPoints ?? 1, node.cost ?? 1, tree)).toBe(true);
+    }
+    expect(store.spendPoint(ar5.id, ar5.maxPoints ?? 1, ar5.cost ?? 1, tree)).toBe(true);
+    expect(store.getSpentPoints(WeaponType.Standard)).toBe(6);
+    expect(store.getAvailablePoints(WeaponType.Standard)).toBe(0);
+
+    expect(store.refundPoint(ar5.id)).toBe(true);
+    expect(store.getSpentPoints(WeaponType.Standard)).toBe(4);
+    expect(store.getAvailablePoints(WeaponType.Standard)).toBe(2);
+  });
+
   it('after refund, point can be re-spent on same weapon different node', () => {
     store.earnPoint(WeaponType.Standard);
     store.spendPoint('standard_a_1');
@@ -376,6 +394,43 @@ describe('MasteryPointStore', () => {
     expect(store2.getSpentPoints(WeaponType.BlackHole)).toBe(2);
   });
 
+  it('drops stale v2 node ids and refunds their spent points on load', () => {
+    localStorageMock.setItem('gw_mastery_points', JSON.stringify({
+      version: 2,
+      weaponPoints: {
+        [WeaponType.Standard]: { total: 4, spent: 3 },
+      },
+      nodePoints: {
+        standard_a_1: 1,
+        standard_removed_99: 2,
+      },
+    }));
+
+    const migrated = new MasteryPointStore();
+    expect(migrated.isUnlocked('standard_a_1')).toBe(true);
+    expect(migrated.isUnlocked('standard_removed_99')).toBe(false);
+    expect(migrated.getUnlockedNodes()).toEqual(new Set(['standard_a_1']));
+    expect(migrated.getSpentPoints(WeaponType.Standard)).toBe(1);
+    expect(migrated.getAvailablePoints(WeaponType.Standard)).toBe(3);
+  });
+
+  it('clamps stale over-ranked v2 node points to current maxPoints', () => {
+    localStorageMock.setItem('gw_mastery_points', JSON.stringify({
+      version: 2,
+      weaponPoints: {
+        [WeaponType.BlackHole]: { total: 10, spent: 8 },
+      },
+      nodePoints: {
+        black_hole_a_1: 9,
+      },
+    }));
+
+    const migrated = new MasteryPointStore();
+    expect(migrated.getNodePoints('black_hole_a_1')).toBe(3);
+    expect(migrated.getSpentPoints(WeaponType.BlackHole)).toBe(3);
+    expect(migrated.getAvailablePoints(WeaponType.BlackHole)).toBe(7);
+  });
+
   // -------------------------------------------------------------------------
   // Legacy v1 format migration
   // -------------------------------------------------------------------------
@@ -398,6 +453,23 @@ describe('MasteryPointStore', () => {
     // Spent is reconstructed from nodePoints, total = spent (available = 0)
     expect(migrated.getAvailablePoints(WeaponType.Standard)).toBe(0);
     expect(migrated.getAvailablePoints(WeaponType.Homing)).toBe(0);
+  });
+
+  it('migrates v1 global format without preserving stale node ids', () => {
+    localStorageMock.setItem('gw_mastery_points', JSON.stringify({
+      totalPoints: 5,
+      spentPoints: 3,
+      nodePoints: {
+        standard_a_1: 1,
+        standard_removed_99: 2,
+      },
+    }));
+
+    const migrated = new MasteryPointStore();
+    expect(migrated.isUnlocked('standard_a_1')).toBe(true);
+    expect(migrated.isUnlocked('standard_removed_99')).toBe(false);
+    expect(migrated.getSpentPoints(WeaponType.Standard)).toBe(1);
+    expect(migrated.getAvailablePoints(WeaponType.Standard)).toBe(0);
   });
 
   it('migrates v1 legacy permanentUnlocks format', () => {
