@@ -1350,17 +1350,24 @@ async function main() {
       const activeIds = matchUpgradeTracker.getActiveUpgrades(weaponType);
       const killCount = matchUpgradeTracker.getKillCount(weaponType);
 
-      buildChoiceScreen.show(weaponType, supportFilter.supportedNodeIds, activeIds, killCount, (chosenNodeId) => {
-        const key = upgradeActivationKey(chosenNodeId, weaponType);
-        pendingUpgradeActivations.set(key, { nodeId: chosenNodeId, weaponType });
-        network.sendUpgradeActivation({
-          nodeId: chosenNodeId,
-          weaponType,
-          unlockedNodeIds: Array.from(masteryPointStore.getUnlockedNodes()),
-        });
-        buildChoiceActive = false;
-        game.resume();
-      });
+      buildChoiceScreen.show(
+        weaponType,
+        supportFilter.supportedNodeIds,
+        activeIds,
+        killCount,
+        (chosenNodeId) => {
+          const key = upgradeActivationKey(chosenNodeId, weaponType);
+          pendingUpgradeActivations.set(key, { nodeId: chosenNodeId, weaponType });
+          network.sendUpgradeActivation({
+            nodeId: chosenNodeId,
+            weaponType,
+            unlockedNodeIds: Array.from(masteryPointStore.getUnlockedNodes()),
+          });
+          buildChoiceActive = false;
+          game.resume();
+        },
+        { mode: 'mp', unsupportedNodeIds: supportFilter.unsupportedNodeIds },
+      );
     };
     matchUpgradeTracker.onUpgradeActivated = (nodeId, weaponType) => {
       upgradeNotification.show(nodeId, weaponType);
