@@ -107,6 +107,16 @@ const KILL_THRESHOLDS: Record<number, number> = {
   10: 650,
 };
 
+const STANDARD_BLASTER_KILL_THRESHOLD_MULTIPLIER = 3;
+
+function getKillThreshold(weaponType: WeaponType, index: number): number {
+  const base = KILL_THRESHOLDS[index] ?? KILL_THRESHOLDS[10];
+  if (weaponType === WeaponType.Standard) {
+    return base * STANDARD_BLASTER_KILL_THRESHOLD_MULTIPLIER;
+  }
+  return base;
+}
+
 // ---------------------------------------------------------------------------
 // Helper to build a node
 // ---------------------------------------------------------------------------
@@ -132,7 +142,7 @@ function node(
     branch,
     nodeIndex: index,
     description,
-    killThreshold: KILL_THRESHOLDS[index] ?? KILL_THRESHOLDS[10],
+    killThreshold: getKillThreshold(weaponType, index),
     effect,
     ...(maxPoints !== undefined && maxPoints > 1 ? { maxPoints } : {}),
     ...(extra.parentId ? { parentId: extra.parentId } : {}),

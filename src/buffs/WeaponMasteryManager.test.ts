@@ -5,7 +5,12 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { WeaponMasteryManager, MASTERY_THRESHOLDS } from './WeaponMasteryManager';
+import {
+  BLASTER_MASTERY_THRESHOLDS,
+  MASTERY_THRESHOLDS,
+  WeaponMasteryManager,
+  getMasteryThresholds,
+} from './WeaponMasteryManager';
 import { WeaponType } from '../weapons/WeaponTypes';
 import { BuffManager, StackBuffType } from './BuffManager';
 
@@ -58,6 +63,21 @@ describe('WeaponMasteryManager', () => {
         manager.recordKill(WeaponType.Spread);
       }
       expect(manager.getMasteryTier(WeaponType.Spread)).toBe(1);
+    });
+
+    it('uses slower Blaster-specific thresholds', () => {
+      expect(getMasteryThresholds(WeaponType.Standard)).toEqual(BLASTER_MASTERY_THRESHOLDS);
+      expect(getMasteryThresholds(WeaponType.Spread)).toEqual(MASTERY_THRESHOLDS);
+
+      for (let i = 0; i < MASTERY_THRESHOLDS[0]; i++) {
+        manager.recordKill(WeaponType.Standard);
+      }
+      expect(manager.getMasteryTier(WeaponType.Standard)).toBe(0);
+
+      for (let i = MASTERY_THRESHOLDS[0]; i < BLASTER_MASTERY_THRESHOLDS[0]; i++) {
+        manager.recordKill(WeaponType.Standard);
+      }
+      expect(manager.getMasteryTier(WeaponType.Standard)).toBe(1);
     });
 
     it('returns tier 2 at exactly threshold[1] kills', () => {
@@ -258,7 +278,7 @@ describe('Regression: Spread mastery tier 1 integration', () => {
     expect(mult.specialBonus.extraPellets).toBe(2); // 1 stack × 2 extra pellets
   });
 
-  it('mastery multiplier > 1.0 for Blaster after 10 kills and buff applied', () => {
+  it('mastery multiplier > 1.0 for Blaster after its slower tier-1 threshold and buff applied', () => {
     const masteryManager = new WeaponMasteryManager();
     const buffManager = new BuffManager();
 
@@ -268,7 +288,7 @@ describe('Regression: Spread mastery tier 1 integration', () => {
       }
     };
 
-    for (let i = 0; i < 10; i++) {
+    for (let i = 0; i < BLASTER_MASTERY_THRESHOLDS[0]; i++) {
       masteryManager.recordKill(WeaponType.Standard);
     }
 

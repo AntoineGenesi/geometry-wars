@@ -6,6 +6,12 @@ import { StackBuffType } from './BuffManager';
 // ---------------------------------------------------------------------------
 
 export const MASTERY_THRESHOLDS: readonly [number, number, number] = [10, 30, 75];
+export const BLASTER_MASTERY_THRESHOLDS: readonly [number, number, number] = [30, 90, 220];
+
+export function getMasteryThresholds(weaponType: WeaponType): readonly [number, number, number] {
+  if (weaponType === WeaponType.Standard) return BLASTER_MASTERY_THRESHOLDS;
+  return MASTERY_THRESHOLDS;
+}
 
 // ---------------------------------------------------------------------------
 // WeaponType → mastery StackBuffType mapping
@@ -33,7 +39,8 @@ export const WEAPON_MASTERY_BUFF_MAP: Partial<Record<WeaponType, StackBuffType>>
  * Tracks per-weapon kill counts and emits tier-up events when mastery
  * thresholds are crossed.
  *
- * Tier 1 = 10 kills, Tier 2 = 30 kills, Tier 3 = 75 kills (per weapon).
+ * Most weapons tier at 10/30/75 kills. Blaster uses a slower starter-weapon
+ * curve so early runs do not stack its large damage mastery too quickly.
  * This is a pure data class — no Three.js, no rendering.
  */
 export class WeaponMasteryManager {
@@ -56,10 +63,10 @@ export class WeaponMasteryManager {
    */
   recordKill(weaponType: WeaponType): void {
     const prev = this.kills.get(weaponType) ?? 0;
-    const prevTier = tierFromKills(prev);
+    const prevTier = tierFromKills(weaponType, prev);
     const newKills = prev + 1;
     this.kills.set(weaponType, newKills);
-    const newTier = tierFromKills(newKills);
+    const newTier = tierFromKills(weaponType, newKills);
     if (newTier > prevTier) {
       this.onMasteryTierUp?.(weaponType, newTier);
     }
@@ -72,7 +79,7 @@ export class WeaponMasteryManager {
 
   /** Returns mastery tier 0-3 for the given weapon. */
   getMasteryTier(weaponType: WeaponType): number {
-    return tierFromKills(this.kills.get(weaponType) ?? 0);
+    return tierFromKills(weaponType, this.kills.get(weaponType) ?? 0);
   }
 
   /**
@@ -85,8 +92,9 @@ export class WeaponMasteryManager {
     nextThreshold: number | null;
   } {
     const kills = this.kills.get(weaponType) ?? 0;
-    const tier = tierFromKills(kills);
-    const nextThreshold = tier < 3 ? MASTERY_THRESHOLDS[tier] : null;
+    const tier = tierFromKills(weaponType, kills);
+    const thresholds = getMasteryThresholds(weaponType);
+    const nextThreshold = tier < 3 ? thresholds[tier] : null;
     return { kills, tier, nextThreshold };
   }
 
@@ -126,9 +134,10 @@ export class WeaponMasteryManager {
 // Pure helper
 // ---------------------------------------------------------------------------
 
-function tierFromKills(kills: number): number {
-  if (kills >= MASTERY_THRESHOLDS[2]) return 3;
-  if (kills >= MASTERY_THRESHOLDS[1]) return 2;
-  if (kills >= MASTERY_THRESHOLDS[0]) return 1;
+function tierFromKills(weaponType: WeaponType, kills: number): number {
+  const thresholds = getMasteryThresholds(weaponType);
+  if (kills >= thresholds[2]) return 3;
+  if (kills >= thresholds[1]) return 2;
+  if (kills >= thresholds[0]) return 1;
   return 0;
 }

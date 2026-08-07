@@ -1,5 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { MasteryStore, XP_PER_KILL, DIMINISHING_FACTOR, getMasteryXPScale } from './MasteryStore';
+import {
+  MasteryStore,
+  XP_PER_KILL,
+  DIMINISHING_FACTOR,
+  getMasteryXPEarnMultiplier,
+  getMasteryXPScale,
+} from './MasteryStore';
 import { WeaponType } from '../weapons/WeaponTypes';
 
 // ── localStorage mock ─────────────────────────────────────────────────────────
@@ -30,6 +36,10 @@ function killMap(entries: Partial<Record<WeaponType, number>>): Map<WeaponType, 
   return new Map(Object.entries(entries) as [WeaponType, number][]);
 }
 
+function xpPerKillFor(weapon: WeaponType): number {
+  return XP_PER_KILL * getMasteryXPScale(weapon) * getMasteryXPEarnMultiplier(weapon);
+}
+
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 describe('MasteryStore — XP award math', () => {
@@ -37,7 +47,7 @@ describe('MasteryStore — XP award math', () => {
     const store = freshStore();
     const [result] = store.awardGameXP(killMap({ [WeaponType.Standard]: 10 }));
     // diminishingFactor = 1 / (1 + 0 * DIMINISHING_FACTOR) = 1.0
-    expect(result.xpAfter).toBeCloseTo(10 * XP_PER_KILL * getMasteryXPScale(WeaponType.Standard), 5);
+    expect(result.xpAfter).toBeCloseTo(10 * xpPerKillFor(WeaponType.Standard), 5);
   });
 
   it('game 5: diminishing returns reduce XP per kill', () => {
@@ -52,7 +62,7 @@ describe('MasteryStore — XP award math', () => {
     // gamesPlayed=4 → diminishingFactor = 1/(1+4*0.05) = 1/1.2 ≈ 0.833
     // 10 * 0.5 * 0.833 ≈ 4.17
     expect(xpEarned).toBeCloseTo(
-      10 * XP_PER_KILL * getMasteryXPScale(WeaponType.Standard) / (1 + 4 * DIMINISHING_FACTOR),
+      10 * xpPerKillFor(WeaponType.Standard) / (1 + 4 * DIMINISHING_FACTOR),
       1,
     );
   });
@@ -67,7 +77,7 @@ describe('MasteryStore — XP award math', () => {
     const xpEarned = store.getXP(WeaponType.Standard) - xpBefore;
     // gamesPlayed=19 → diminishingFactor = 1/(1+19*0.05) = 1/1.95 ≈ 0.513
     // 10 * 0.5 * 0.513 ≈ 2.56
-    const expected = 10 * XP_PER_KILL * getMasteryXPScale(WeaponType.Standard) / (1 + 19 * DIMINISHING_FACTOR);
+    const expected = 10 * xpPerKillFor(WeaponType.Standard) / (1 + 19 * DIMINISHING_FACTOR);
     expect(xpEarned).toBeCloseTo(expected, 1);
   });
 
@@ -77,7 +87,7 @@ describe('MasteryStore — XP award math', () => {
     expect(store.getXP(WeaponType.Homing)).toBe(0);
     // gamesPlayed stays 0 → second game still gets full XP rate
     store.awardGameXP(killMap({ [WeaponType.Homing]: 10 }));
-    expect(store.getXP(WeaponType.Homing)).toBeCloseTo(10 * XP_PER_KILL * getMasteryXPScale(WeaponType.Homing), 5);
+    expect(store.getXP(WeaponType.Homing)).toBeCloseTo(10 * xpPerKillFor(WeaponType.Homing), 5);
   });
 
   it('scales XP lower for weapons with fewer retained investment points', () => {
@@ -106,7 +116,7 @@ describe('MasteryStore — level thresholds', () => {
 
   it('capacity-normalized first game can reach Level 1 with the right kill count', () => {
     const store = freshStore();
-    const kills = Math.ceil(100 / (XP_PER_KILL * getMasteryXPScale(WeaponType.Spread)));
+    const kills = Math.ceil(100 / xpPerKillFor(WeaponType.Spread));
     store.awardGameXP(killMap({ [WeaponType.Spread]: kills }));
     expect(store.getXP(WeaponType.Spread)).toBeGreaterThanOrEqual(100);
     expect(store.getXP(WeaponType.Spread)).toBeLessThan(101);
@@ -154,7 +164,7 @@ describe('MasteryStore — awardGameXP results', () => {
       weapons: { [WeaponType.BlackHole]: { xp: 98, gamesPlayed: 1 } },
     }));
     const store = MasteryStore.load();
-    const killsToLevel = Math.ceil(3 / (XP_PER_KILL * getMasteryXPScale(WeaponType.BlackHole) / (1 + DIMINISHING_FACTOR)));
+    const killsToLevel = Math.ceil(3 / (xpPerKillFor(WeaponType.BlackHole) / (1 + DIMINISHING_FACTOR)));
     const [result] = store.awardGameXP(killMap({ [WeaponType.BlackHole]: killsToLevel }));
     expect(result.xpBefore).toBeCloseTo(98, 5);
     expect(result.xpAfter).toBeGreaterThan(100);
@@ -285,7 +295,7 @@ describe('MasteryStore — reset()', () => {
     store.reset();
     // Now game 1 should give full base XP, scaled by retained tree capacity.
     store.awardGameXP(killMap({ [WeaponType.Standard]: 10 }));
-    expect(store.getXP(WeaponType.Standard)).toBeCloseTo(10 * XP_PER_KILL * getMasteryXPScale(WeaponType.Standard), 5);
+    expect(store.getXP(WeaponType.Standard)).toBeCloseTo(10 * xpPerKillFor(WeaponType.Standard), 5);
   });
 });
 
@@ -305,11 +315,11 @@ describe('MasteryStore — awardGameXP() realistic scenario', () => {
 
     // 5 kills times base XP, normalized by retained Standard investment capacity.
     expect(blasterResult.xpBefore).toBe(0);
-    expect(blasterResult.xpAfter).toBeCloseTo(5 * XP_PER_KILL * getMasteryXPScale(WeaponType.Standard), 5);
+    expect(blasterResult.xpAfter).toBeCloseTo(5 * xpPerKillFor(WeaponType.Standard), 5);
 
     // 3 kills times base XP, normalized by retained Spread investment capacity.
     expect(spreadResult.xpBefore).toBe(0);
-    expect(spreadResult.xpAfter).toBeCloseTo(3 * XP_PER_KILL * getMasteryXPScale(WeaponType.Spread), 5);
+    expect(spreadResult.xpAfter).toBeCloseTo(3 * xpPerKillFor(WeaponType.Spread), 5);
   });
 
   it('gamesPlayed incremented only for weapons with kills > 0', () => {
@@ -324,13 +334,13 @@ describe('MasteryStore — awardGameXP() realistic scenario', () => {
 
     // gamesPlayed=1 → factor = 1/(1+DIMINISHING_FACTOR).
     expect(xpGame2).toBeCloseTo(
-      5 * XP_PER_KILL * getMasteryXPScale(WeaponType.Standard) / (1 + DIMINISHING_FACTOR),
+      5 * xpPerKillFor(WeaponType.Standard) / (1 + DIMINISHING_FACTOR),
       1,
     );
 
     // Spread Shot had 0 kills → gamesPlayed stays 0 → next game still gets full XP
     store.awardGameXP(killMap({ [WeaponType.Spread]: 5 }));
-    expect(store.getXP(WeaponType.Spread)).toBeCloseTo(5 * XP_PER_KILL * getMasteryXPScale(WeaponType.Spread), 5);
+    expect(store.getXP(WeaponType.Spread)).toBeCloseTo(5 * xpPerKillFor(WeaponType.Spread), 5);
   });
 });
 
@@ -441,7 +451,7 @@ describe('MasteryStore — getProgress()', () => {
 describe('MasteryStore — balance targets', () => {
   it('crushing first game at capacity-normalized target yields Level 1', () => {
     const store = freshStore();
-    const kills = Math.ceil(100 / (XP_PER_KILL * getMasteryXPScale(WeaponType.TeslaCoil)));
+    const kills = Math.ceil(100 / xpPerKillFor(WeaponType.TeslaCoil));
     const [result] = store.awardGameXP(killMap({ [WeaponType.TeslaCoil]: kills }));
     expect(result.levelAfter).toBe(1);
     expect(result.leveledUp).toBe(true);
@@ -451,7 +461,7 @@ describe('MasteryStore — balance targets', () => {
 
   it('single game cannot reach Level 2 without the capacity-normalized level-2 target', () => {
     const store = freshStore();
-    const level2Kills = Math.ceil(300 / (XP_PER_KILL * getMasteryXPScale(WeaponType.TeslaCoil)));
+    const level2Kills = Math.ceil(300 / xpPerKillFor(WeaponType.TeslaCoil));
     const [result] = store.awardGameXP(killMap({ [WeaponType.TeslaCoil]: level2Kills - 1 }));
     expect(result.levelAfter).toBe(1);
 
@@ -461,13 +471,13 @@ describe('MasteryStore — balance targets', () => {
     expect(result2.levelAfter).toBe(2);
   });
 
-  it('20 games of regular use (150 kills/game) approaches full mastery', () => {
+  it('20 games of regular Blaster use (150 kills/game) no longer approaches full mastery', () => {
     const store = freshStore();
     for (let g = 0; g < 20; g++) {
       store.awardGameXP(killMap({ [WeaponType.Standard]: 150 }));
     }
     const level = store.getLevel(WeaponType.Standard);
-    // Should be at least Level 4 (700+ XP) after 20 solid games
-    expect(level).toBeGreaterThanOrEqual(4);
+    expect(level).toBeLessThan(5);
+    expect(level).toBeGreaterThanOrEqual(2);
   });
 });

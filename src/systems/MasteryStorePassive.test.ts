@@ -7,7 +7,7 @@
  */
 
 import { describe, expect, it, beforeEach } from 'vitest';
-import { MasteryStore, XP_PER_KILL, getMasteryXPScale } from './MasteryStore';
+import { MasteryStore, XP_PER_KILL, getMasteryXPEarnMultiplier, getMasteryXPScale } from './MasteryStore';
 import { WeaponType } from '../weapons/WeaponTypes';
 
 // ── localStorage mock ─────────────────────────────────────────────────────────
@@ -38,10 +38,12 @@ function killMap(entries: Partial<Record<WeaponType, number>>): Map<WeaponType, 
 
 /**
  * Award exactly enough kills in a single game to land at the given XP total.
- * Game 1 has diminishingFactor=1.0, so XP = kills * XP_PER_KILL * tree-capacity scale.
+ * Game 1 has diminishingFactor=1.0, so XP = kills * XP_PER_KILL *
+ * tree-capacity scale * weapon-specific earn multiplier.
  */
 function awardExactXP(store: MasteryStore, weapon: WeaponType, targetXP: number): void {
-  const kills = Math.ceil(targetXP / (XP_PER_KILL * getMasteryXPScale(weapon)));
+  const xpPerKill = XP_PER_KILL * getMasteryXPScale(weapon) * getMasteryXPEarnMultiplier(weapon);
+  const kills = Math.ceil(targetXP / xpPerKill);
   store.awardGameXP(killMap({ [weapon]: kills }));
 }
 

@@ -160,29 +160,27 @@ describe('UPGRADE_TREES', () => {
     expect(uniqueIds.size).toBe(ids.length);
   });
 
-  it('kill thresholds for node index 1 are 10 (for all main-branch root nodes)', () => {
-    // Filter to just the main branch trunk nodes at nodeIndex=1
+  it('kill thresholds for node index 1 are slower for Standard and unchanged for other weapons', () => {
     const nodes = getAllNodes().filter(n => n.nodeIndex === 1);
     expect(nodes.length).toBeGreaterThan(0);
     for (const n of nodes) {
-      expect(n.killThreshold).toBe(10);
+      expect(n.killThreshold).toBe(n.id.startsWith(`${WeaponType.Standard}_`) ? 30 : 10);
     }
   });
 
-  it('kill thresholds for node index 5 are 120', () => {
-    // Standard sub-branch nodes at nodeIndex=5 (al_5, ar_5, bl_5, br_5) + other weapons' a_5/b_5
+  it('kill thresholds for node index 5 are slower for Standard and unchanged for other weapons', () => {
     const nodes = getAllNodes().filter(n => n.nodeIndex === 5);
     expect(nodes.length).toBeGreaterThan(0);
     for (const n of nodes) {
-      expect(n.killThreshold).toBe(120);
+      expect(n.killThreshold).toBe(n.id.startsWith(`${WeaponType.Standard}_`) ? 360 : 120);
     }
   });
 
-  it('kill thresholds for node index 10 are 650', () => {
+  it('kill thresholds for node index 10 are slower for Standard and unchanged for other weapons', () => {
     const nodes = getAllNodes().filter(n => n.nodeIndex === 10);
     expect(nodes.length).toBeGreaterThan(0); // Standard (al,ar,bl,br _10) + Homing (a_10, b_10)
     for (const n of nodes) {
-      expect(n.killThreshold).toBe(650);
+      expect(n.killThreshold).toBe(n.id.startsWith(`${WeaponType.Standard}_`) ? 1950 : 650);
     }
   });
 

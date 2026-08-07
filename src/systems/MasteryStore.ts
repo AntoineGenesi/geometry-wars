@@ -22,10 +22,11 @@ export const XP_THRESHOLDS = [0, 100, 300, 500, 700, 1000] as const;
 
 /**
  * XP awarded per kill (base, before diminishing returns).
- * Calibrated so ~20 games of regular use (150+ kills/game) reaches Level 5.
- * Was 10 before; reduced 20x to prevent single-game max-outs.
+ * Weapon-specific earn multipliers can slow oversized starter-weapon trees
+ * without changing save thresholds or refund/migration semantics.
  */
 export const XP_PER_KILL = 0.5;
+export const STANDARD_MASTERY_XP_EARN_MULTIPLIER = 0.4;
 
 /**
  * Per-game diminishing returns factor.
@@ -102,6 +103,10 @@ export function getMasteryXPScale(weapon: WeaponType): number {
   const capacity = INVESTMENT_CAPACITY_BY_WEAPON[weapon] ?? AVERAGE_INVESTMENT_CAPACITY;
   if (capacity <= 0) return 1;
   return capacity / AVERAGE_INVESTMENT_CAPACITY;
+}
+
+export function getMasteryXPEarnMultiplier(weapon: WeaponType): number {
+  return weapon === WeaponType.Standard ? STANDARD_MASTERY_XP_EARN_MULTIPLIER : 1;
 }
 
 function computeBonus(type: WeaponType, level: number): PassiveMasteryBonus {
@@ -245,7 +250,11 @@ export class MasteryStore {
       const levelBefore = xpToLevel(xpBefore);
 
       const diminishingFactor = 1 / (1 + entry.gamesPlayed * DIMINISHING_FACTOR);
-      const gameXp = kills * XP_PER_KILL * diminishingFactor * getMasteryXPScale(weapon);
+      const gameXp = kills
+        * XP_PER_KILL
+        * diminishingFactor
+        * getMasteryXPScale(weapon)
+        * getMasteryXPEarnMultiplier(weapon);
       const xpAfter = xpBefore + gameXp;
       const levelAfter = xpToLevel(xpAfter);
 

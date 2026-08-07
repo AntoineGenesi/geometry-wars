@@ -344,12 +344,12 @@ describe('MatchUpgradeTracker', () => {
   it('kill counts are tracked per weapon independently', () => {
     const cb = vi.fn();
     tracker.onBuildChoiceAvailable = cb;
-    for (let i = 0; i < 10; i++) {
+    for (let i = 0; i < 30; i++) {
       tracker.recordKill(WeaponType.Standard);
     }
     expect(tracker.getKillCount(WeaponType.PlasmaMortar)).toBe(0);
     expect(tracker.getActiveUpgrades(WeaponType.PlasmaMortar).size).toBe(0);
-    expect(tracker.getKillCount(WeaponType.Standard)).toBe(10);
+    expect(tracker.getKillCount(WeaponType.Standard)).toBe(30);
     // Callback fired for Standard only
     expect(cb).toHaveBeenCalledTimes(1);
     expect(cb.mock.calls[0][0]).toBe(WeaponType.Standard);
@@ -436,7 +436,7 @@ describe('MatchUpgradeTracker', () => {
     const cb = vi.fn();
     t.onBuildChoiceAvailable = cb;
 
-    for (let i = 0; i < 10; i++) {
+    for (let i = 0; i < 30; i++) {
       t.recordKill(WeaponType.Standard);
     }
     expect(cb).not.toHaveBeenCalled();
