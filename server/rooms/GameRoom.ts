@@ -1145,6 +1145,8 @@ export class GameRoom extends Room<GameState> {
   private readonly _blackHoleBoltPrevious = new THREE.Vector3();
   private readonly _blackHoleBoltCurrent = new THREE.Vector3();
   private readonly _blackHoleBoltClosest = new THREE.Vector3();
+  private readonly _blackHoleAimTangentU = new THREE.Vector3();
+  private readonly _blackHoleAimTangentV = new THREE.Vector3();
   private readonly _blackHoleMoveDirection = new THREE.Vector3();
   private readonly _blackHoleSpiralDirection = new THREE.Vector3();
   private readonly _blackHoleEnemyNormal = new THREE.Vector3();
@@ -4167,12 +4169,9 @@ export class GameRoom extends Room<GameState> {
   private fireBlackHoleMP(player: PlayerState): void {
     const surface = this.surfaceManager.getMeshSurface();
     const start = this.surfaceManager.getWalkerLocation(player.id);
-    const ahead = this.surfaceManager.createLocationNearWalker(player.id, 0.5, player.aimAngle);
-    if (!surface || !start || !ahead) return;
+    if (!surface || !start) return;
 
-    this._blackHoleBoltDirection
-      .set(ahead.wx - start.wx, ahead.wy - start.wy, ahead.wz - start.wz)
-      .normalize();
+    this.computeBlackHoleBoltDirection(player, start);
     if (this._blackHoleBoltDirection.lengthSq() <= 0.000001) {
       this._blackHoleBoltDirection.set(start.bitangentX, start.bitangentY, start.bitangentZ).normalize();
     }
@@ -4195,6 +4194,49 @@ export class GameRoom extends Room<GameState> {
     this.blackHoleBoltWalkers.set(bolt.id, walker);
     this.syncBlackHoleBoltState(bolt, walker.getLocation(), this._blackHoleBoltDirection);
     this.state.blackHoleBolts.push(bolt);
+  }
+
+  private computeBlackHoleBoltDirection(player: PlayerState, start: ServerMeshLocation): void {
+    this._blackHoleBoltDirection.set(0, 0, 0);
+    if (this.state.surfaceType === 'torus') {
+      this.computeTorusVisualAimDirection(start, player.aimAngle, this._blackHoleBoltDirection);
+      return;
+    }
+
+    const ahead = this.surfaceManager.createLocationNearWalker(player.id, 0.5, player.aimAngle);
+    if (!ahead) return;
+    this._blackHoleBoltDirection
+      .set(ahead.wx - start.wx, ahead.wy - start.wy, ahead.wz - start.wz)
+      .normalize();
+  }
+
+  private computeTorusVisualAimDirection(
+    location: ServerMeshLocation,
+    aimAngle: number,
+    out: THREE.Vector3,
+  ): void {
+    const scaleFactor = getMapScaleFactor(this.state.mapSize || 'medium');
+    const R = TORUS_MAJOR_R * scaleFactor;
+    const phi = Math.atan2(location.wz, location.wx);
+    const cosPhi = Math.cos(phi);
+    const sinPhi = Math.sin(phi);
+    const outward = (location.wx - R * cosPhi) * cosPhi
+      + (location.wz - R * sinPhi) * sinPhi;
+    const theta = Math.atan2(-location.wy, outward);
+    const cosTheta = Math.cos(theta);
+    const sinTheta = Math.sin(theta);
+
+    this._blackHoleAimTangentU
+      .set(sinTheta * cosPhi, cosTheta, sinTheta * sinPhi)
+      .normalize();
+    this._blackHoleAimTangentV
+      .set(-sinPhi, 0, cosPhi)
+      .normalize();
+    out
+      .copy(this._blackHoleAimTangentU)
+      .multiplyScalar(Math.cos(aimAngle))
+      .addScaledVector(this._blackHoleAimTangentV, Math.sin(aimAngle))
+      .normalize();
   }
 
   private spawnBlackHoleFieldFromLocation(ownerId: string, location: ServerMeshLocation): BlackHoleFieldState {

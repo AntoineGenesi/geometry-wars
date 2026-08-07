@@ -767,6 +767,15 @@ describe('WeaponManager', () => {
       expect(manager.projectileRoot.children.length).toBe(1);
     });
 
+    it('uses the caller-provided aim direction for the travelling bolt', () => {
+      const aim = new THREE.Vector3(0, 0, -1);
+
+      manager.fire(origin(), aim, T);
+
+      const [bolt] = manager['projectiles'].filter(p => p.type === WeaponType.BlackHole);
+      expect(bolt.direction.dot(aim)).toBeCloseTo(1, 5);
+    });
+
     it('Multi Void fires four travelling bolts after Singularity instead of promising two', () => {
       manager.setUpgradeTracker(createActiveUpgradeTracker([
         'black_hole_a_1',

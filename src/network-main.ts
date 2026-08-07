@@ -9446,13 +9446,26 @@ async function main() {
           bulletCounts[type] = (bulletCounts[type] ?? 0) + 1;
         });
         const owner = localPlayerId ? latestGameState?.players.get(localPlayerId) : null;
-        const ownerAimVector = owner
-          ? new THREE.Vector3(owner.tx, owner.ty, owner.tz)
-            .multiplyScalar(Math.cos(owner.aimAngle))
-            .addScaledVector(new THREE.Vector3(owner.bx, owner.by, owner.bz), Math.sin(owner.aimAngle))
-            .normalize()
-            .toArray()
-          : null;
+        let ownerAimVector: number[] | null = null;
+        if (owner) {
+          if (surface) {
+            const ownerPosition = new THREE.Vector3(owner.wx, owner.wy, owner.wz);
+            if (currentMapSizeScaleFactor !== 1.0) ownerPosition.divideScalar(currentMapSizeScaleFactor);
+            const ownerUV = surface.worldToSurface(ownerPosition);
+            const ownerSurfacePoint = surface.getPoint(ownerUV.u, ownerUV.v);
+            ownerAimVector = ownerSurfacePoint.tangentU.clone()
+              .multiplyScalar(Math.cos(owner.aimAngle))
+              .addScaledVector(ownerSurfacePoint.tangentV, Math.sin(owner.aimAngle))
+              .normalize()
+              .toArray();
+          } else {
+            ownerAimVector = new THREE.Vector3(owner.tx, owner.ty, owner.tz)
+              .multiplyScalar(Math.cos(owner.aimAngle))
+              .addScaledVector(new THREE.Vector3(owner.bx, owner.by, owner.bz), Math.sin(owner.aimAngle))
+              .normalize()
+              .toArray();
+          }
+        }
         return {
           backend: game.backend,
           isWebGPU: game.isWebGPU,

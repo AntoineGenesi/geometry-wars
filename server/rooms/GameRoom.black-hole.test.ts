@@ -5,6 +5,7 @@ import { ServerMeshPathfinder } from '../movement/ServerMeshPathfinder';
 import type { ServerMeshLocation } from '../movement/ServerMeshLocation';
 import { ServerMeshWalker } from '../movement/ServerMeshWalker';
 import type { ServerSurfaceManager } from '../movement/ServerSurfaceManager';
+import { TorusSurface } from '../../src/surfaces/TorusSurface';
 import {
   BlackHoleBoltState,
   BlackHoleFieldState,
@@ -46,25 +47,31 @@ function fieldLocation(field: BlackHoleFieldState): ServerMeshLocation {
   };
 }
 
-function makeRoom(): {
+function makeRoom(options: {
+  surfaceType?: 'cube' | 'torus';
+  spawnU?: number;
+  spawnV?: number;
+  aimAngle?: number;
+} = {}): {
   room: GameRoom;
   internals: BlackHoleRoomInternals;
   player: PlayerState;
   pathfinder: ServerMeshPathfinder;
 } {
+  const surfaceType = options.surfaceType ?? 'cube';
   const room = new GameRoom();
   (room as any).setState(new GameState());
   (room as any).setMetadata = vi.fn();
   (room as any).broadcast = vi.fn();
   (room as any).logger = { log: vi.fn() };
-  room.state.surfaceType = 'cube';
+  room.state.surfaceType = surfaceType;
   room.state.mapSize = 'medium';
   room.state.roomPhase = 'playing';
   room.state.gameStarted = true;
   room.state.gameTime = 1;
 
   const internals = room as unknown as BlackHoleRoomInternals;
-  internals.surfaceManager.initSurface('cube', 1);
+  internals.surfaceManager.initSurface(surfaceType, 1);
   const meshSurface = internals.surfaceManager.getMeshSurface()!;
   const pathfinder = new ServerMeshPathfinder(meshSurface);
   internals.enemyPathfinder = pathfinder;
@@ -74,14 +81,46 @@ function makeRoom(): {
   player.name = 'Owner';
   player.weaponType = 'black_hole';
   player.weaponAmmo = 5;
-  player.aimAngle = 0;
+  player.aimAngle = options.aimAngle ?? 0;
   room.state.players.set(player.id, player);
-  const playerWalker = internals.surfaceManager.createWalker(player.id, 0.44, 0.47)!;
+  const playerWalker = internals.surfaceManager.createWalker(
+    player.id,
+    options.spawnU ?? 0.44,
+    options.spawnV ?? 0.47,
+  )!;
   internals.applyWalkerStateToPlayer(player, playerWalker.getLocation());
   (player as unknown as { lastBlasterShotTime: number }).lastBlasterShotTime = room.state.gameTime;
   (player as unknown as { lastShotTime: number }).lastShotTime = -Infinity;
 
   return { room, internals, player, pathfinder };
+}
+
+function vectorFromLocation(location: ServerMeshLocation): THREE.Vector3 {
+  return new THREE.Vector3(location.wx, location.wy, location.wz);
+}
+
+function boltDirection(bolt: BlackHoleBoltState): THREE.Vector3 {
+  return new THREE.Vector3(bolt.dirX, bolt.dirY, bolt.dirZ).normalize();
+}
+
+function serverWalkerAimVector(location: ServerMeshLocation, aimAngle: number): THREE.Vector3 {
+  return new THREE.Vector3(location.tangentX, location.tangentY, location.tangentZ)
+    .multiplyScalar(Math.cos(aimAngle))
+    .addScaledVector(
+      new THREE.Vector3(location.bitangentX, location.bitangentY, location.bitangentZ),
+      Math.sin(aimAngle),
+    )
+    .normalize();
+}
+
+function torusClientVisualAimVector(location: ServerMeshLocation, aimAngle: number): THREE.Vector3 {
+  const torus = new TorusSurface({ majorRadius: 8, minorRadius: 3 });
+  const uv = torus.worldToSurface(vectorFromLocation(location));
+  const sp = torus.getPoint(uv.u, uv.v);
+  return sp.tangentU.clone()
+    .multiplyScalar(Math.cos(aimAngle))
+    .addScaledVector(sp.tangentV, Math.sin(aimAngle))
+    .normalize();
 }
 
 function addEnemyNearField(
@@ -239,6 +278,50 @@ describe('GameRoom authoritative Black Hole vortex', () => {
     scenario.internals.updateBlackHoleBolts(1 / 60);
     expect([bolt.wx, bolt.wy, bolt.wz]).not.toEqual(start);
     expect(scenario.room.state.blackHoleFields).toHaveLength(0);
+  });
+
+  it('spawns torus travelling bolts in the same world direction as the client visual aim frame', () => {
+    for (const aimAngle of [0, Math.PI / 4, Math.PI / 2, Math.PI]) {
+      const scenario = makeRoom({
+        surfaceType: 'torus',
+        spawnU: 0.04,
+        spawnV: 0.18,
+        aimAngle,
+      });
+      rooms.push(scenario.room);
+      const start = scenario.internals.surfaceManager.getWalkerLocation(scenario.player.id)!;
+      const visualAim = torusClientVisualAimVector(start, aimAngle);
+
+      scenario.internals.tryShoot(scenario.player);
+
+      expect(scenario.room.state.bullets).toHaveLength(0);
+      expect(scenario.room.state.blackHoleBolts).toHaveLength(1);
+      const bolt = scenario.room.state.blackHoleBolts[0];
+      expect(boltDirection(bolt).dot(visualAim)).toBeGreaterThan(0.98);
+
+      scenario.internals.updateBlackHoleBolts(1 / 60);
+      const travel = new THREE.Vector3(bolt.wx - start.wx, bolt.wy - start.wy, bolt.wz - start.wz);
+      expect(travel.normalize().dot(visualAim)).toBeGreaterThan(0.92);
+    }
+  });
+
+  it('keeps torus Black Hole aim distinct from the historical normal-bullet UV dirX correction', () => {
+    const scenario = makeRoom({
+      surfaceType: 'torus',
+      spawnU: 0.04,
+      spawnV: 0.18,
+      aimAngle: 0,
+    });
+    rooms.push(scenario.room);
+    const start = scenario.internals.surfaceManager.getWalkerLocation(scenario.player.id)!;
+    const serverAim = serverWalkerAimVector(start, scenario.player.aimAngle);
+    const visualAim = torusClientVisualAimVector(start, scenario.player.aimAngle);
+
+    scenario.internals.tryShoot(scenario.player);
+
+    const bolt = scenario.room.state.blackHoleBolts[0];
+    expect(Math.abs(serverAim.dot(visualAim))).toBeLessThan(0.2);
+    expect(boltDirection(bolt).dot(visualAim)).toBeGreaterThan(0.98);
   });
 
   it('pulls near-line enemies while the travelling bolt is still in flight', () => {
