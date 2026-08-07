@@ -13,11 +13,8 @@ import { MatchUpgradeTracker } from '../systems/MatchUpgradeTracker';
 import { GameSettingsPanel } from './GameSettingsPanel';
 import type { GameSettings } from '../../server/shared/GameSettings';
 import {
-  getNextVisualMode,
-  getVisualModeDefinition,
   type VisualMode,
 } from './VisualStyleSettings';
-import { VisualPlayground } from './VisualPlayground';
 
 /**
  * Pause menu overlay.
@@ -170,14 +167,6 @@ export class PauseMenu {
             <button class="pause-btn settings-btn" data-action="settings">
               <span class="btn-icon">⚙</span>
               <span>${t('pauseMenu.settings')}</span>
-            </button>
-            <button class="pause-btn visual-mode-btn" data-action="visual-mode">
-              <span class="btn-icon">🎨</span>
-              <span class="visual-mode-label">${t('pauseMenu.stylePixelated')}</span>
-            </button>
-            <button class="pause-btn" data-action="open-styles-gallery">
-              <span class="btn-icon">🖼</span>
-              <span>${t('pauseMenu.visualStyles')}</span>
             </button>
             <button class="pause-btn perf-graphs-btn" data-action="perf-graphs">
               <span class="btn-icon">📊</span>
@@ -1008,20 +997,6 @@ export class PauseMenu {
       });
     });
 
-    const visualModeBtn = this.container.querySelector('[data-action="visual-mode"]');
-    visualModeBtn?.addEventListener('click', () => {
-      this.visualMode = getNextVisualMode(this.visualMode);
-      this.updateVisualModeLabel();
-      this.onVisualModeChangeCallback?.(this.visualMode);
-    });
-
-    const stylesGalleryBtn = this.container.querySelector('[data-action="open-styles-gallery"]');
-    stylesGalleryBtn?.addEventListener('click', () => {
-      const playground = new VisualPlayground();
-      playground.show();
-      playground.onClose(() => { playground.dispose(); });
-    });
-
     const perfGraphsBtn = this.container.querySelector('[data-action="perf-graphs"]');
     perfGraphsBtn?.addEventListener('click', () => {
       this.showPerformanceGraphsModal();
@@ -1206,9 +1181,7 @@ export class PauseMenu {
 
   private updateVisualModeLabel(): void {
     const label = this.container.querySelector('.visual-mode-label');
-    if (label) {
-      label.textContent = getVisualModeDefinition(this.visualMode).label;
-    }
+    if (label) label.textContent = this.visualMode;
   }
 
   /**

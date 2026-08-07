@@ -53,8 +53,8 @@ describe('MobileGridConfig', () => {
       expect(MOBILE_GRID_MAX_SEGMENTS_V).toBe(72);
     });
 
-    it('default brightness is higher than the desktop default (0.10)', () => {
-      expect(MOBILE_GRID_DEFAULT_BRIGHTNESS).toBeGreaterThan(0.10);
+    it('default brightness is higher than the quiet desktop default', () => {
+      expect(MOBILE_GRID_DEFAULT_BRIGHTNESS).toBeGreaterThan(DESKTOP_GRID_DEFAULT_BRIGHTNESS);
     });
   });
 
@@ -111,8 +111,8 @@ describe('Universal grid settings', () => {
   });
 
   describe('DESKTOP_GRID_DEFAULT_BRIGHTNESS', () => {
-    it('is 0.10 (matching the existing hardcoded desktop default)', () => {
-      expect(DESKTOP_GRID_DEFAULT_BRIGHTNESS).toBe(0.10);
+    it('is a quiet readable desktop default', () => {
+      expect(DESKTOP_GRID_DEFAULT_BRIGHTNESS).toBe(0.08);
     });
   });
 

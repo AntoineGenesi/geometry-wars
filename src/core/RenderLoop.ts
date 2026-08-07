@@ -40,6 +40,11 @@ export class RenderLoop {
   private _surfaceVisibilityResolver: SurfaceVisibilityResolver | null = null;
   private _surfaceVisibilityMesh: MeshSurface | null = null;
 
+  setOpaqueSurfacesEnabled(opaqueSurfaces: boolean): void {
+    this._opaqueSurfaces = opaqueSurfaces;
+    this._graphicsSettingsFrameCounter = 0;
+  }
+
   render(ctx: GameContext, alpha: number): void {
     profiler.begin('surface_projection');
     // Project bullets onto surface
@@ -74,6 +79,11 @@ export class RenderLoop {
     ctx.shockwaveEffect.update(frameDt, ctx.game.clock.totalTime);
 
     ctx.state.currentGridOpacity += (targetGridOpacity - ctx.state.currentGridOpacity) * Math.min(1, ctx.state.fadeSpeed * frameDt);
+    if (this._graphicsSettingsFrameCounter++ >= 60) {
+      this._graphicsSettingsFrameCounter = 0;
+      const graphicsSettings = loadGraphicsSettings();
+      this._opaqueSurfaces = areOpaqueSurfacesEnabled(graphicsSettings);
+    }
     // Surface uses depth-fade shader only when the surface is actually between
     // camera and player. Leaving this enabled on visible opaque faces creates a
     // dark corridor patch around the player.
@@ -86,11 +96,6 @@ export class RenderLoop {
     // Enemy visibility is topology-based below. The camera ray above only fades
     // the surface corridor so the player remains readable.
     const allEnemies = ctx.enemySpawner.getEnemies();
-    if (this._graphicsSettingsFrameCounter++ >= 60) {
-      this._graphicsSettingsFrameCounter = 0;
-      const graphicsSettings = loadGraphicsSettings();
-      this._opaqueSurfaces = areOpaqueSurfacesEnabled(graphicsSettings);
-    }
     profiler.end('transparency_and_occlusion');
 
     profiler.begin('enemy_visibility');

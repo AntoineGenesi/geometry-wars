@@ -79,13 +79,13 @@ export function createStandardSurfaceConfig(
     : baseSegmentsV;
 
   // Grid brightness: visual style overrides take precedence, then user preference.
-  // loadGridBrightness handles platform defaults (0.35 mobile, 0.10 desktop).
+  // loadGridBrightness handles platform defaults (0.24 mobile, 0.08 desktop).
   const gridOpacity = savedStyle?.gridOpacity ?? loadGridBrightness(mobile);
 
   const config: Record<string, unknown> = {
     // Visual appearance
-    gridColor: savedStyle?.gridColor ?? 0x2a2aaa,
-    surfaceColor: savedStyle?.surfaceColor ?? 0x141440,
+    gridColor: savedStyle?.gridColor ?? 0x1f3f6f,
+    surfaceColor: savedStyle?.surfaceColor ?? 0x101826,
     surfaceOpacity: savedStyle?.surfaceOpacity ?? 0.05,
     gridOpacity,
     wireframeOnly: savedStyle?.wireframeOnly ?? false,

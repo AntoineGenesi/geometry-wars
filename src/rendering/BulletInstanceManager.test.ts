@@ -353,16 +353,14 @@ describe('BulletInstanceManager', () => {
       }
     });
 
-    it('Standard type uses cyan-ish color', () => {
+    it('Standard type uses warm gold so blaster shots stand off blue map styles', () => {
       const config = BULLET_VISUAL_CONFIGS[BulletVisualType.Standard];
-      // Standard is white-cyan (0x88ffff)
-      expect(config.color).toBe(0x88ffff);
+      expect(config.color).toBe(0xfff36a);
     });
 
-    it('Spread type uses cyan color matching SP WeaponManager appearance', () => {
+    it('Spread type uses pink-magenta so pellets do not blend into cyan maps', () => {
       const config = BULLET_VISUAL_CONFIGS[BulletVisualType.Spread];
-      // s44k-02 fix: changed from 0xffff44 (yellow) to 0x44ffff (light blue) to match SP
-      expect(config.color).toBe(0x44ffff);
+      expect(config.color).toBe(0xff5fa8);
     });
 
     it('Spread type scale gives ~0.08 effective radius matching SP SphereGeometry(0.08)', () => {
@@ -525,7 +523,7 @@ describe('BulletInstanceManager', () => {
       ) as THREE.BatchedMesh[];
       expect(batchedMeshes.length).toBe(1);
 
-      // Standard type default color is 0x88ffff — verify it was set
+      // Standard type default color is set when no custom color is supplied.
       const readColor = new THREE.Color();
       batchedMeshes[0].getColorAt(0, readColor);
       // Should have non-zero color (set from default or custom)

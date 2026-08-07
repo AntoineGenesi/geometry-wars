@@ -26,8 +26,8 @@ export const MOBILE_GRID_MAX_SEGMENTS_U = 96;
  */
 export const MOBILE_GRID_MAX_SEGMENTS_V = 72;
 
-/** Default grid opacity on mobile (35% vs the desktop default of 10%). */
-export const MOBILE_GRID_DEFAULT_BRIGHTNESS = 0.35;
+/** Default grid opacity on mobile (higher than desktop, but kept below enemy glow). */
+export const MOBILE_GRID_DEFAULT_BRIGHTNESS = 0.24;
 
 export const MOBILE_GRID_BRIGHTNESS_MIN = 0.05;
 export const MOBILE_GRID_BRIGHTNESS_MAX = 0.80;
@@ -73,8 +73,8 @@ export function saveMobileGridBrightness(value: number): void {
 
 const GRID_BRIGHTNESS_KEY = 'gw3d-grid-brightness';
 
-/** Default grid opacity on desktop (10%). */
-export const DESKTOP_GRID_DEFAULT_BRIGHTNESS = 0.10;
+/** Default grid opacity on desktop: readable, but quieter than enemies and bullets. */
+export const DESKTOP_GRID_DEFAULT_BRIGHTNESS = 0.08;
 
 /**
  * Load the user's grid brightness setting from localStorage.

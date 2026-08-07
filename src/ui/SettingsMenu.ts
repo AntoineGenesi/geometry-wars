@@ -82,7 +82,7 @@ const DEFAULT_GRAPHICS: GraphicsSettings = {
   resolutionScale: 1.0,
   surfaceOpaque: true,
   surfaceOpacity: 0.05,
-  surfaceColor: 0x141440,
+  surfaceColor: 0x101826,
   enable90DegreeHide: false,
   surfaceVisibilityPreferenceVersion: SURFACE_VISIBILITY_PREFERENCE_VERSION,
 };
@@ -109,7 +109,7 @@ const QUALITY_PRESET_VALUES: Record<string, Omit<GraphicsSettings, 'qualityPrese
     resolutionScale: 1.0,
     surfaceOpaque: true,
     surfaceOpacity: 0.05,
-    surfaceColor: 0x141440,
+    surfaceColor: 0x101826,
     enable90DegreeHide: false,
     surfaceVisibilityPreferenceVersion: SURFACE_VISIBILITY_PREFERENCE_VERSION,
   },
@@ -122,7 +122,7 @@ const QUALITY_PRESET_VALUES: Record<string, Omit<GraphicsSettings, 'qualityPrese
     resolutionScale: 1.0,
     surfaceOpaque: true,
     surfaceOpacity: 0.05,
-    surfaceColor: 0x141440,
+    surfaceColor: 0x101826,
     enable90DegreeHide: false,
     surfaceVisibilityPreferenceVersion: SURFACE_VISIBILITY_PREFERENCE_VERSION,
   },
@@ -135,7 +135,7 @@ const QUALITY_PRESET_VALUES: Record<string, Omit<GraphicsSettings, 'qualityPrese
     resolutionScale: 0.75,
     surfaceOpaque: true,
     surfaceOpacity: 0.05,
-    surfaceColor: 0x141440,
+    surfaceColor: 0x101826,
     enable90DegreeHide: false,
     surfaceVisibilityPreferenceVersion: SURFACE_VISIBILITY_PREFERENCE_VERSION,
   },
@@ -148,7 +148,7 @@ const QUALITY_PRESET_VALUES: Record<string, Omit<GraphicsSettings, 'qualityPrese
     resolutionScale: 0.5,
     surfaceOpaque: true,
     surfaceOpacity: 0.05,
-    surfaceColor: 0x141440,
+    surfaceColor: 0x101826,
     enable90DegreeHide: false,
     surfaceVisibilityPreferenceVersion: SURFACE_VISIBILITY_PREFERENCE_VERSION,
   },
@@ -161,7 +161,7 @@ const QUALITY_PRESET_VALUES: Record<string, Omit<GraphicsSettings, 'qualityPrese
     resolutionScale: 0.25,
     surfaceOpaque: true,
     surfaceOpacity: 0.05,
-    surfaceColor: 0x141440,
+    surfaceColor: 0x101826,
     enable90DegreeHide: false,
     surfaceVisibilityPreferenceVersion: SURFACE_VISIBILITY_PREFERENCE_VERSION,
   },
@@ -399,7 +399,7 @@ export const SURFACE_OPACITY_PRESETS = [
 ] as const;
 
 export const SURFACE_COLOR_PRESETS = [
-  { label: 'Default (Dark Blue)', value: 0x141440 },
+  { label: 'Default (Slate Blue)', value: 0x101826 },
   { label: 'Ice Blue',            value: 0xa8d8f0 },
   { label: 'Warm White',          value: 0xf0ece0 },
   { label: 'Soft Purple',         value: 0xc8a8f0 },
@@ -960,7 +960,8 @@ export class SettingsMenu {
 
       /* Visual style list */
       #settings-menu .style-list {
-        max-height: 250px;
+        height: 178px;
+        max-height: 178px;
         overflow-y: auto;
         border: 1px solid rgba(0, 255, 255, 0.1);
         border-radius: 4px;
@@ -970,7 +971,9 @@ export class SettingsMenu {
         display: flex;
         justify-content: space-between;
         align-items: center;
-        padding: 8px 12px;
+        min-height: 42px;
+        padding: 7px 12px;
+        box-sizing: border-box;
         cursor: pointer;
         transition: all 0.15s;
         border-bottom: 1px solid rgba(255, 255, 255, 0.03);
@@ -1029,11 +1032,12 @@ export class SettingsMenu {
           padding: 14px;
         }
         #settings-menu .style-list {
-          max-height: none;
+          height: 120px;
+          max-height: 120px;
         }
         #settings-menu .style-item {
-          padding: 12px;
-          min-height: 44px;
+          min-height: 48px;
+          padding: 10px 12px;
         }
       }
     `;
@@ -1307,9 +1311,6 @@ export class SettingsMenu {
     return `
       <div class="section-heading">${t('settings.graphics.visualStyle')}</div>
       <div class="style-list" id="visual-style-list">${styleItems}</div>
-      <div style="color:#557777;font-size:11px;margin-bottom:8px;line-height:1.4;">
-        Click a style to select it. Bloom changes apply immediately; surface colors apply on next game start.
-      </div>
       ${activeStyle !== 'Default' ? `<button class="action-btn" id="reset-visual-style" style="padding:6px 14px;font-size:11px;margin-bottom:12px;">${t('settings.graphics.resetToDefault')}</button>` : ''}
 
       <div class="section-heading">${t('settings.graphics.qualityPreset')}</div>
@@ -1354,7 +1355,7 @@ export class SettingsMenu {
         <span class="setting-value" id="grid-brightness-val">${(loadGridBrightness(isMobile()) * 100).toFixed(0)}%</span>
       </div>
       <div class="setting-hint">
-        <small>0% = invisible, 100% = maximum. Applies on next game start.</small>
+        <small>0% = invisible, 100% = maximum.</small>
       </div>
       <div class="setting-row">
         <span class="setting-label">Density</span>
@@ -1365,7 +1366,7 @@ export class SettingsMenu {
         </div>
       </div>
       <div class="setting-hint">
-        <small>Grid line count. Mobile is 4× denser by default. Applies on next game start.</small>
+        <small>Grid line count applies on the next map load.</small>
       </div>
 
       <div class="section-heading">Surface Appearance</div>
@@ -1658,6 +1659,7 @@ export class SettingsMenu {
     // Grid brightness slider (all users)
     this.attachSlider('grid-brightness', 'grid-brightness-val', (val) => {
       saveGridBrightness(val);
+      this.onGraphicsChangeCallback?.(this.getGraphicsSettings());
       return `${(val * 100).toFixed(0)}%`;
     });
 
@@ -1698,7 +1700,7 @@ export class SettingsMenu {
     // Surface color swatch buttons
     this.container.querySelectorAll('.color-swatch[data-surface-color]').forEach(btn => {
       (btn as HTMLElement).addEventListener('click', () => {
-        const val = parseInt((btn as HTMLElement).dataset.surfaceColor ?? '0x141440', 10);
+        const val = parseInt((btn as HTMLElement).dataset.surfaceColor ?? String(0x101826), 10);
         this.graphicsSettings = { ...this.graphicsSettings, surfaceColor: val, qualityPreset: 'custom' };
         this.saveAndNotifyGraphics();
         // Update active swatch state

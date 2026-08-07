@@ -17,7 +17,7 @@ import { BULLET_SPEED_WORLD, BULLET_LIFETIME } from '../shared/GameBalanceConsta
 const BULLET_SPEED = BULLET_SPEED_WORLD; // world units/sec — from shared constants
 const POOL_SIZE = 500; // max bullets alive at once (200 was too low with 5x hot hands + trigger happy)
 const BULLET_LENGTH = 0.25; // visual length of the line
-const BULLET_COLOR = new THREE.Color(0x88ffff); // white-cyan (GW3D authentic)
+const BULLET_COLOR = new THREE.Color(0xfff36a); // warm white-gold, distinct from cyan/light-blue maps
 
 // Default sphere radius for projection (used if no surface function provided)
 const DEFAULT_SPHERE_RADIUS = 8;

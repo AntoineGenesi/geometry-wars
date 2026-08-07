@@ -41,14 +41,14 @@ export interface BulletVisualConfig {
 // - ConeGeometry: apex at +Y, base at -Y. scaleY = bullet length, scaleX=scaleZ = base radius.
 export const BULLET_VISUAL_CONFIGS: Record<BulletVisualType, BulletVisualConfig> = {
   [BulletVisualType.Standard]: {
-    color: 0x88ffff,
+    color: 0xfff36a,
     scaleX: 0.04,
     scaleY: 0.18,  // length along travel direction
     scaleZ: 0.04,
     createGeometry: () => new THREE.CapsuleGeometry(0.5, 1.0, 4, 8),
   },
   [BulletVisualType.Spread]: {
-    color: 0x44ffff,
+    color: 0xff5fa8,
     scaleX: 0.16,
     scaleY: 0.16,  // spherical — all axes equal; 0.5 * 0.16 = 0.08 matches SP SphereGeometry(0.08)
     scaleZ: 0.16,

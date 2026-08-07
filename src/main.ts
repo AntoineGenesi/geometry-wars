@@ -95,6 +95,7 @@ import {
   type DifficultyInput,
 } from './core/DifficultyScaling';
 import { isMobile } from './core/MobileDetector';
+import { loadGridBrightness } from './core/MobileGridConfig';
 import { MapSize, getDefaultMapSizeForSurface, getMaxActiveEnemies, getDynamicMaxEnemies, getMapSizeScaleFactor } from './core/MapSize';
 import { TouchInput } from './input/TouchInput';
 import { DDAPerformanceTracker } from './difficulty/DDAPerformanceTracker';
@@ -626,18 +627,11 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
         },
       });
     } else {
-      // Reset to defaults, adjusted for visual mode
-      const defaultStrength = mobile ? 0.4 : 0.7;
-      const adjustedStrength = getAdjustedBloomStrength(defaultStrength, currentVisualMode);
-      const defaultThreshold = 0.6;
-      game.setBloomSettings(adjustedStrength, defaultThreshold);
-      if (game.bloomPass) {
-        game.bloomPass.radius = mobile ? 0.3 : 0.5;
-      }
+      applyDefaultVisualAppearance(currentVisualMode);
     }
   });
 
-  // Live-apply visual preset when user selects from VisualPlayground gallery (pause menu)
+  // Live-apply visual preset when user selects from any remaining VisualPlayground gallery entry point.
   VisualPlayground.setGlobalPresetApplyCallback((preset) => {
     if (!preset) return;
     applyVisualPresetToLiveGame({
@@ -682,10 +676,10 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
       surface = await SurfaceFactory.createCustom({
         meshSource: customMeshSource,
         targetRadius: level.surfaceScale || 8,
-        gridColor: (customSurfaceConfig.gridColor as number) ?? 0x2a2aaa,
-        surfaceColor: (customSurfaceConfig.surfaceColor as number) ?? 0x141440,
+        gridColor: (customSurfaceConfig.gridColor as number) ?? 0x1f3f6f,
+        surfaceColor: (customSurfaceConfig.surfaceColor as number) ?? 0x101826,
         surfaceOpacity: (customSurfaceConfig.surfaceOpacity as number) ?? 0.05,
-        gridOpacity: (customSurfaceConfig.gridOpacity as number) ?? 0.10,
+        gridOpacity: (customSurfaceConfig.gridOpacity as number) ?? 0.08,
         gridSegmentsU: (customSurfaceConfig.gridSegmentsU as number) ?? 24,
         gridSegmentsV: (customSurfaceConfig.gridSegmentsV as number) ?? 18,
       });
@@ -721,6 +715,7 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
   {
     const gfxSettings = loadGraphicsSettings();
     surface.setSurfaceOpacity(getEffectiveSurfaceOpacity(gfxSettings));
+    surface.setSurfaceOpaqueDepthMode(gfxSettings.surfaceOpaque);
     surface.setSurfaceColor(gfxSettings.surfaceColor);
     if (savedStyle) {
       applyVisualPresetToLiveGame({
@@ -737,6 +732,25 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
           ctx.state.currentGridOpacity = opacity;
         },
       });
+    }
+  }
+
+  function applyDefaultVisualAppearance(currentVisualMode: ReturnType<typeof loadVisualMode> = loadVisualMode()): void {
+    const gfxSettings = loadGraphicsSettings();
+    const gridOpacity = loadGridBrightness(mobile);
+    surface.setSurfaceOpacity(getEffectiveSurfaceOpacity(gfxSettings));
+    surface.setSurfaceOpaqueDepthMode(gfxSettings.surfaceOpaque);
+    surface.setSurfaceColor(gfxSettings.surfaceColor);
+    surface.setGridStyle({ color: 0x1f3f6f, opacity: gridOpacity });
+    if (ctx) {
+      ctx.state.baseGridOpacity = gridOpacity;
+      ctx.state.currentGridOpacity = gridOpacity;
+    }
+    const defaultStrength = mobile ? 0.4 : 0.7;
+    const adjustedStrength = getAdjustedBloomStrength(defaultStrength, currentVisualMode);
+    game.setBloomSettings(adjustedStrength, 0.6);
+    if (game.bloomPass) {
+      game.bloomPass.radius = mobile ? 0.3 : 0.5;
     }
   }
 
@@ -1745,7 +1759,7 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
   // Sync pause menu with the saved visual mode
   pauseMenu.setVisualMode(savedVisualMode);
 
-  // Toggle visual mode when user clicks the button in the pause menu
+  // Legacy visual-mode callback kept for non-pause entry points that still reuse PauseMenu wiring.
   pauseMenu.onVisualModeChange((mode) => {
     saveVisualMode(mode);
     game.setVisualMode(mode);
@@ -1776,7 +1790,13 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
   // Apply surface appearance live when user changes settings in the pause menu
   pauseMenu.onGraphicsChange((gfxSettings) => {
     surface.setSurfaceOpacity(getEffectiveSurfaceOpacity(gfxSettings));
+    surface.setSurfaceOpaqueDepthMode(gfxSettings.surfaceOpaque);
+    renderLoop.setOpaqueSurfacesEnabled(gfxSettings.surfaceOpaque);
     surface.setSurfaceColor(gfxSettings.surfaceColor);
+    const gridOpacity = loadGridBrightness(mobile);
+    surface.setGridStyle({ opacity: gridOpacity });
+    ctx.state.baseGridOpacity = gridOpacity;
+    ctx.state.currentGridOpacity = gridOpacity;
   });
 
   /** Build current game data snapshot for pause menu stats panel */
@@ -2119,7 +2139,7 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
   // -- Tunnel transparency state (used by render loop) --
   const tunnelRaycaster = new THREE.Raycaster();
   const baseSurfaceOpacity = (surfaceConfig.surfaceOpacity as number) ?? 0.05;
-  const baseGridOpacity = (surfaceConfig.gridOpacity as number) ?? 0.10;
+  const baseGridOpacity = (surfaceConfig.gridOpacity as number) ?? 0.08;
 
   // -- Game Context: bundles all shared state for GameLoop and RenderLoop --
   ctx = {

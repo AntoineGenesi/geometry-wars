@@ -8632,7 +8632,7 @@ async function main() {
         // Use BulletInstanceManager's built-in default colors (not WEAPON_CONFIGS colors).
         // SP (GameLoop.ts) adds bullets without explicit color → uses BulletInstanceManager
         // defaults. Passing WEAPON_CONFIGS colors here made MP bullets visually different
-        // from SP (e.g. Standard: 0xffff44 yellow in MP vs 0x88ffff cyan in SP).
+        // from SP (e.g. Standard: warm gold in MP vs an older cyan SP default).
         // Omitting the color parameter makes MP match SP exactly.
 
         // Server now fires 2 separate bullets for Standard (Blaster) and 5 for Spread,

@@ -501,9 +501,9 @@ describe('Surface appearance settings', () => {
     expect(settings.surfaceOpacity).toBe(0.05);
   });
 
-  it('default surfaceColor is 0x141440 (matches existing default)', () => {
+  it('default surfaceColor is the quieter slate-blue game default', () => {
     const settings = getDefaultGraphics();
-    expect(settings.surfaceColor).toBe(0x141440);
+    expect(settings.surfaceColor).toBe(0x101826);
   });
 
   it('surfaceOpacity and surfaceColor are persisted and loaded', () => {
@@ -548,7 +548,7 @@ describe('Surface appearance settings', () => {
     });
     const loaded = loadGraphicsSettings();
     expect(loaded.surfaceOpacity).toBe(0.05);
-    expect(loaded.surfaceColor).toBe(0x141440);
+    expect(loaded.surfaceColor).toBe(0x101826);
     expect(loaded.surfaceOpaque).toBe(true);
   });
 
@@ -566,7 +566,7 @@ describe('Surface appearance settings', () => {
   it('SURFACE_COLOR_PRESETS: no color has any channel below 0x80 except Default', () => {
     // Brightness rule: non-default presets must not be too dark
     for (const preset of SURFACE_COLOR_PRESETS) {
-      if (preset.label === 'Default (Dark Blue)') continue;
+      if (preset.label === 'Default (Slate Blue)') continue;
       const r = (preset.value >> 16) & 0xff;
       const g = (preset.value >> 8) & 0xff;
       const b = preset.value & 0xff;

@@ -11,6 +11,18 @@
 
 import { test, expect, describe } from 'vitest';
 import { VISUAL_PRESETS } from './VisualPlayground';
+import { getVisualModeFeaturedPreset, type VisualMode } from './VisualStyleSettings';
+import { BULLET_VISUAL_CONFIGS, BulletVisualType } from '../rendering/BulletInstanceManager';
+
+function rgbDistance(a: number, b: number): number {
+  const ar = (a >> 16) & 0xff;
+  const ag = (a >> 8) & 0xff;
+  const ab = a & 0xff;
+  const br = (b >> 16) & 0xff;
+  const bg = (b >> 8) & 0xff;
+  const bb = b & 0xff;
+  return Math.hypot(ar - br, ag - bg, ab - bb);
+}
 
 describe('Visual Styles Consistency', () => {
   test('total preset count is 54', () => {
@@ -113,5 +125,32 @@ describe('Visual Styles Consistency', () => {
     const names = VISUAL_PRESETS.map(p => p.name);
     const uniqueNames = new Set(names);
     expect(uniqueNames.size).toBe(names.length);
+  });
+});
+
+describe('Quick visual style readability', () => {
+  test('featured quick styles keep map glow below projectile/enemy priority', () => {
+    const modes: VisualMode[] = ['modern', 'pixelated', 'crt', 'desktop-defender'];
+    for (const mode of modes) {
+      const preset = getVisualModeFeaturedPreset(mode);
+      expect(preset, `${mode} needs a featured preset`).toBeDefined();
+      expect(preset!.gridOpacity, `${mode} grid opacity`).toBeLessThanOrEqual(0.6);
+      expect(preset!.bloomStrength, `${mode} bloom strength`).toBeLessThanOrEqual(1.1);
+    }
+  });
+
+  test('primary bullet colors stay distinct from all quick-style map colors', () => {
+    const modes: VisualMode[] = ['modern', 'pixelated', 'crt', 'desktop-defender'];
+    const bulletColors = [
+      BULLET_VISUAL_CONFIGS[BulletVisualType.Standard].color,
+      BULLET_VISUAL_CONFIGS[BulletVisualType.Spread].color,
+    ];
+    for (const mode of modes) {
+      const preset = getVisualModeFeaturedPreset(mode)!;
+      for (const bulletColor of bulletColors) {
+        expect(rgbDistance(bulletColor, preset.surfaceColor), `${mode} bullet/surface distance`).toBeGreaterThan(100);
+        expect(rgbDistance(bulletColor, preset.gridColor), `${mode} bullet/grid distance`).toBeGreaterThan(90);
+      }
+    }
   });
 });
