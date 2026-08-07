@@ -212,10 +212,12 @@ interface GameDebugAPI {
   killSnakeBodyProofHead: (headId: string) => boolean;
   getBulletCount: () => number;
   getBlackHoleProofState: () => Record<string, unknown>;
-  startBlackHoleProofGame: () => boolean;
+  startBlackHoleProofGame: (surfaceType?: string, mode?: string) => boolean;
   resumeBlackHoleProofGame: () => boolean;
   setupBlackHoleProof: () => boolean;
   fireBlackHoleProof: () => boolean;
+  getCombatSfxProofState: () => Record<string, unknown>;
+  holdCombatSfxProofFire: (durationMs?: number) => boolean;
   getChevronAimProofState: () => Record<string, unknown>;
   startChevronAimProofGame: (surfaceType: string) => boolean;
   resumeChevronAimProofGame: () => boolean;
@@ -243,6 +245,10 @@ interface GameDebugAPI {
   spawnPickupVisualProofSet: () => Array<{ id: string; type: string }>;
   getPickupVisualProofSamples: () => unknown[];
   setPickupVisualProofIsolation: (pickupId: string | null) => Record<string, unknown>;
+  forceLowLOD: () => Record<string, unknown>;
+  sampleEnemyRenderAfterCameraOffset: (x?: number, y?: number, z?: number) => Record<string, unknown>;
+  runAlignedPlayerLayeringProof: () => Record<string, unknown>;
+  spawnNonInstancedVisibilityProofEnemies: () => Array<{ id: string; type: string; isInstanced: boolean; u: number; v: number }>;
   isGameStarted: () => boolean;
   getWaveText: () => string;
 }
@@ -2052,7 +2058,17 @@ async function main() {
   let localPlayerVFlip = false;
   const LOCAL_BOOST_COOLDOWN = 5.0;
   const LOCAL_BOOST_SPEED_MULTIPLIER = 3.0;
-  let shootSoundTimer = 0;
+  const mpShootSfxProof = {
+    localShotClusters: 0,
+    localServerBulletSpawns: 0,
+    localBlackHoleBoltSpawns: 0,
+    shootSfxPlays: 0,
+  };
+
+  function playLocalAuthoritativeShotSfx(): void {
+    sound.play('shoot', { pitch: 0.9 + Math.random() * 0.2 });
+    mpShootSfxProof.shootSfxPlays++;
+  }
 
   // -----------------------------------------------------------------------
   // UI elements (network-specific HUD)
@@ -4133,6 +4149,7 @@ async function main() {
   function onStateChange(state: NetworkGameState) {
     // Track latest full state for pause menu and other callbacks
     latestGameState = state;
+    let localShotEffectObserved = false;
 
     // Track latest server state values for metrics logging
     latestGameTime = state.gameTime;
@@ -5060,6 +5077,10 @@ async function main() {
         visual.add(core, halo);
         scene.add(visual);
         networkBlackHoleBoltVisuals.set(bolt.id, visual);
+        if (bolt.ownerId === localPlayerId) {
+          mpShootSfxProof.localBlackHoleBoltSpawns++;
+          localShotEffectObserved = true;
+        }
       }
 
       visual.position.set(bolt.wx, bolt.wy, bolt.wz);
@@ -5198,6 +5219,10 @@ async function main() {
           // Track owner ID so we can skip special-weapon server bullets for the local player
           // (whose visuals are handled by localWeaponManager — no flying bullet needed)
           bulletOwnerIds.set(bullet.id, bullet.ownerId);
+          if (bullet.ownerId === localPlayerId) {
+            mpShootSfxProof.localServerBulletSpawns++;
+            localShotEffectObserved = true;
+          }
 
           // Initialize geodesic face position for client-side geodesic rendering.
           // Server uses UV Christoffel stepping; client uses FaceWalker for true geodesics.
@@ -5416,6 +5441,11 @@ async function main() {
         bulletInstanceIds.delete(id);
       }
     });
+
+    if (localShotEffectObserved) {
+      mpShootSfxProof.localShotClusters++;
+      playLocalAuthoritativeShotSfx();
+    }
 
     // ----- Sync geoms -----
     const activeGeomIds = new Set<string>();
@@ -6488,7 +6518,7 @@ async function main() {
         if (input instanceof TouchInput) input.setGamePaused(false);
         // Host god mode: if ?godMode=true, tell server to make host permanently invincible
         if (isHost && new URLSearchParams(window.location.search).get('godMode') === 'true') {
-          network.room?.send('host_god_mode', {});
+          network.sendHostGodMode();
           netMainLog('[NetworkMain] Host god mode activated — permanent invincibility');
         }
         // Start background music (muted in debug/test modes, route through compressor)
@@ -7477,16 +7507,6 @@ async function main() {
         }
       }
 
-      // Play shoot sound locally for responsiveness
-      if (currentInput.shooting) {
-        shootSoundTimer -= dt;
-        if (shootSoundTimer <= 0) {
-          sound.play('shoot', { pitch: 0.9 + Math.random() * 0.2 });
-          shootSoundTimer = 0.1;
-        }
-      } else {
-        shootSoundTimer = 0;
-      }
     }
 
     // -- Fire special weapon visuals for local player --
@@ -9450,15 +9470,32 @@ async function main() {
           } : null,
         };
       },
-      startBlackHoleProofGame: () => {
+      startBlackHoleProofGame: (surfaceType = 'cube', mode = 'waves') => {
         if (!_netMainTestMode || !isHost || !network.isConnected()) return false;
-        network.startGame('cube:waves:medium:infinite', {
+        const requestedSurface = surfaceType === 'sphere' ? 'sphere' : 'cube';
+        const requestedMode = ['waves', 'pvpve', 'king'].includes(mode) ? mode as 'waves' | 'pvpve' | 'king' : 'waves';
+        const proofSettings: GameSettings = {
           ...currentGameSettings,
-          surface: 'cube',
-          mode: 'waves',
+          surface: requestedSurface,
+          mode: requestedMode,
+          pvpEnabled: requestedMode === 'pvpve',
           startingWeapon: 'black_hole',
           infiniteLives: true,
-        });
+        };
+        const choice = `${requestedSurface}:${requestedMode}:medium:infinite`;
+        if (requestedMode === 'pvpve') {
+          network.startGameWithOptions({
+            pvpMode: 'pvpve',
+            winCondition: lobbyWinCondition,
+            killTarget: lobbyKillTarget,
+            timeLimit: lobbyTimeLimit,
+            livesCount: lobbyLivesCount,
+            choice,
+            settings: proofSettings,
+          });
+        } else {
+          network.startGame(choice, proofSettings);
+        }
         return true;
       },
       resumeBlackHoleProofGame: () => {
@@ -9478,6 +9515,45 @@ async function main() {
         const proofInput = { ...lastSentInput, moveX: 0, moveY: 0, shooting: true };
         network.sendInput(proofInput);
         setTimeout(() => network.sendInput({ ...proofInput, shooting: false }), 50);
+        return true;
+      },
+      getCombatSfxProofState: () => ({
+        ...mpShootSfxProof,
+        localPlayerId,
+        currentWeapon: localPlayerWeaponType,
+        roomPhase: currentRoomPhase,
+        gameMode: latestGameMode,
+        pvpMode: latestPvpMode,
+        bulletCounts: (() => {
+          const counts: Record<string, number> = {};
+          bulletWeaponType.forEach((weaponType) => {
+            counts[weaponType] = (counts[weaponType] ?? 0) + 1;
+          });
+          return counts;
+        })(),
+      }),
+      holdCombatSfxProofFire: (durationMs = 1200) => {
+        if (!_netMainTestMode || !network.isConnected()) return false;
+        const baseInput = lastSentInput ?? {
+          moveX: 0,
+          moveY: 0,
+          aimAngle: 0,
+          bomb: false,
+          boost: false,
+          weaponSwap: false,
+        };
+        const holdInput = { ...baseInput, moveX: 0, moveY: 0, shooting: true };
+        const stopInput = { ...holdInput, shooting: false };
+        const startedAt = performance.now();
+        network.sendInput(holdInput);
+        const timer = window.setInterval(() => {
+          if (performance.now() - startedAt >= Math.max(100, durationMs)) {
+            window.clearInterval(timer);
+            network.sendInput(stopInput);
+            return;
+          }
+          network.sendInput(holdInput);
+        }, 50);
         return true;
       },
       getChevronAimProofState: () => {

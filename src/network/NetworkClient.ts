@@ -29,6 +29,8 @@ export interface NetworkPlayerState {
   health?: number;
   /** Maximum health in PvP mode (synced for HUD display). */
   maxHealth?: number;
+  /** Stackable shield layers synced for HUD display. */
+  shieldCount?: number;
   /** Total damage dealt to other players this match (PvP mode). */
   totalDamageDealt?: number;
   /** Zone time in seconds: KotH (time in zone) or Claustrophobia (time inside boundary). */
@@ -1243,6 +1245,14 @@ export class NetworkClient {
   sendHostLaunch(choice: string, settings?: GameSettings): void {
     if (!this.room || !this.connected) return;
     this.room.send('host_launch', { choice, ...(settings ? { settings } : {}) });
+  }
+
+  /**
+   * Enable host proof god mode when the server accepts the debug message.
+   */
+  sendHostGodMode(): void {
+    if (!this.room || !this.connected) return;
+    this.room.send('host_god_mode', {});
   }
 
   /**
