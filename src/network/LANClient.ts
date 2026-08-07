@@ -73,6 +73,25 @@ export class LANClient {
   private shortCodeMap = new Map<string, string>();
   private available: boolean | null = null;
 
+  private buildServerWsUrl(ip: string, port: number): string {
+    return `ws://${ip}:${port}`;
+  }
+
+  private buildLanUnavailableMessage(status: number, text: string, contentType: string | null): string {
+    const htmlResponse = (contentType ?? '').includes('text/html') || /^\s*<!DOCTYPE html/i.test(text);
+    if (htmlResponse) {
+      const currentPort = typeof window !== 'undefined' ? window.location.port : '';
+      const host = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
+      const frontendUrl = `http://${host}:3000`;
+      const suffix = currentPort === '2567'
+        ? ` You are on the backend server port 2567; open ${frontendUrl} to host a LAN game.`
+        : ` Open ${frontendUrl} from the frontend dev server to host a LAN game.`;
+      return `LAN hosting API unavailable (HTTP ${status}).${suffix}`;
+    }
+    const trimmed = text.trim();
+    return trimmed ? `HTTP ${status}: ${trimmed.slice(0, 100)}` : `HTTP ${status}`;
+  }
+
   /** Check if LAN APIs are available (dev mode only) */
   async isAvailable(): Promise<boolean> {
     if (this.available !== null) return this.available;
@@ -102,7 +121,12 @@ export class LANClient {
         const data = JSON.parse(text);
         return { ok: false, addresses: [], port: 0, error: data.error ?? `HTTP ${res.status}` };
       } catch {
-        return { ok: false, addresses: [], port: 0, error: `HTTP ${res.status}: ${text.slice(0, 100)}` };
+        return {
+          ok: false,
+          addresses: [],
+          port: 0,
+          error: this.buildLanUnavailableMessage(res.status, text, res.headers.get('content-type')),
+        };
       }
     }
     return res.json();
@@ -134,7 +158,7 @@ export class LANClient {
 
   /** Build the WebSocket URL for connecting to a LAN server */
   getServerWsUrl(ip: string, port: number): string {
-    return `ws://${ip}:${port}`;
+    return this.buildServerWsUrl(ip, port);
   }
 
   /**
@@ -146,10 +170,10 @@ export class LANClient {
   async registerShortCode(ip: string, surface: string, port: number, vitePort: number = 3000): Promise<string> {
     const code = Math.floor(Math.random() * (99999 - 10000 + 1)) + 10000;
     const codeStr = code.toString();
-    const params: Record<string, string> = { surface: encodeURIComponent(surface) };
-    if (port !== 2567) {
-      params.port = port.toString();
-    }
+    const params: Record<string, string> = {
+      surface: encodeURIComponent(surface),
+      port: port.toString(),
+    };
 
     try {
       const res = await fetch('/__lan/register-code', {
@@ -178,15 +202,28 @@ export class LANClient {
 
     /** Build the full join URL for sharing with other players */
   getJoinUrl(ip: string, port: number, surface: string, vitePort: number = 3000): string {
-    // Server URL is auto-derived from hostname (ws://hostname:2567).
-    // Only include port= when non-default to keep URLs clean and human-readable.
-    const portSuffix = port !== 2567 ? `&port=${port}` : '';
-    return `http://${ip}:${vitePort}/?mode=network&surface=${encodeURIComponent(surface)}${portSuffix}`;
+    const params = new URLSearchParams({
+      mode: 'network',
+      surface,
+      server: this.buildServerWsUrl(ip, port),
+    });
+    if (port !== 2567) {
+      params.set('port', port.toString());
+    }
+    return `http://${ip}:${vitePort}/?${params.toString()}`;
   }
 
   /** Build a mobile-optimized join URL (includes ?mobile=true for phone-specific UI) */
   getMobileJoinUrl(ip: string, port: number, surface: string, vitePort: number = 3000): string {
-    const portSuffix = port !== 2567 ? `&port=${port}` : '';
-    return `http://${ip}:${vitePort}/?mobile=true&mode=network&surface=${encodeURIComponent(surface)}${portSuffix}`;
+    const params = new URLSearchParams({
+      mobile: 'true',
+      mode: 'network',
+      surface,
+      server: this.buildServerWsUrl(ip, port),
+    });
+    if (port !== 2567) {
+      params.set('port', port.toString());
+    }
+    return `http://${ip}:${vitePort}/?${params.toString()}`;
   }
 }

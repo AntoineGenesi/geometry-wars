@@ -40,7 +40,7 @@ describe('s38c-02 regression: creator flag still correct (s38b-01 not regressed)
       gameMode: 'network',
       surfaceType: 'sphere',
       isCreator: false,
-      serverUrl: 'ws://192.168.1.100:3000/ws',
+      serverUrl: 'ws://192.168.1.100:2567',
       playerName: 'Laptop',
     });
     expect(params.creator).toBeUndefined();
@@ -66,43 +66,40 @@ describe('s38c-02 regression: creator flag still correct (s38b-01 not regressed)
 });
 
 // ---------------------------------------------------------------------------
-// Part 2: Server URL construction for laptop (proxy path must be used)
+// Part 2: Server URL construction for laptop (direct backend primary)
 // ---------------------------------------------------------------------------
 
-describe('s38c-02: laptop server URL uses Vite proxy path (/ws)', () => {
+describe('s38c-02: laptop server URL uses direct Colyseus port', () => {
   /**
    * When the laptop connects to http://192.168.1.100:3000, the server URL
-   * should be ws://192.168.1.100:3000/ws (Vite proxy path).
-   * This avoids needing port 2567 to be directly accessible from the laptop.
-   * Only port 3000 needs to be open.
+   * should be ws://192.168.1.100:2567. The browser page still loads from the
+   * frontend port, but Colyseus matchmake/websocket attempts should hit the
+   * backend port so server logs prove the phone reached it.
    */
-  it('proxy URL construction from hostname and port', () => {
+  it('direct backend URL construction from hostname and server port', () => {
     // Simulate window.location on a laptop that loaded from host IP
     const hostname = '192.168.1.100';
-    const port = 3000;
+    const port = 2567;
     const protocol = 'ws:';
 
-    const proxyUrl = `${protocol}//${hostname}:${port}/ws`;
-    expect(proxyUrl).toBe('ws://192.168.1.100:3000/ws');
-    expect(proxyUrl).toContain('/ws');
-    expect(proxyUrl).not.toContain(':2567');
+    const serverUrl = `${protocol}//${hostname}:${port}`;
+    expect(serverUrl).toBe('ws://192.168.1.100:2567');
+    expect(serverUrl).not.toContain('/ws');
   });
 
-  it('proxy URL has /ws pathname for Vite proxy routing', () => {
-    const proxyUrl = 'ws://192.168.1.100:3000/ws';
-    const parsed = new URL(proxyUrl);
-    expect(parsed.pathname).toBe('/ws');
-    expect(parsed.port).toBe('3000');
+  it('direct URL has backend port and root websocket path', () => {
+    const serverUrl = 'ws://192.168.1.100:2567';
+    const parsed = new URL(serverUrl);
+    expect(parsed.pathname).toBe('/');
+    expect(parsed.port).toBe('2567');
     expect(parsed.hostname).toBe('192.168.1.100');
   });
 
-  it('fallback URL uses direct Colyseus port 2567', () => {
-    // When primary (proxy) fails, fallback to direct Colyseus port
-    const primaryUrl = 'ws://192.168.1.100:3000/ws';
-    const parsed = new URL(primaryUrl);
-    // Fallback should use same hostname but port 2567
-    const fallbackUrl = `${parsed.protocol}//${parsed.hostname}:2567`;
-    expect(fallbackUrl).toBe('ws://192.168.1.100:2567');
+  it('fallback URL can still use Vite proxy path for older WSL/proxy setups', () => {
+    const frontendUrl = 'http://192.168.1.100:3000';
+    const parsed = new URL(frontendUrl);
+    const fallbackUrl = `ws://${parsed.hostname}:${parsed.port}/ws`;
+    expect(fallbackUrl).toBe('ws://192.168.1.100:3000/ws');
   });
 });
 
@@ -214,7 +211,8 @@ describe('s38c-02: portproxy conflict scenario explains laptop-only failure', ()
   it('fix: deleting portproxy rules restores direct Windows server access', () => {
     // After cleanup, the laptop's connection to 192.168.1.100:3000 reaches
     // Vite on Windows (port 3000) instead of being redirected to WSL2.
-    // Vite then proxies /ws → localhost:2567 → Colyseus on Windows.
+    // The browser page is reached on port 3000 and the direct Colyseus
+    // websocket/API traffic is reached on port 2567.
 
     // The cleanup commands are:
     const cleanupCommands = [
