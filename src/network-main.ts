@@ -9446,6 +9446,13 @@ async function main() {
           bulletCounts[type] = (bulletCounts[type] ?? 0) + 1;
         });
         const owner = localPlayerId ? latestGameState?.players.get(localPlayerId) : null;
+        const ownerAimVector = owner
+          ? new THREE.Vector3(owner.tx, owner.ty, owner.tz)
+            .multiplyScalar(Math.cos(owner.aimAngle))
+            .addScaledVector(new THREE.Vector3(owner.bx, owner.by, owner.bz), Math.sin(owner.aimAngle))
+            .normalize()
+            .toArray()
+          : null;
         return {
           backend: game.backend,
           isWebGPU: game.isWebGPU,
@@ -9465,6 +9472,12 @@ async function main() {
             enemyKills: owner.enemyKills ?? 0,
             weaponType: owner.weaponType,
             weaponAmmo: owner.weaponAmmo,
+            aimAngle: owner.aimAngle,
+            world: [owner.wx, owner.wy, owner.wz],
+            normal: [owner.nx, owner.ny, owner.nz],
+            tangent: [owner.tx, owner.ty, owner.tz],
+            bitangent: [owner.bx, owner.by, owner.bz],
+            aimVector: ownerAimVector,
           } : null,
         };
       },

@@ -89,6 +89,18 @@ export interface DeathEvent {
   livesRemaining: number;
 }
 
+export interface BlackHolePullEvent {
+  time: number;
+  frame: number;
+  preciseTime: number;
+  targetId: string;
+  position: Vec3;
+  center: Vec3;
+  strength: number;
+  dt: number;
+  spiralRatio: number;
+}
+
 export interface EnemyInfo {
   id: string;
   type: string;
@@ -240,6 +252,7 @@ export class TestHarnessAPI {
   // Event logs
   private damageLog: DamageEvent[] = [];
   private deathLog: DeathEvent[] = [];
+  private blackHolePullLog: BlackHolePullEvent[] = [];
   private prevAlive = true;
 
   // Integrated sub-systems
@@ -887,10 +900,16 @@ export class TestHarnessAPI {
     return [...this.damageLog];
   }
 
+  /** Get recent Black Hole pull events recorded from the live WeaponManager callback. */
+  getRecentBlackHolePullEvents(): BlackHolePullEvent[] {
+    return [...this.blackHolePullLog];
+  }
+
   /** Clear event logs (call between scenarios). */
   clearEvents(): void {
     this.damageLog = [];
     this.deathLog = [];
+    this.blackHolePullLog = [];
   }
 
   // -----------------------------------------------------------------------
@@ -1450,6 +1469,28 @@ export class TestHarnessAPI {
       minColorBrightness: Number(surfaceVisibility.minColorBrightness ?? 0),
       topologyDistanceRatio: Number(surfaceVisibility.topologyDistanceRatio ?? 0),
     };
+  }
+
+  recordBlackHolePull(
+    targetId: string,
+    position: THREE.Vector3,
+    center: THREE.Vector3,
+    strength: number,
+    dt: number,
+    spiralRatio: number,
+  ): void {
+    this.blackHolePullLog.push({
+      time: this.ctx.game.clock.totalTime,
+      frame: this.frameCount,
+      preciseTime: performance.now(),
+      targetId,
+      position: this.toVec3(position),
+      center: this.toVec3(center),
+      strength,
+      dt,
+      spiralRatio,
+    });
+    if (this.blackHolePullLog.length > 200) this.blackHolePullLog.shift();
   }
 
   private getFireDirection(origin: THREE.Vector3, targetEnemyId?: string): THREE.Vector3 {

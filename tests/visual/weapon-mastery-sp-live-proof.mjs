@@ -171,6 +171,115 @@ function screenshotRetained(path) {
   return existsSync(path) && statSync(path).size > 0;
 }
 
+function vecToArray(value) {
+  return [Number(value?.x ?? 0), Number(value?.y ?? 0), Number(value?.z ?? 0)];
+}
+
+function subtractVec(a, b) {
+  return [
+    Number(a?.x ?? 0) - Number(b?.x ?? 0),
+    Number(a?.y ?? 0) - Number(b?.y ?? 0),
+    Number(a?.z ?? 0) - Number(b?.z ?? 0),
+  ];
+}
+
+function dot(a, b) {
+  return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+}
+
+function length(a) {
+  return Math.hypot(a[0], a[1], a[2]);
+}
+
+function normalize(a) {
+  const len = length(a);
+  return len > 0.000001 ? [a[0] / len, a[1] / len, a[2] / len] : [0, 0, 0];
+}
+
+function distanceVec(a, b) {
+  return length(subtractVec(a, b));
+}
+
+function blackHoleProjectiles(runtime) {
+  return (runtime?.projectiles ?? []).filter(projectile => projectile.type === 'black_hole');
+}
+
+async function sampleBlackHoleTravel(page, durationMs = 850, intervalMs = 85) {
+  const samples = [];
+  const started = Date.now();
+  while (Date.now() - started < durationMs) {
+    const sample = await page.evaluate(() => {
+      const api = window.__TEST_API;
+      return {
+        runtime: api.getWeaponRuntimeSnapshot(),
+        pullEvents: api.getRecentBlackHolePullEvents?.() ?? [],
+        damageEvents: api.getRecentDamageEvents(),
+        enemies: api.getEnemies(),
+      };
+    });
+    samples.push({ t: Date.now() - started, ...sample });
+    await wait(intervalMs);
+  }
+  return samples;
+}
+
+function summarizeBlackHoleTrajectory({ fire, afterFireState, flightSamples, afterImpact }) {
+  const aim = normalize(vecToArray(fire.direction));
+  const samples = [
+    { t: 0, runtime: fire.runtimeAfter, pullEvents: [] },
+    ...(afterFireState ? [{ t: 180, ...afterFireState }] : []),
+    ...flightSamples,
+  ];
+  const firstFieldIndex = samples.findIndex(sample =>
+    (sample.runtime?.effects ?? []).some(effect => effect.type === 'blackhole'));
+  const beforeField = firstFieldIndex >= 0 ? samples.slice(0, firstFieldIndex) : samples;
+  const projectileSamples = beforeField
+    .flatMap(sample => blackHoleProjectiles(sample.runtime).map(projectile => ({ t: sample.t, projectile })));
+  const directionDots = projectileSamples.map(({ projectile }) =>
+    dot(normalize(vecToArray(projectile.direction)), aim));
+  const forwardDistances = projectileSamples.map(({ projectile }) =>
+    dot(subtractVec(projectile.position, fire.origin), aim));
+  const speeds = projectileSamples.map(({ projectile }) => Number(projectile.speed ?? 0));
+  const pullBeforeFieldSamples = beforeField.filter(sample => (sample.pullEvents ?? []).length > 0);
+  const conversion = (afterImpact?.runtime?.effects ?? [])
+    .find(effect => effect.type === 'blackhole') ?? null;
+  const conversionPoint = conversion?.position ?? null;
+  const targetBefore = fire.targetBefore?.worldPos ?? null;
+
+  return {
+    aimVector: aim,
+    projectileCountAtFire: blackHoleProjectiles(fire.runtimeAfter).length,
+    sampleCountBeforeField: beforeField.length,
+    projectileSampleCountBeforeField: projectileSamples.length,
+    directionDots,
+    minDirectionDot: directionDots.length ? Math.min(...directionDots) : null,
+    maxForwardTravel: forwardDistances.length ? Math.max(...forwardDistances) : null,
+    minForwardTravel: forwardDistances.length ? Math.min(...forwardDistances) : null,
+    speeds,
+    maxSpeed: speeds.length ? Math.max(...speeds) : null,
+    pullEventCount: afterImpact?.pullEvents?.length ?? flightSamples.at(-1)?.pullEvents?.length ?? 0,
+    pullBeforeFieldSampleCount: pullBeforeFieldSamples.length,
+    firstPullBeforeField: pullBeforeFieldSamples[0]?.pullEvents?.[0] ?? null,
+    conversionPoint,
+    conversionForwardDistance: conversionPoint ? dot(subtractVec(conversionPoint, fire.origin), aim) : null,
+    conversionDistanceFromTargetBefore: conversionPoint && targetBefore
+      ? distanceVec(conversionPoint, targetBefore)
+      : null,
+    retainedSamples: samples.map(sample => ({
+      t: sample.t,
+      projectileCount: blackHoleProjectiles(sample.runtime).length,
+      effectCount: (sample.runtime?.effects ?? []).filter(effect => effect.type === 'blackhole').length,
+      pullEventCount: (sample.pullEvents ?? []).length,
+      projectiles: blackHoleProjectiles(sample.runtime).slice(0, 4).map(projectile => ({
+        position: projectile.position,
+        direction: projectile.direction,
+        age: projectile.age,
+        speed: projectile.speed,
+      })),
+    })),
+  };
+}
+
 async function openTestArena(page) {
   await page.goto(BASE_URL, { waitUntil: 'domcontentloaded', timeout: 30_000 });
   await page.evaluate(() => {
@@ -219,9 +328,21 @@ async function runScenario(page, scenario) {
   ), { enemyId: setup.enemyId, clearBaselineBullets: scenario.clearBaselineBullets === true });
 
   await wait(180);
+  const afterFireState = await page.evaluate(() => {
+    const api = window.__TEST_API;
+    return {
+      runtime: api.getWeaponRuntimeSnapshot(),
+      pullEvents: api.getRecentBlackHolePullEvents?.() ?? [],
+      damageEvents: api.getRecentDamageEvents(),
+      enemies: api.getEnemies(),
+    };
+  });
   const afterFireScreenshot = resolve(SCREENSHOT_DIR, `${scenario.name}-after-fire.png`);
   await page.screenshot({ path: afterFireScreenshot });
   const afterFireCanvas = await sampleCanvas(page);
+  const flightSamples = scenario.weapon === 'black_hole'
+    ? await sampleBlackHoleTravel(page)
+    : [];
 
   let afterImpact = null;
   let afterImpactScreenshot = null;
@@ -235,6 +356,7 @@ async function runScenario(page, scenario) {
         runtime: api.getWeaponRuntimeSnapshot(),
         damageEvents: api.getRecentDamageEvents(),
         deathEvents: api.getRecentDeaths(),
+        pullEvents: api.getRecentBlackHolePullEvents?.() ?? [],
       };
     }, setup.enemyId);
     afterImpactScreenshot = resolve(SCREENSHOT_DIR, `${scenario.name}-after-impact.png`);
@@ -251,6 +373,9 @@ async function runScenario(page, scenario) {
   const screenshotStats = screenshots.map(path => screenshotPixelStats(path));
   const runtimeVisible = bulletDelta > 0 || projectileDelta >= scenario.expected.projectileDeltaMin
     || blackHoleEffects.length >= scenario.expected.blackHoleEffectsMin;
+  const blackHoleTrajectory = scenario.weapon === 'black_hole'
+    ? summarizeBlackHoleTrajectory({ fire, afterFireState, flightSamples, afterImpact })
+    : null;
   const checks = {
     selectedWeapon: setup.currentWeapon === scenario.weapon && fire.selectedWeapon === scenario.weapon,
     activeNodes: activeNodesPresent,
@@ -263,6 +388,13 @@ async function runScenario(page, scenario) {
     runtimeVisible,
     screenshotsRetained: screenshots.every(screenshotRetained),
     screenshotsNonblank: screenshotStats.every(stats => stats.nonblank),
+    ...(scenario.weapon === 'black_hole' ? {
+      blackHoleProjectileUsesAim: (blackHoleTrajectory?.minDirectionDot ?? -1) >= 0.98,
+      blackHoleTravelsForwardBeforeField: (blackHoleTrajectory?.maxForwardTravel ?? 0) > 0.3,
+      blackHoleSlowTravellingBolt: (blackHoleTrajectory?.maxSpeed ?? Infinity) <= 6,
+      blackHolePullBeforeField: (blackHoleTrajectory?.pullBeforeFieldSampleCount ?? 0) > 0,
+      blackHoleConvertsInFront: (blackHoleTrajectory?.conversionForwardDistance ?? 0) > 0.3,
+    } : {}),
   };
 
   return {
@@ -279,6 +411,7 @@ async function runScenario(page, scenario) {
       afterFireCanvas,
       afterImpactCanvas,
       screenshotStats,
+      blackHoleTrajectory,
     },
     setup,
     fire,

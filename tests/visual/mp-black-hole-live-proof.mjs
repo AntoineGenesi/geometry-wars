@@ -140,6 +140,62 @@ function distance(a, b) {
   return Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
 }
 
+function subtract(a, b) {
+  return [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+}
+
+function dot(a, b) {
+  return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+}
+
+function normalize(a) {
+  const len = Math.hypot(a[0], a[1], a[2]);
+  return len > 0.000001 ? [a[0] / len, a[1] / len, a[2] / len] : [0, 0, 0];
+}
+
+function summarizeTrajectory({ baseline, boltFlight, formation, flightSamples }) {
+  const aimVector = normalize(baseline.owner?.aimVector ?? [0, 0, 0]);
+  const origin = baseline.owner?.world ?? [0, 0, 0];
+  const bolt = boltFlight.bolts?.[0] ?? null;
+  const sampledBoltStates = [
+    { t: 0, state: boltFlight },
+    ...flightSamples,
+  ].filter(sample => sample.state?.bolts?.length === 1 && sample.state?.fields?.length === 0);
+  const forwardDistances = sampledBoltStates.map(sample =>
+    dot(subtract(sample.state.bolts[0].center, origin), aimVector));
+  const directionDots = sampledBoltStates.map(sample =>
+    dot(normalize(sample.state.bolts[0].direction), aimVector));
+  const preFieldEnemyMovement = sampledBoltStates.map(sample => ({
+    t: sample.t,
+    movedCount: sample.state.enemies.filter((enemy, index) =>
+      distance(enemy.world, baseline.enemies[index]?.world ?? enemy.world) > 0.01).length,
+  }));
+
+  return {
+    aimAngle: baseline.owner?.aimAngle ?? null,
+    aimVector,
+    origin,
+    boltDirection: bolt?.direction ?? null,
+    boltDirectionDotAim: bolt ? dot(normalize(bolt.direction), aimVector) : null,
+    sampledBoltCountBeforeField: sampledBoltStates.length,
+    directionDots,
+    minDirectionDot: directionDots.length ? Math.min(...directionDots) : null,
+    forwardDistances,
+    maxForwardTravel: forwardDistances.length ? Math.max(...forwardDistances) : null,
+    fieldConversionPoint: formation.fields?.[0]?.center ?? null,
+    fieldConversionForwardDistance: formation.fields?.[0]
+      ? dot(subtract(formation.fields[0].center, origin), aimVector)
+      : null,
+    preFieldEnemyMovement,
+    movedBeforeField: preFieldEnemyMovement.some(sample => sample.movedCount > 0),
+    retainedSamples: sampledBoltStates.map(sample => ({
+      t: sample.t,
+      bolt: sample.state.bolts[0],
+      enemyWorld: sample.state.enemies.map(enemy => enemy.world),
+    })),
+  };
+}
+
 function pairwiseMedian(enemies) {
   const distances = [];
   for (let i = 0; i < enemies.length; i++) {
@@ -299,9 +355,7 @@ async function main() {
     }, 5000);
     if (!boltFlight) throw new Error('No synchronized travelling bolt phase observed before field formation');
     snapshots.push(await capture(page, '00-bolt-flight', boltFlight));
-    if (process.env.BH_PROOF_SAMPLE_FLIGHT === '1') {
-      flightSamples = await sampleProofStates(page, 1400, 80);
-    }
+    flightSamples = await sampleProofStates(page, 900, 80);
 
     const formation = await waitForPage(page, () => {
       const state = window.__gameDebug?.getBlackHoleProofState?.();
@@ -357,6 +411,7 @@ async function main() {
       ...snapshots.map((snapshot) => snapshot.state.bulletCounts.black_hole || 0),
     );
     const boltVisualObserved = Boolean(boltFlight.bolts?.[0]?.visual?.rootChildren > 0);
+    const trajectory = summarizeTrajectory({ baseline, boltFlight, formation, flightSamples });
     const visiblePhases = activeSnapshots.every((state) =>
       state.fields[0].visual?.rootChildren > 0
       && state.fields[0].visual?.boundaryScale > 0);
@@ -366,8 +421,12 @@ async function main() {
     const checks = {
       cubeWaves: cleanup.surface === 'cube' && cleanup.gameMode === 'waves',
       travellingBoltBeforeField: boltFlight.bolts.length === 1 && boltFlight.fields.length === 0,
+      boltUsesOwnerAimDirection: (trajectory.boltDirectionDotAim ?? -1) >= 0.98
+        && (trajectory.minDirectionDot ?? -1) >= 0.98,
+      boltTravelsForwardBeforeField: (trajectory.maxForwardTravel ?? 0) > 0.05,
       boltVisualRendered: boltFlight.boltVisualCount === 1 && boltVisualObserved,
       fieldAfterBoltImpact: formation.bolts.length === 0 && formation.fields.length === 1,
+      fieldConvertsInFront: (trajectory.fieldConversionForwardDistance ?? 0) > 0.05,
       oneServerField: activeSnapshots.every((state) => state.fields.length === 1),
       zeroBlackHoleBullets: blackHoleBulletMaximum === 0,
       stationaryCanonicalCenter: centerDrift <= 1e-6
@@ -407,6 +466,7 @@ async function main() {
           pullRadius: boltFlight.bolts?.[0]?.pullRadius ?? null,
           visualCount: boltFlight.boltVisualCount,
         },
+        trajectory,
         phases,
         finalOwner: cleanup.owner,
       },

@@ -1464,6 +1464,14 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
       const enemy = targetId instanceof BaseEnemy ? targetId : aliveEnemies[index];
       if (!enemy?.alive) return;
       enemy.applySurfacePull(center, strength, spiralRatio, dt);
+      (window as any).__TEST_API?.recordBlackHolePull?.(
+        (enemy as any).__testId ?? `enemy-index-${index}`,
+        enemy.position,
+        center,
+        strength,
+        dt,
+        spiralRatio,
+      );
       const enemyColor = enemy.cachedMaterials?.[0]?.color;
       particles.gravityPullTrail(enemy.position, center, enemyColor);
       if (strength > 2.5) particles.gravityPullTrail(enemy.position, center, enemyColor);
