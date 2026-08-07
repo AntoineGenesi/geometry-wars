@@ -68,6 +68,7 @@ export class GameLoop {
     Rocket: 0xff8800,
     Duck: 0xff44aa,
   };
+  private trailEffectsEnabled = true;
   private playerGlowTrail: any = null;
   private glowManager: any = null;
   private playerGlow: any = null;
@@ -116,6 +117,22 @@ export class GameLoop {
       (window as any).__TEST_KILL_STREAK_ANNOUNCER = this.enemyStreakAnnouncer;
     }
     this.applyStatMultipliers = deps.applyStatMultipliers;
+  }
+
+  setTrailEffectsEnabled(enabled: boolean, scene?: THREE.Scene): void {
+    this.trailEffectsEnabled = enabled;
+    if (this.playerGlowTrail) {
+      this.playerGlowTrail.root.visible = enabled;
+      if (!enabled) this.playerGlowTrail.clear?.();
+    }
+    if (!enabled) {
+      this.enemyGlowTrails.forEach((trail) => {
+        trail.clear?.();
+        if (scene) scene.remove(trail.root);
+        trail.dispose?.();
+      });
+      this.enemyGlowTrails.clear();
+    }
   }
 
   update(ctx: GameContext, dt: number): void {
@@ -508,7 +525,7 @@ export class GameLoop {
 
     profiler.begin('effects_and_buffs');
     // Update player glow trail (add point at player position, offset slightly backward)
-    if (ctx.player.alive && this.playerGlowTrail) {
+    if (this.trailEffectsEnabled && ctx.player.alive && this.playerGlowTrail) {
       // s44r22-02: use pre-allocated temp vector instead of clone() each frame.
       // GlowTrail.addPoint() copies the value internally — no need for a unique object.
       const aimDir = ctx.player.getAimDirection();
@@ -516,7 +533,7 @@ export class GameLoop {
       this._trailTempPos.copy(ctx.player.mesh.position).addScaledVector(aimDir, -TRAIL_OFFSET);
       this.playerGlowTrail.addPoint(this._trailTempPos);
     }
-    if (this.playerGlowTrail) {
+    if (this.trailEffectsEnabled && this.playerGlowTrail) {
       this.playerGlowTrail.update(dt);
     }
 
@@ -619,50 +636,59 @@ export class GameLoop {
     }
 
     // Update enemy glow trails (for fast-moving enemies)
-    // Note: getEnemies() returns the raw array — enemies stay in it forever (just become inactive).
-    // Checking Set membership is always true, so we only need the alive check.
-    const currentEnemies = ctx.enemySpawner.getEnemies();
-
-    // Remove trails for dead enemies
-    this.enemyGlowTrails.forEach((trail, enemy) => {
-      if (!enemy.alive) {
-        trail.dispose();
+    if (!this.trailEffectsEnabled) {
+      this.enemyGlowTrails.forEach((trail) => {
+        trail.clear?.();
         ctx.game.scene.remove(trail.root);
-        this.enemyGlowTrails.delete(enemy);
-      }
-    });
+        trail.dispose?.();
+      });
+      this.enemyGlowTrails.clear();
+    } else {
+      // Note: getEnemies() returns the raw array — enemies stay in it forever (just become inactive).
+      // Checking Set membership is always true, so we only need the alive check.
+      const currentEnemies = ctx.enemySpawner.getEnemies();
 
-    // Update existing trails and add new ones for fast enemies
-    for (const enemy of currentEnemies) {
-      if (!enemy.alive) continue;
+      // Remove trails for dead enemies
+      this.enemyGlowTrails.forEach((trail, enemy) => {
+        if (!enemy.alive) {
+          trail.dispose();
+          ctx.game.scene.remove(trail.root);
+          this.enemyGlowTrails.delete(enemy);
+        }
+      });
 
-      const enemyTypeName = enemy.constructor.name;
-      const enemyMesh = enemy.mesh;
-      const bodyCanLeaveTrail = !!enemyMesh
-        && !enemy.isMaterializing
-        && (enemy.isInstanced || enemyMesh.visible !== false);
-      if (!bodyCanLeaveTrail) {
-        this.enemyGlowTrails.get(enemy)?.clear();
-        continue;
-      }
+      // Update existing trails and add new ones for fast enemies
+      for (const enemy of currentEnemies) {
+        if (!enemy.alive) continue;
 
-      // Check if this is a fast enemy type
-      if (this.FAST_ENEMY_TYPES.includes(enemyTypeName)) {
-        let trail = this.enemyGlowTrails.get(enemy);
-
-        // Create trail if doesn't exist
-        if (!trail) {
-          const color = this.ENEMY_TRAIL_COLORS[enemyTypeName] || 0xff0000;
-          trail = new GlowTrail(new THREE.Color(color), 40, 0.3);
-          trail.root.name = 'sp-enemy-glow-trail';
-          ctx.game.scene.add(trail.root);
-          this.enemyGlowTrails.set(enemy, trail);
+        const enemyTypeName = enemy.constructor.name;
+        const enemyMesh = enemy.mesh;
+        const bodyCanLeaveTrail = !!enemyMesh
+          && !enemy.isMaterializing
+          && (enemy.isInstanced || enemyMesh.visible !== false);
+        if (!bodyCanLeaveTrail) {
+          this.enemyGlowTrails.get(enemy)?.clear();
+          continue;
         }
 
-        // Add point at enemy position
-        // s44r22-02: pass position directly — GlowTrail.addPoint() copies values internally
-        trail.addPoint(enemyMesh.position);
-        trail.update(dt);
+        // Check if this is a fast enemy type
+        if (this.FAST_ENEMY_TYPES.includes(enemyTypeName)) {
+          let trail = this.enemyGlowTrails.get(enemy);
+
+          // Create trail if doesn't exist
+          if (!trail) {
+            const color = this.ENEMY_TRAIL_COLORS[enemyTypeName] || 0xff0000;
+            trail = new GlowTrail(new THREE.Color(color), 40, 0.3);
+            trail.root.name = 'sp-enemy-glow-trail';
+            ctx.game.scene.add(trail.root);
+            this.enemyGlowTrails.set(enemy, trail);
+          }
+
+          // Add point at enemy position
+          // s44r22-02: pass position directly — GlowTrail.addPoint() copies values internally
+          trail.addPoint(enemyMesh.position);
+          trail.update(dt);
+        }
       }
     }
 

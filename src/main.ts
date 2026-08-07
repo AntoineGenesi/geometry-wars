@@ -1758,6 +1758,50 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
 
   // Sync pause menu with the saved visual mode
   pauseMenu.setVisualMode(savedVisualMode);
+  let liveGraphicsMaxEnemies = loadGraphicsSettings().maxEnemies;
+
+  function applyLiveGraphicsSettings(gfxSettings: ReturnType<typeof loadGraphicsSettings>): void {
+    const visualMode = loadVisualMode();
+    const rendererPixelRatioCap = mobile ? 1.5 : 2.0;
+    const rendererPixelRatio = Math.min(window.devicePixelRatio || 1, rendererPixelRatioCap)
+      * gfxSettings.resolutionScale;
+    game.renderer.setPixelRatio(rendererPixelRatio);
+    game.renderer.setSize(window.innerWidth, window.innerHeight, false);
+    game.ensureCameraAspectRatio();
+
+    const baseBloomScale = visualMode === 'pixelated' ? 0.40 : 0.5;
+    const bloomTargetScale = Math.max(0.1, baseBloomScale * gfxSettings.resolutionScale);
+    game.bloomResolutionScale = bloomTargetScale;
+    if (game.composer) {
+      game.composer.setSize(
+        Math.floor(window.innerWidth * bloomTargetScale),
+        Math.floor(window.innerHeight * bloomTargetScale),
+      );
+    }
+    if (game.bloomPass) {
+      game.bloomPass.resolution.set(
+        Math.floor(window.innerWidth * bloomTargetScale),
+        Math.floor(window.innerHeight * bloomTargetScale),
+      );
+      game.bloomPass.radius = mobile ? 0.3 : 0.5;
+    }
+
+    const bloomStrength = gfxSettings.bloomEnabled
+      ? getAdjustedBloomStrength(gfxSettings.bloomStrength, visualMode)
+      : 0;
+    game.setBloomSettings(bloomStrength, 0.6);
+
+    const maxParticlesPerFrame = Math.max(4, Math.round(gfxSettings.particleCount / 25));
+    const maxFragmentsPerFrame = Math.max(2, Math.round(gfxSettings.particleCount / 125));
+    particles.setEmitBudget(maxParticlesPerFrame, maxFragmentsPerFrame);
+    gameLoop.setTrailEffectsEnabled(gfxSettings.trailEffects, game.scene);
+
+    liveGraphicsMaxEnemies = gfxSettings.maxEnemies;
+    enemySpawner.setMaxActiveEnemies(Math.min(
+      getDynamicMaxEnemies(resolvedMapSize, waveScheduler.currentDifficultyLevel),
+      liveGraphicsMaxEnemies,
+    ));
+  }
 
   // Legacy visual-mode callback kept for non-pause entry points that still reuse PauseMenu wiring.
   pauseMenu.onVisualModeChange((mode) => {
@@ -1789,6 +1833,7 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
 
   // Apply surface appearance live when user changes settings in the pause menu
   pauseMenu.onGraphicsChange((gfxSettings) => {
+    applyLiveGraphicsSettings(gfxSettings);
     surface.setSurfaceOpacity(getEffectiveSurfaceOpacity(gfxSettings));
     surface.setSurfaceOpaqueDepthMode(gfxSettings.surfaceOpaque);
     renderLoop.setOpaqueSurfacesEnabled(gfxSettings.surfaceOpaque);
@@ -2264,6 +2309,7 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
     sound,
     applyStatMultipliers,
   });
+  applyLiveGraphicsSettings(loadGraphicsSettings());
 
   // -- Test mode: game state exporter for programmatic tests (?testMode=true) --
   // Declared before onFixedUpdate so the closure captures the reference.
@@ -2284,7 +2330,10 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
 
     // Dynamic enemy cap: escalate max active enemies with difficulty level.
     // Called every frame (cheap — single number assignment, no allocation).
-    enemySpawner.setMaxActiveEnemies(getDynamicMaxEnemies(resolvedMapSize, waveScheduler.currentDifficultyLevel));
+    enemySpawner.setMaxActiveEnemies(Math.min(
+      getDynamicMaxEnemies(resolvedMapSize, waveScheduler.currentDifficultyLevel),
+      liveGraphicsMaxEnemies,
+    ));
 
     // Taper pickup drop rates with difficulty (cheap — difficulty only changes per wave).
     pickupSpawner.setDifficultyLevel(waveScheduler.currentDifficultyLevel);

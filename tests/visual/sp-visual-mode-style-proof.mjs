@@ -367,11 +367,18 @@ async function readSettingsMetrics(page) {
       } : null,
       pauseCommands: commands,
       graphicsControls: {
+        qualityPreset: Boolean(document.querySelector('#quality-preset')),
+        bloom: Boolean(document.querySelector('#toggle-bloom')),
+        bloomStrength: Boolean(document.querySelector('#bloom-strength')),
+        particleCount: Boolean(document.querySelector('#particle-count')),
+        trailEffects: Boolean(document.querySelector('#toggle-trails')),
         gridBrightness: Boolean(document.querySelector('#grid-brightness')),
         gridDensity: document.querySelectorAll('[data-grid-density]').length,
         surfaceOpacity: Boolean(document.querySelector('#surface-opacity')),
         surfaceColorSwatches: document.querySelectorAll('[data-surface-color]').length,
         surfaceOpaque: Boolean(document.querySelector('#toggle-surface-opaque')),
+        maxEnemies: Boolean(document.querySelector('#max-enemies')),
+        resolutionScale: Boolean(document.querySelector('#resolution-scale')),
       },
     };
   });
@@ -399,8 +406,27 @@ async function runSettingsLiveProbe(browser, baseUrl, errors) {
       const surface = ctx?.surface;
       const gridMat = surface?.gridMesh?.material;
       const surfaceMat = surface?.mesh?.material;
+      const game = ctx?.game;
+      const particles = ctx?.particles;
+      const renderer = game?.renderer;
+      const canvas = renderer?.domElement;
       return {
         label: probeLabel,
+        bloomStrength: game?.bloomPass?.strength ?? null,
+        bloomRadius: game?.bloomPass?.radius ?? null,
+        bloomResolutionScale: game?.bloomResolutionScale ?? null,
+        rendererPixelRatio: renderer?.getPixelRatio?.() ?? null,
+        canvasWidth: canvas?.width ?? null,
+        canvasClientWidth: canvas?.clientWidth ?? null,
+        particleBudget: {
+          maxParticlesPerFrame: particles?._maxEmitPerFrame ?? null,
+          maxFragmentsPerFrame: particles?._maxFragmentsPerFrame ?? null,
+        },
+        trailEffects: {
+          playerTrailVisible: ctx?.glowTrail?.root?.visible ?? null,
+          enemyTrailCount: game?.scene?.children?.filter?.((child) => child.name === 'sp-enemy-glow-trail').length ?? null,
+        },
+        maxActiveEnemies: ctx?.enemySpawner?.getMaxActiveEnemies?.() ?? null,
         gridOpacity: gridMat?.opacity ?? null,
         stateBaseGridOpacity: ctx?.state?.baseGridOpacity ?? null,
         surfaceOpacity: surfaceMat?.opacity ?? null,
@@ -414,6 +440,35 @@ async function runSettingsLiveProbe(browser, baseUrl, errors) {
   }
 
   await readLiveState('initial-solid');
+  await desktopPage.click('#toggle-bloom');
+  await readLiveState('bloom-off');
+  await desktopPage.click('#toggle-bloom');
+  await desktopPage.evaluate(() => {
+    const slider = document.querySelector('#bloom-strength');
+    slider.value = '1.6';
+    slider.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  await readLiveState('bloom-strength-16');
+  await desktopPage.evaluate(() => {
+    const slider = document.querySelector('#particle-count');
+    slider.value = '100';
+    slider.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  await readLiveState('particle-count-100');
+  await desktopPage.click('#toggle-trails');
+  await readLiveState('trails-off');
+  await desktopPage.evaluate(() => {
+    const slider = document.querySelector('#max-enemies');
+    slider.value = '50';
+    slider.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  await readLiveState('max-enemies-50');
+  await desktopPage.evaluate(() => {
+    const slider = document.querySelector('#resolution-scale');
+    slider.value = '0.5';
+    slider.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  await readLiveState('resolution-scale-50');
   await desktopPage.evaluate(() => {
     const slider = document.querySelector('#grid-brightness');
     slider.value = '0.22';
@@ -432,6 +487,8 @@ async function runSettingsLiveProbe(browser, baseUrl, errors) {
   await readLiveState('surface-color-ice-blue');
   await desktopPage.click('#toggle-surface-opaque');
   await readLiveState('solid-toggle');
+  await desktopPage.select('#quality-preset', 'low');
+  await readLiveState('quality-low');
 
   const desktopMetricsAfter = await readSettingsMetrics(desktopPage);
 
@@ -471,6 +528,24 @@ async function runSettingsLiveProbe(browser, baseUrl, errors) {
       mobileStyleListScrollable: mobileMetrics.styleList?.independentlyScrollable === true,
       pauseCommandRemovedDesktop: noPauseVisualStylesCommand(desktopMetricsBefore.pauseCommands),
       pauseCommandRemovedMobile: noPauseVisualStylesCommand(mobileMetrics.pauseCommands),
+      bloomToggleLive: state['bloom-off']?.bloomStrength === 0,
+      bloomStrengthLive: Math.abs((state['bloom-strength-16']?.bloomStrength ?? -1) - 1.6) < 0.08,
+      particleCountLive: (state['particle-count-100']?.particleBudget?.maxParticlesPerFrame ?? 999) <= 6
+        && (state['particle-count-100']?.particleBudget?.maxFragmentsPerFrame ?? 999) <= 2,
+      trailEffectsLive: state['trails-off']?.trailEffects?.playerTrailVisible === false
+        && state['trails-off']?.trailEffects?.enemyTrailCount === 0,
+      maxEnemiesLive: (state['max-enemies-50']?.maxActiveEnemies ?? 999) <= 50,
+      resolutionScaleLive: (state['resolution-scale-50']?.rendererPixelRatio ?? 999)
+        < (state['initial-solid']?.rendererPixelRatio ?? 0) * 0.75
+        && (state['resolution-scale-50']?.canvasWidth ?? 99999)
+          < (state['initial-solid']?.canvasWidth ?? 0) * 0.75,
+      qualityPresetLive: state['quality-low']?.savedGraphics?.qualityPreset === 'low'
+        && state['quality-low']?.bloomStrength === 0
+        && (state['quality-low']?.particleBudget?.maxParticlesPerFrame ?? 999) <= 25
+        && state['quality-low']?.trailEffects?.playerTrailVisible === false
+        && (state['quality-low']?.maxActiveEnemies ?? 999) <= 100
+        && (state['quality-low']?.rendererPixelRatio ?? 999)
+          <= (state['initial-solid']?.rendererPixelRatio ?? 1) * 0.75,
       gridBrightnessLive: Math.abs((state['grid-brightness-22']?.gridOpacity ?? -1) - 0.22) < 0.03
         && Math.abs((state['grid-brightness-22']?.stateBaseGridOpacity ?? -1) - 0.22) < 0.03,
       seeThroughModeLive: state['see-through-toggle']?.surfaceOpacity < 0.1
