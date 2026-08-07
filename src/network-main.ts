@@ -673,25 +673,40 @@ function createMultiplayerPlayerGridOccluder(): THREE.Sprite | null {
   canvas.height = 64;
   const context = canvas.getContext('2d');
   if (!context) return null;
-  context.clearRect(0, 0, 64, 64);
-  context.fillStyle = 'rgb(2, 8, 23)';
-  context.beginPath();
-  context.ellipse(32, 32, 26, 22, 0, 0, Math.PI * 2);
-  context.fill();
+  const image = context.createImageData(64, 64);
+  const rx = 30;
+  const ry = 27;
+  for (let y = 0; y < 64; y++) {
+    for (let x = 0; x < 64; x++) {
+      const nx = (x + 0.5 - 32) / rx;
+      const ny = (y + 0.5 - 32) / ry;
+      if ((nx * nx) + (ny * ny) > 1) continue;
+      const index = (y * 64 + x) * 4;
+      image.data[index] = 2;
+      image.data[index + 1] = 8;
+      image.data[index + 2] = 23;
+      image.data[index + 3] = 255;
+    }
+  }
+  context.putImageData(image, 0, 0);
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
+  texture.magFilter = THREE.NearestFilter;
+  texture.minFilter = THREE.NearestFilter;
+  texture.generateMipmaps = false;
 
   const material = new THREE.SpriteMaterial({
     map: texture,
     transparent: true,
     opacity: 1,
+    alphaTest: 0.5,
     depthTest: false,
     depthWrite: false,
   });
   const occluder = new THREE.Sprite(material);
   occluder.name = MP_PLAYER_GRID_OCCLUDER_NAME;
   occluder.renderOrder = MP_PLAYER_RENDER_ORDER - 0.1;
-  occluder.scale.set(0.58, 0.5, 1);
+  occluder.scale.set(0.68, 0.62, 1);
   return occluder;
 }
 
