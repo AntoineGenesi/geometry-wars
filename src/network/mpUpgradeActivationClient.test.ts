@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { MasteryPointStore, weaponTypeFromNodeId } from '../systems/MasteryPointStore';
 import { MatchUpgradeTracker } from '../systems/MatchUpgradeTracker';
+import { getNodeById } from '../systems/UpgradeTreeData';
 import { WeaponType } from '../weapons/WeaponTypes';
 import {
   filterMpBuildChoiceNodeIds,
@@ -35,7 +36,10 @@ function makePending(
 } {
   const tracker = new MatchUpgradeTracker(makeStore([nodeId]));
   tracker.onBuildChoiceAvailable = vi.fn();
-  for (let i = 0; i < 10; i++) {
+  const node = getNodeById(nodeId);
+  expect(node).toBeDefined();
+  expect(node?.id).toBe(nodeId);
+  for (let i = 0; i < node!.killThreshold; i++) {
     tracker.recordKill(weaponType);
   }
 
