@@ -388,6 +388,27 @@ export interface PoleCrossingProofSetupResult {
   startV?: number;
 }
 
+export interface SurfaceContactPathingProofSetupResult {
+  ok: boolean;
+  reason?: string;
+  kind?: string;
+  surface?: string;
+  mode?: string;
+  player?: {
+    faceIndex: number;
+    world: [number, number, number];
+    normal: [number, number, number];
+  };
+  enemy?: {
+    faceIndex: number;
+    world: [number, number, number];
+    normal: [number, number, number];
+  };
+  enemyId?: string;
+  enemyType?: string;
+  contactDistance?: number;
+}
+
 /** Event callbacks */
 export interface NetworkCallbacks {
   onStateChange?: (state: NetworkGameState) => void;
@@ -444,8 +465,17 @@ export interface NetworkCallbacks {
   onRoundRestarting?: (data: { countdown: number; message: string }) => void;
   /** Fired when a player is killed (lives reached 0). */
   onPlayerKilled?: (data: { killer: string; victimId: string; victimName: string; timestamp: number }) => void;
-  /** Fired when a player takes a hit (lives reduced but not 0). */
-  onPlayerHit?: (data: { victimId: string; victimName: string; enemyType: string; livesRemaining: number; timestamp: number }) => void;
+  /** Fired when a player takes enemy body damage; lifeLost distinguishes HP damage from respawn. */
+  onPlayerHit?: (data: {
+    victimId: string;
+    victimName: string;
+    enemyType: string;
+    livesRemaining: number;
+    timestamp: number;
+    healthRemaining?: number;
+    damage?: number;
+    lifeLost?: boolean;
+  }) => void;
   /**
    * Fired when a PvP bullet hits a player (every hit, including lethal).
    * Includes actual damage dealt so client can show correct damage numbers. (s44r2-07)
@@ -457,6 +487,8 @@ export interface NetworkCallbacks {
   onCubeFaceTransitionAimProofSetupResult?: (data: CubeFaceTransitionAimProofSetupResult) => void;
   /** Fired after the opt-in MP pole-crossing proof setup request. */
   onPoleCrossingProofSetupResult?: (data: PoleCrossingProofSetupResult) => void;
+  /** Fired after the opt-in MP surface enemy/contact proof setup request. */
+  onSurfaceContactPathingProofSetupResult?: (data: SurfaceContactPathingProofSetupResult) => void;
   onPortalLocations?: (data: NetworkPortalLocations) => void;
 }
 
@@ -848,9 +880,19 @@ export class NetworkClient {
       this.callbacks.onPlayerKilled?.(data);
     });
 
-    // Player hit — lost a life but still alive (for damage numbers)
-    this.room.onMessage('player_hit', (data: { victimId: string; victimName: string; enemyType: string; livesRemaining: number; timestamp: number }) => {
-      netLog(`[Network] player_hit: ${data.victimName} hit by ${data.enemyType}, ${data.livesRemaining} lives remaining`);
+    // Player hit — health damage and, when health depletes, life loss/respawn.
+    this.room.onMessage('player_hit', (data: {
+      victimId: string;
+      victimName: string;
+      enemyType: string;
+      livesRemaining: number;
+      timestamp: number;
+      healthRemaining?: number;
+      damage?: number;
+      lifeLost?: boolean;
+    }) => {
+      const healthPart = data.healthRemaining !== undefined ? `, health=${data.healthRemaining}` : '';
+      netLog(`[Network] player_hit: ${data.victimName} hit by ${data.enemyType}, ${data.livesRemaining} lives remaining${healthPart}`);
       this.callbacks.onPlayerHit?.(data);
     });
 
@@ -867,6 +909,11 @@ export class NetworkClient {
     this.room.onMessage('pole_crossing_proof_setup_result', (data: PoleCrossingProofSetupResult) => {
       netLog(`[Network] pole_crossing_proof_setup_result: ok=${data.ok} reason=${data.reason ?? ''}`);
       this.callbacks.onPoleCrossingProofSetupResult?.(data);
+    });
+
+    this.room.onMessage('surface_contact_pathing_proof_setup_result', (data: SurfaceContactPathingProofSetupResult) => {
+      netLog(`[Network] surface_contact_pathing_proof_setup_result: ok=${data.ok} kind=${data.kind ?? ''} reason=${data.reason ?? ''}`);
+      this.callbacks.onSurfaceContactPathingProofSetupResult?.(data);
     });
 
     // Disconnection
@@ -1177,6 +1224,20 @@ export class NetworkClient {
   sendPoleCrossingProofSetup(data: { startU?: number; startV?: number } = {}): void {
     if (!this.room || !this.connected) return;
     this.room.send('pole_crossing_proof_setup', data);
+  }
+
+  /** Request deterministic setup for the opt-in MP surface pathing/contact proof. */
+  sendSurfaceContactPathingProofSetup(data: {
+    kind?: 'pathing' | 'contact';
+    playerU?: number;
+    playerV?: number;
+    enemyU?: number;
+    enemyV?: number;
+    contactDistance?: number;
+    enemyType?: string;
+  } = {}): void {
+    if (!this.room || !this.connected) return;
+    this.room.send('surface_contact_pathing_proof_setup', data);
   }
 
   /** Request the opt-in authoritative Black Hole browser proof scene. */

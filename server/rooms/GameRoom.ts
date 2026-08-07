@@ -149,6 +149,8 @@ const BOOST_COOLDOWN = 5.0;       // seconds between boosts
 const BOOST_SPEED_MULTIPLIER = 3.0; // speed multiplier during boost
 const ENEMY_WALKER_SPEED_SCALE = 30;
 const ENEMY_DAMAGE_AGGRO_SECONDS = 4;
+const ENEMY_BODY_DAMAGE = 25;
+const ENEMY_BODY_HURT_INVINCIBILITY_SECONDS = PLAYER_PVP_INVINCIBILITY_DURATION;
 
 // Wave scheduling constants (mirrors WaveScheduler in src/core/)
 const WAVE_FIRST_AT = 3.0;       // first wave at 3s (reduced from 6s to speed up MP start, s44-05)
@@ -1420,6 +1422,23 @@ export class GameRoom extends Room<GameState> {
       }
       const result = this.setupPoleCrossingProof(client.sessionId, data);
       client.send('pole_crossing_proof_setup_result', result);
+    });
+
+    this.onMessage('surface_contact_pathing_proof_setup', (client, data: {
+      kind?: unknown;
+      playerU?: unknown;
+      playerV?: unknown;
+      enemyU?: unknown;
+      enemyV?: unknown;
+      contactDistance?: unknown;
+      enemyType?: unknown;
+    }) => {
+      if (process.env.GEOMETRY_WARS_MP_PROOF_CONTROLS !== '1') {
+        client.send('surface_contact_pathing_proof_setup_result', { ok: false, reason: 'proof_controls_disabled' });
+        return;
+      }
+      const result = this.setupSurfaceContactPathingProof(client.sessionId, data);
+      client.send('surface_contact_pathing_proof_setup_result', result);
     });
 
     this.onMessage('start', (client, data?: { choice?: string; settings?: Partial<GameSettings> }) => {
@@ -3940,6 +3959,129 @@ export class GameRoom extends Room<GameState> {
       start: this.locationSummary(location),
       startU,
       startV,
+    };
+  }
+
+  /** Build a deterministic one-enemy scene for MP surface pathing/contact proof. */
+  private setupSurfaceContactPathingProof(
+    sessionId: string,
+    data?: {
+      kind?: unknown;
+      playerU?: unknown;
+      playerV?: unknown;
+      enemyU?: unknown;
+      enemyV?: unknown;
+      contactDistance?: unknown;
+      enemyType?: unknown;
+    },
+  ): {
+    ok: boolean;
+    reason?: string;
+    kind?: string;
+    surface?: string;
+    mode?: string;
+    player?: ReturnType<GameRoom['locationSummary']>;
+    enemy?: ReturnType<GameRoom['locationSummary']>;
+    enemyId?: string;
+    enemyType?: string;
+    contactDistance?: number;
+  } {
+    if (sessionId !== this.state.hostId) return { ok: false, reason: 'not_host' };
+    if (this.state.roomPhase !== 'playing') return { ok: false, reason: 'not_playing' };
+
+    const player = this.state.players.get(sessionId);
+    const surface = this.surfaceManager.getMeshSurface();
+    if (!player || !surface) return { ok: false, reason: 'missing_player_or_surface' };
+
+    const kind = data?.kind === 'contact' ? 'contact' : 'pathing';
+    const enemyType = typeof data?.enemyType === 'string' && data.enemyType.length > 0
+      ? data.enemyType
+      : 'grunt';
+    const playerU = typeof data?.playerU === 'number' && Number.isFinite(data.playerU)
+      ? Math.max(0, Math.min(1, data.playerU))
+      : 0.0;
+    const playerV = typeof data?.playerV === 'number' && Number.isFinite(data.playerV)
+      ? Math.max(0.001, Math.min(0.999, data.playerV))
+      : kind === 'contact' ? 0.29 : 0.08;
+    const enemyU = typeof data?.enemyU === 'number' && Number.isFinite(data.enemyU)
+      ? Math.max(0, Math.min(1, data.enemyU))
+      : 0.5;
+    const enemyV = typeof data?.enemyV === 'number' && Number.isFinite(data.enemyV)
+      ? Math.max(0.001, Math.min(0.999, data.enemyV))
+      : 0.08;
+    const contactDistance = typeof data?.contactDistance === 'number' && Number.isFinite(data.contactDistance)
+      ? Math.max(0.05, Math.min(2, data.contactDistance))
+      : 0.35;
+
+    this.spawnGeneration++;
+    this.pendingEnemyCount = 0;
+    this.waveElapsed = 0;
+    this.nextWaveAt = Number.POSITIVE_INFINITY;
+    this.state.bullets.clear();
+    this.clearBlackHoleBolts();
+    this.state.blackHoleFields?.clear();
+    this.bulletDamageTracker.clear();
+    this.state.enemies.clear();
+    this.enemyAI.clear();
+    this.enemyWalkers.clear();
+    this.playerInputs.delete(sessionId);
+    this.playerInvincibility.delete(sessionId);
+
+    this.surfaceManager.teleportWalkerToUV(sessionId, playerU, playerV);
+    const playerLocation = this.surfaceManager.getWalkerLocation(sessionId);
+    if (!playerLocation) return { ok: false, reason: 'player_teleport_failed' };
+    this.applyWalkerStateToPlayer(player, playerLocation);
+    player.surfaceU = playerU;
+    player.surfaceV = playerV;
+    player.aimAngle = 0;
+    player.alive = true;
+    player.lives = 3;
+    player.maxHealth = PLAYER_PVP_MAX_HEALTH;
+    player.health = player.maxHealth;
+    player.invincibilityTimer = 0;
+
+    let enemy: EnemyState;
+    if (kind === 'contact') {
+      const enemyWalker = new ServerMeshWalker(
+        surface,
+        new THREE.Vector3(playerLocation.wx, playerLocation.wy, playerLocation.wz),
+        1,
+      );
+      enemyWalker.teleportToLocation(playerLocation);
+      enemyWalker.moveInWorldDirection(
+        playerLocation.tangentX,
+        playerLocation.tangentY,
+        playerLocation.tangentZ,
+        contactDistance,
+      );
+      enemy = this.makeEnemyState(enemyType, playerU, playerV);
+      this.enemyWalkers.set(enemy.id, enemyWalker);
+      this.applyWalkerStateToEnemy(enemy, enemyWalker.getLocation());
+    } else {
+      enemy = this.makeEnemyState(enemyType, enemyU, enemyV);
+      this.ensureEnemyWalker(enemy);
+    }
+
+    this.enemyAI.set(enemy.id, this.createEnemyAI(enemy.type));
+    this.state.enemies.push(enemy);
+    const enemyLocation = this.enemyWalkers.get(enemy.id)?.getLocation();
+
+    this.logger.log(
+      `[GameRoom] Surface contact/pathing proof setup: kind=${kind} surface=${this.state.surfaceType} `
+      + `mode=${this.state.gameMode} player=(${playerU.toFixed(3)},${playerV.toFixed(3)}) `
+      + `enemy=${enemy.id} type=${enemy.type}`,
+    );
+
+    return {
+      ok: true,
+      kind,
+      surface: this.state.surfaceType,
+      mode: this.state.gameMode,
+      player: this.locationSummary(playerLocation),
+      enemy: enemyLocation ? this.locationSummary(enemyLocation) : undefined,
+      enemyId: enemy.id,
+      enemyType: enemy.type,
+      contactDistance: kind === 'contact' ? contactDistance : undefined,
     };
   }
 
@@ -6546,17 +6688,21 @@ export class GameRoom extends Room<GameState> {
           hitEnemyIds.add(enemy.id); // Mark enemy as spent for this tick
 
           // Enemy body collision reduces the health bar in ALL modes (s44r18-09).
-          // 25 HP per touch: 4 hits depletes a full health bar before a life is lost.
-          // Shield absorbs the hit entirely (no HP damage, no life loss).
+          // A life is spent only when the body-damage health bar is depleted;
+          // otherwise a short hurt window prevents one overlap from draining
+          // multiple hits across consecutive server ticks.
+          let bodyDamage = 0;
+          let lifeLost = false;
           {
-            const ENEMY_BODY_DAMAGE = 25;
             if (player.shieldCount > 0) {
               // Shield absorbed — player survives, no life loss
               player.shieldCount--;
               this.broadcast('player_shield_absorbed', { playerId: player.id });
               wasHit = false; // Don't proceed to life loss below
             } else {
+              const prevHealth = player.health;
               player.health = Math.max(0, player.health - ENEMY_BODY_DAMAGE);
+              bodyDamage = prevHealth - player.health;
               this._checkHalfHealthPortalTrigger(player);
               // Spawn health pickup near hurt player if below threshold
               if (
@@ -6572,6 +6718,7 @@ export class GameRoom extends Room<GameState> {
               if (player.health <= 0) {
                 // Reset health for the next life — actual life loss handled below
                 player.health = player.maxHealth;
+                lifeLost = true;
               }
             }
           }
@@ -6579,17 +6726,47 @@ export class GameRoom extends Room<GameState> {
           // If a shield absorbed the hit, skip all life-loss logic
           if (!wasHit) return;
 
+          if (!lifeLost) {
+            this.playerInvincibility.set(player.id, ENEMY_BODY_HURT_INVINCIBILITY_SECONDS);
+            player.invincibilityTimer = ENEMY_BODY_HURT_INVINCIBILITY_SECONDS;
+            this.broadcast('player_hit', {
+              victimId: player.id,
+              victimName: player.name,
+              enemyType: enemy.type,
+              livesRemaining: player.lives,
+              healthRemaining: player.health,
+              damage: bodyDamage,
+              lifeLost: false,
+              timestamp: Date.now(),
+            });
+            this.logGameplayEvent({
+              _type: 'player_hit',
+              playerId: player.id,
+              playerName: player.name,
+              livesRemaining: this.state.infiniteLives ? -1 : player.lives,
+              healthRemaining: player.health,
+              damage: bodyDamage,
+              score: player.score,
+              kills: player.playerKills,
+              enemyType: enemy.type,
+            });
+            return;
+          }
+
           // Infinite lives: skip lives decrement but still apply death penalties
           if (!this.state.infiniteLives) {
             player.lives--;
           }
 
-          // Broadcast player hit (damage) for kill feed damage numbers
+          // Broadcast life-loss hit for kill feed damage numbers.
           this.broadcast('player_hit', {
             victimId: player.id,
             victimName: player.name,
             enemyType: enemy.type,
             livesRemaining: player.lives,
+            healthRemaining: player.health,
+            damage: bodyDamage,
+            lifeLost: true,
             timestamp: Date.now(),
           });
 
@@ -8512,14 +8689,14 @@ export class GameRoom extends Room<GameState> {
 
   /**
    * Whether the current surface wraps in the V direction.
-   * Torus, pipe, mobius, and cube variants all wrap V.
+   * Torus, pipe, sphere-tunnel, and cube variants wrap V.
    * Used for collision distance calculations and coordinate wrapping.
    */
   private surfaceWrapsV(): boolean {
     const st = this.state.surfaceType;
     // Mobius V does NOT wrap — it is physically bounded (the strip has real edges).
     // When U wraps on Mobius, V is INVERTED (half-twist), not wrapped as modulo.
-    return st === 'torus' || st === 'pipe'
+    return st === 'torus' || st === 'pipe' || st === 'sphere-tunnel'
       || st === 'cube-ring' || st === 'cube-tunnel';
   }
 

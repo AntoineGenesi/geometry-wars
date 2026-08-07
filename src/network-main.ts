@@ -111,6 +111,7 @@ import {
   ClientMetricsPayload,
   CubeFaceTransitionAimProofSetupResult,
   PoleCrossingProofSetupResult,
+  SurfaceContactPathingProofSetupResult,
 } from './network/NetworkClient';
 import {
   filterMpBuildChoiceNodeIds,
@@ -169,7 +170,7 @@ import { showGameLoading, hideGameLoading } from './ui/GameLoadingOverlay';
 import { runMobileOnboarding } from './ui/MobileOnboarding';
 import { GameSettingsPanel } from './ui/GameSettingsPanel';
 import { DEFAULT_GAME_SETTINGS } from '../server/shared/GameSettings';
-import type { GameSettings } from '../server/shared/GameSettings';
+import type { GameSettings, GameSurface } from '../server/shared/GameSettings';
 import { KillStreakAnnouncer } from './ui/KillStreakAnnouncer';
 import { EnemyKillStreakAnnouncer } from './ui/EnemyKillStreakAnnouncer';
 import { Portal, createPortalPair } from './entities/Portal';
@@ -227,6 +228,16 @@ interface GameDebugAPI {
   startPoleCrossingProofGame: (surfaceType: string) => boolean;
   setupPoleCrossingProof: (startU?: number, startV?: number) => boolean;
   sendPoleCrossingProofInput: (moveX?: number, moveY?: number, holdMs?: number) => boolean;
+  startSurfaceContactPathingProofGame: (surfaceType: string, mode?: string) => boolean;
+  setupSurfaceContactPathingProof: (options?: {
+    kind?: 'pathing' | 'contact';
+    playerU?: number;
+    playerV?: number;
+    enemyU?: number;
+    enemyV?: number;
+    contactDistance?: number;
+    enemyType?: string;
+  }) => boolean;
   getUpgradeProofState: () => Record<string, unknown>;
   setupUpgradeProof: (weaponType: string, killCount: number) => boolean;
   requestUpgradeProofActivation: (weaponType: string, nodeId: string, unlockedNodeIds: string[]) => boolean;
@@ -1418,6 +1429,7 @@ async function main() {
   } | null = null;
   let lastCubeFaceTransitionAimProofSetupResult: CubeFaceTransitionAimProofSetupResult | null = null;
   let lastPoleCrossingProofSetupResult: PoleCrossingProofSetupResult | null = null;
+  let lastSurfaceContactPathingProofSetupResult: SurfaceContactPathingProofSetupResult | null = null;
   let cubeFaceTransitionAimProofForcedAimAngle: number | null = null;
   let poleCrossingProofInputOverride: {
     moveX: number;
@@ -6722,6 +6734,23 @@ async function main() {
           console.warn(`[NetworkMain] Pole crossing proof setup rejected: ${data.reason ?? 'unknown'}`);
         }
       },
+      onSurfaceContactPathingProofSetupResult: (data) => {
+        lastSurfaceContactPathingProofSetupResult = { ...data };
+        if (data.ok) {
+          const idle = {
+            ...(lastSentInput ?? { moveX: 0, moveY: 0, aimAngle: 0, shooting: false, bomb: false, boost: false }),
+            moveX: 0,
+            moveY: 0,
+            aimAngle: 0,
+            shooting: false,
+          };
+          lastSentInput = idle;
+          network.sendInput(idle);
+          netMainLog(`[NetworkMain] Surface contact/pathing proof setup accepted: kind=${data.kind ?? 'unknown'} surface=${data.surface ?? 'unknown'}`);
+        } else {
+          console.warn(`[NetworkMain] Surface contact/pathing proof setup rejected: ${data.reason ?? 'unknown'}`);
+        }
+      },
       onPvpKill: (data) => {
         netMainLog(`[PvP] ${data.killerName} killed ${data.victimName} (streak: ${data.streakCount})`);
         mpPerfLogger.recordPvpKill({
@@ -6757,14 +6786,23 @@ async function main() {
           isLocalDeath: data.victimId === localPlayerId,
         });
       },
-      onPlayerHit: (data: { victimId: string; victimName: string; enemyType: string; livesRemaining: number; timestamp: number }) => {
+      onPlayerHit: (data: {
+        victimId: string;
+        victimName: string;
+        enemyType: string;
+        livesRemaining: number;
+        timestamp: number;
+        healthRemaining?: number;
+        damage?: number;
+        lifeLost?: boolean;
+      }) => {
         // Show damage number on the victim player's position
         const player = networkPlayers.get(data.victimId);
         if (player) {
           // Spawn a bright red damage number distinct from yellow PvE numbers
           scorePopups.spawn(
             player.mesh.position.clone(),
-            '-1',
+            `-${Math.max(1, Math.round(data.damage ?? 1))}`,
             '#ff0044',
             1.5,
             0.8,
@@ -9636,6 +9674,10 @@ async function main() {
             serverTangent: serverPlayer ? [serverPlayer.tx, serverPlayer.ty, serverPlayer.tz] : null,
             serverBitangent: serverPlayer ? [serverPlayer.bx, serverPlayer.by, serverPlayer.bz] : null,
             serverFaceIndex: serverPlayer?.walkerFaceIndex ?? null,
+            health: serverPlayer?.health ?? null,
+            maxHealth: serverPlayer?.maxHealth ?? null,
+            lives: serverPlayer?.lives ?? null,
+            alive: serverPlayer?.alive ?? null,
             surfaceNormal: normal.toArray(),
             tangentU: tangentU.toArray(),
             tangentV: tangentV.toArray(),
@@ -9658,9 +9700,9 @@ async function main() {
           let serverFaceIndex: number | null = null;
           latestGameState?.enemies.forEach((candidate) => {
             if (candidate.id === id) {
-              serverWorld = [candidate.wx, candidate.wy, candidate.wz];
-              serverFaceIndex = candidate.walkerFaceIndex ?? null;
-            }
+            serverWorld = [candidate.wx, candidate.wy, candidate.wz];
+            serverFaceIndex = candidate.walkerFaceIndex ?? null;
+          }
           });
           const enemyWorld = enemy.mesh?.position ?? enemy.position;
           proofEnemies.push({
@@ -9671,6 +9713,13 @@ async function main() {
             radius: enemy.radius,
             world: enemyWorld.toArray(),
             serverWorld,
+            serverUV: (() => {
+              let uv: { u: number; v: number } | null = null;
+              latestGameState?.enemies.forEach((candidate) => {
+                if (candidate.id === id) uv = { u: candidate.surfaceU, v: candidate.surfaceV };
+              });
+              return uv;
+            })(),
             serverFaceIndex,
             screen: projectWorldPoint(enemyWorld),
           });
@@ -9692,6 +9741,7 @@ async function main() {
           },
           cubeFaceTransitionAimProofSetup: lastCubeFaceTransitionAimProofSetupResult,
           poleCrossingProofSetup: lastPoleCrossingProofSetupResult,
+          surfaceContactPathingProofSetup: lastSurfaceContactPathingProofSetupResult,
           players,
           proofEnemies,
           recentServerBulletSpawns: _mpTelBulletSpawns.slice(-50).map((spawn) => {
@@ -9771,6 +9821,27 @@ async function main() {
           moveY: Number.isFinite(moveY) ? moveY! : 1,
           untilMs: performance.now() + (Number.isFinite(holdMs) ? Math.max(0, holdMs!) : 1000),
         };
+        return true;
+      },
+      startSurfaceContactPathingProofGame: (surfaceType, mode = 'waves') => {
+        if (!_netMainTestMode || !isHost || !network.isConnected()) return false;
+        const proofSurfaces: readonly GameSurface[] = ['sphere', 'capsule', 'peanut', 'sphere-tunnel'];
+        const requestedSurface: GameSurface = (proofSurfaces as readonly string[]).includes(surfaceType)
+          ? surfaceType as GameSurface
+          : 'sphere';
+        const requestedMode = ['waves', 'king'].includes(mode) ? mode as 'waves' | 'king' : 'waves';
+        network.startGame(`${requestedSurface}:${requestedMode}:medium`, {
+          ...currentGameSettings,
+          surface: requestedSurface,
+          mode: requestedMode,
+          infiniteLives: false,
+        });
+        return true;
+      },
+      setupSurfaceContactPathingProof: (options = {}) => {
+        if (!_netMainTestMode || !isHost || !network.isConnected()) return false;
+        lastSurfaceContactPathingProofSetupResult = null;
+        network.sendSurfaceContactPathingProofSetup(options);
         return true;
       },
       fireCubeFaceTransitionAimProofShot: () => {

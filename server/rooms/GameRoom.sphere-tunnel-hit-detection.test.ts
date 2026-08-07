@@ -18,8 +18,14 @@
  *   npx vitest run server/rooms/GameRoom.sphere-tunnel-hit-detection.test.ts
  */
 
-import { describe, it, expect } from 'vitest';
+import * as THREE from 'three';
+import { describe, it, expect, vi } from 'vitest';
+import { ServerMeshWalker } from '../movement/ServerMeshWalker';
+import type { ServerMeshLocation } from '../movement/ServerMeshLocation';
+import type { ServerSurfaceManager } from '../movement/ServerSurfaceManager';
+import { EnemyState, GameState, PlayerState } from '../schema/GameState';
 import { sphereGreatCircleDist, sphereTunnelChordDist } from './GameRoom';
+import { GameRoom } from './GameRoom';
 
 // ─── Expected geometry constants (must match SphereWithTunnelSurface.ts defaults) ───
 // radius=8, tunnelRadius=2, bevelRadius=0.8, scaleFactor=1.0
@@ -109,4 +115,86 @@ describe('s44r7-04: sphereTunnelChordDist — accurate 3D chord distance', () =>
     const dist = sphereTunnelChordDist(0.3, 0.5, 0.3, 0.5, scaleFactor);
     expect(dist).toBeCloseTo(0, 6);
   });
+});
+
+interface ContactRoomInternals {
+  surfaceManager: ServerSurfaceManager;
+  enemyWalkers: Map<string, ServerMeshWalker>;
+  enemyAI: Map<string, Record<string, unknown>>;
+  playerInvincibility: Map<string, number>;
+  applyWalkerStateToPlayer(player: PlayerState, location: ServerMeshLocation): void;
+  applyWalkerStateToEnemy(enemy: EnemyState, location: ServerMeshLocation): void;
+  checkCollisions(): void;
+}
+
+function makeSphereTunnelContactScenario(mode: 'king' | 'waves') {
+  const room = new GameRoom();
+  (room as any).setState(new GameState());
+  (room as any).broadcast = vi.fn();
+  (room as any).logger = { log: vi.fn() };
+  room.state.surfaceType = 'sphere-tunnel';
+  room.state.mapSize = 'medium';
+  room.state.roomPhase = 'playing';
+  room.state.gameStarted = true;
+  room.state.gameTime = 3;
+  room.state.gameMode = mode;
+  room.state.pvpMode = '';
+  room.state.pvpEnabled = false;
+
+  const internals = room as unknown as ContactRoomInternals;
+  internals.surfaceManager.initSurface('sphere-tunnel', 1);
+
+  const player = new PlayerState();
+  player.id = 'player-1';
+  player.name = 'Player 1';
+  player.alive = true;
+  player.lives = 3;
+  player.health = 100;
+  player.maxHealth = 100;
+  room.state.players.set(player.id, player);
+
+  const playerWalker = internals.surfaceManager.createWalker(player.id, 0.18, 0.29)!;
+  const playerLocation = playerWalker.getLocation();
+  internals.applyWalkerStateToPlayer(player, playerLocation);
+
+  const enemyWalker = new ServerMeshWalker(
+    internals.surfaceManager.getMeshSurface()!,
+    new THREE.Vector3(playerLocation.wx, playerLocation.wy, playerLocation.wz),
+    1,
+  );
+  enemyWalker.teleportToLocation(playerLocation);
+  enemyWalker.moveInWorldDirection(
+    playerLocation.tangentX,
+    playerLocation.tangentY,
+    playerLocation.tangentZ,
+    0.35,
+  );
+
+  const enemy = new EnemyState();
+  enemy.id = 'enemy-1';
+  enemy.type = 'grunt';
+  enemy.health = 1;
+  enemy.maxHealth = 1;
+  internals.enemyWalkers.set(enemy.id, enemyWalker);
+  internals.applyWalkerStateToEnemy(enemy, enemyWalker.getLocation());
+  internals.enemyAI.set(enemy.id, {});
+  room.state.enemies.push(enemy);
+
+  return { room, internals, player, enemy };
+}
+
+describe('sphere-tunnel MP nearby-enemy contact health/life semantics', () => {
+  it.each(['king', 'waves'] as const)(
+    'uses health damage without spending a life on a nonlethal nearby enemy touch in %s mode',
+    (mode) => {
+      const { internals, player } = makeSphereTunnelContactScenario(mode);
+
+      internals.checkCollisions();
+
+      expect(player.health).toBe(75);
+      expect(player.lives).toBe(3);
+      expect(player.alive).toBe(true);
+      expect(internals.playerInvincibility.get(player.id)).toBeGreaterThan(0);
+    },
+  );
 });

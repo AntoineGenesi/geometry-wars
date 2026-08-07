@@ -35,6 +35,8 @@ interface EnemyRoomInternals {
   bulletWorldDistanceToEnemy(bullet: BulletState, enemy: EnemyState): number;
   rollEnemyPickupDrops(enemy: EnemyState, includeShield?: boolean): void;
   spawnEnemyNearPosition(type: string, u: number, v: number): void;
+  surfaceWrapsV(): boolean;
+  applyUVBounds(enemy: EnemyState, wrapsV: boolean, surfType: string): void;
 }
 
 interface EnemyScenario {
@@ -148,6 +150,21 @@ describe.each(['cube', 'cube-ring', 'cube-tunnel', 'sphere'])(
 );
 
 describe('GameRoom enemy target authority and damage aggro', () => {
+  it('treats sphere-tunnel enemy V bounds as torus-periodic, not sphere-pole reflection', () => {
+    const scenario = makeScenario('sphere-tunnel');
+    const enemy = scenario.enemy;
+    const internals = scenario.internals;
+
+    expect(internals.surfaceWrapsV()).toBe(true);
+
+    enemy.surfaceU = 0.12;
+    enemy.surfaceV = 1.02;
+    internals.applyUVBounds(enemy, internals.surfaceWrapsV(), 'sphere-tunnel');
+
+    expect(enemy.surfaceU).toBeCloseTo(0.12, 6);
+    expect(enemy.surfaceV).toBeCloseTo(0.02, 6);
+  });
+
   it('does not gather at the legacy UV target when canonical player location differs', () => {
     const scenario = makeScenario('cube-tunnel');
     const startDistance = pathDistance(scenario);
