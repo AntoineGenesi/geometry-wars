@@ -127,6 +127,8 @@ import {
 } from './rendering/SharedGameSetup';
 import { initI18n } from './i18n';
 import { showGameLoading, hideGameLoading } from './ui/GameLoadingOverlay';
+import { enemyDiscoveryStore } from './ui/EnemyDiscoveryStore';
+import { EnemyDiscoveryToast } from './ui/EnemyDiscoveryToast';
 // Portal import removed — portals are PvP-only and belong in network-main.ts
 
 // ---------------------------------------------------------------------------
@@ -859,6 +861,12 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
 
   // -- Enemy spawner --
   const enemySpawner = new EnemySpawner(game.scene, getTransform);
+  const enemyDiscoveryToast = new EnemyDiscoveryToast();
+  enemySpawner.setEnemyCreatedCallback((type) => {
+    if (enemyDiscoveryStore.markSeen(type)) {
+      enemyDiscoveryToast.enqueue(type);
+    }
+  });
   enemySpawner.setMeshSurface(meshSurface);
   enemySpawner.setSurface(surface); // FIX: enemies need surfaceRef for UV sync in walker mode
 

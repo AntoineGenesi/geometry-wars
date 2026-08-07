@@ -2,6 +2,7 @@ import { ConfigurableInput } from '../input/ConfigurableInput';
 import { ControlsMenu } from './ControlsMenu';
 import { WeaponWiki } from './WeaponWiki';
 import { WeaponMasteryScreen } from './WeaponMasteryScreen';
+import { EnemyCompendiumScreen } from './EnemyCompendiumScreen';
 import { SettingsMenu, type GraphicsSettings } from './SettingsMenu';
 import { BackgroundMusic } from '../audio/BackgroundMusic';
 import { PerformanceLogger } from '../core/PerformanceLogger';
@@ -159,6 +160,10 @@ export class PauseMenu {
             <button class="pause-btn weapons-btn" data-action="weapons">
               <span class="btn-icon">⚡</span>
               <span>${t('pauseMenu.weapons')}</span>
+            </button>
+            <button class="pause-btn enemy-types-btn" data-action="enemy-types">
+              <span class="btn-icon">?</span>
+              <span>ENEMY TYPES</span>
             </button>
             <button class="pause-btn mastery-btn" data-action="mastery">
               <span class="btn-icon">⭐</span>
@@ -967,6 +972,17 @@ export class PauseMenu {
       wiki.show();
       wiki.onClose(() => {
         wiki.dispose();
+      });
+    });
+
+    const enemyTypesBtn = this.container.querySelector('[data-action="enemy-types"]');
+    enemyTypesBtn?.addEventListener('click', () => {
+      this.container.classList.add('hidden');
+      const screen = new EnemyCompendiumScreen();
+      screen.show();
+      screen.onClose(() => {
+        screen.dispose();
+        this.container.classList.remove('hidden');
       });
     });
 

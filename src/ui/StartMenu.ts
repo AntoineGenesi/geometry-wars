@@ -10,6 +10,7 @@ import { WeaponWiki } from './WeaponWiki';
 import { WeaponMasteryScreen } from './WeaponMasteryScreen';
 import { SettingsMenu } from './SettingsMenu';
 import { VisualPlayground } from './VisualPlayground';
+import { EnemyCompendiumScreen } from './EnemyCompendiumScreen';
 import { MenuBackground } from './MenuBackground';
 import { createQRCodeDisplay } from './QRCode';
 import { QUICK_GAME_MODES, type QuickGameModeType } from '../core/modes';
@@ -541,6 +542,7 @@ export class StartMenu {
           <p>${t('menu.misc.controlsHint')}</p>
           <button class="weapon-info-btn" id="weapon-mastery-btn">${t('menu.buttons.weaponMastery')}</button>
           <button class="weapon-info-btn" id="weapon-info-btn">${t('menu.buttons.weaponDatabase')}</button>
+          <button class="weapon-info-btn" id="enemy-types-btn">ENEMY TYPES</button>
           <button class="weapon-info-btn" id="visual-styles-btn">${t('menu.buttons.visualStyles')}</button>
           <button class="weapon-info-btn" id="settings-btn">${t('common.settings')}</button>
           ${this.isDebugMode ? '<button class="weapon-info-btn debug-obj-btn" id="debug-obj-btn" style="border-color:#ff8800;color:#ff8800;">DEBUG: LOAD MODELS</button>' : ''}
@@ -2765,6 +2767,16 @@ export class StartMenu {
       wiki.show();
       wiki.onClose(() => {
         wiki.dispose();
+      });
+    });
+
+    // Enemy types encyclopedia
+    const enemyTypesBtn = this.container.querySelector('#enemy-types-btn');
+    enemyTypesBtn?.addEventListener('click', () => {
+      const screen = new EnemyCompendiumScreen();
+      screen.show();
+      screen.onClose(() => {
+        screen.dispose();
       });
     });
 

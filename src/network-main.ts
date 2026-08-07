@@ -123,6 +123,8 @@ import {
 import { PlayerNameLabels, PlayerLabelData } from './ui/PlayerNameLabel';
 import { Minimap } from './ui/Minimap';
 import { GameOverScreen, PvpPlayerStat, PvpvePlayerStat } from './ui/GameOverScreen';
+import { enemyDiscoveryStore } from './ui/EnemyDiscoveryStore';
+import { EnemyDiscoveryToast } from './ui/EnemyDiscoveryToast';
 import { shouldShowBottomPlayerHealthHud } from './ui/PlayerHealthHudVisibility';
 import { VotingScreen } from './ui/VotingScreen';
 import { PauseMenu, PauseMenuGameData } from './ui/PauseMenu';
@@ -923,6 +925,7 @@ async function main() {
 
   // -- Enemy spawner (created after surface, used to create real enemy meshes) --
   let enemySpawner: EnemySpawner | null = null;
+  const enemyDiscoveryToast = new EnemyDiscoveryToast();
 
   function cleanupSurface(): void {
     if (surface) {
@@ -1097,6 +1100,11 @@ async function main() {
 
     // Create enemy spawner with real surface transform (same as co-op)
     enemySpawner = new EnemySpawner(scene, getTransform);
+    enemySpawner.setEnemyCreatedCallback((type) => {
+      if (enemyDiscoveryStore.markSeen(type)) {
+        enemyDiscoveryToast.enqueue(type);
+      }
+    });
     enemySpawner.setSurfaceSpeedScale(surface.speedScale);
     enemySpawner.setSurface(surface);
 

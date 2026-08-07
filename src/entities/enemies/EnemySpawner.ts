@@ -265,6 +265,7 @@ export class EnemySpawner {
     bitangent: THREE.Vector3;
   }>();
   private readonly transformMapGridSize = 0.005; // UV grid resolution
+  private onEnemyCreated: ((type: EnemyType, enemy: BaseEnemy) => void) | null = null;
 
   constructor(
     scene: THREE.Scene,
@@ -296,6 +297,11 @@ export class EnemySpawner {
   /** Set the instance manager for GPU-batched enemy rendering. */
   setInstanceManager(manager: EnemyInstanceManager): void {
     this.instanceManager = manager;
+  }
+
+  /** Observe successful active enemy creation. This is creation/materialization, not line-of-sight visibility. */
+  setEnemyCreatedCallback(callback: ((type: EnemyType, enemy: BaseEnemy) => void) | null): void {
+    this.onEnemyCreated = callback;
   }
 
   /** Get the instance manager (for external updates). */
@@ -850,6 +856,7 @@ export class EnemySpawner {
 
     // Add to enemies list (but hidden/invulnerable during warning)
     this.enemies.push(enemy);
+    this.onEnemyCreated?.(type, enemy);
 
     return enemy;
   }

@@ -112,6 +112,21 @@ export function createEnemyModelPreviewElement(
   return preview;
 }
 
+export function createLockedEnemyPreviewElement(label: string = 'Unknown enemy'): HTMLElement {
+  const preview = document.createElement('div');
+  preview.className = 'ap-enemy-preview ap-enemy-preview-locked';
+  preview.dataset.enemyPreview = 'locked';
+  preview.title = `${label} locked preview`;
+
+  const mark = document.createElement('div');
+  mark.className = 'ap-enemy-preview-question';
+  mark.textContent = '?';
+  mark.setAttribute('aria-hidden', 'true');
+  preview.appendChild(mark);
+
+  return preview;
+}
+
 export function clearEnemyPreviewCacheForTests(): void {
   thumbnailCache.clear();
 }
