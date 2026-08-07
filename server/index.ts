@@ -8,6 +8,7 @@ import { fileURLToPath } from 'url';
 import { networkInterfaces } from 'os';
 import { exportPerformanceLogs, exportGameStateLogs } from '../scripts/export-perf-logs.mjs';
 import Logger from './logger';
+import { getFrontendOriginRedirectUrl } from './FrontendOriginRedirect';
 
 // ESM compatibility for __dirname
 const __filename = fileURLToPath(import.meta.url);
@@ -74,6 +75,29 @@ app.use((req, res, next) => {
 
 // JSON body parser for POST endpoints
 app.use(express.json({ limit: '10mb' }));
+
+// In local dev, the Colyseus backend is port 2567 and the real frontend origin
+// is Vite on port 3000. Redirect accidental browser page loads back to the
+// frontend origin so localStorage-backed game progress is not split by port.
+app.use((req, res, next) => {
+  const redirectUrl = getFrontendOriginRedirectUrl({
+    method: req.method,
+    url: req.originalUrl || req.url,
+    host: req.headers.host,
+    accept: req.headers.accept,
+    nodeEnv: process.env.NODE_ENV,
+    frontendPort: process.env.FRONTEND_PORT || process.env.VITE_PORT,
+    disabled: process.env.GW_DISABLE_BACKEND_FRONTEND_REDIRECT === '1',
+    protocol: req.protocol,
+  });
+
+  if (redirectUrl) {
+    res.redirect(302, redirectUrl);
+    return;
+  }
+
+  next();
+});
 
 // Serve static files from dist folder in production
 app.use(express.static(path.join(__dirname, '../dist')));
