@@ -125,6 +125,11 @@ import {
   setupShockwaveEffect,
   makeSurfaceTransformFn as sharedMakeSurfaceTransformFn,
 } from './rendering/SharedGameSetup';
+import {
+  applyPlayerGridLayering,
+  createPlayerGridOccluder,
+  syncPlayerGridOccluder,
+} from './rendering/PlayerGridLayering';
 import { initI18n } from './i18n';
 import { showGameLoading, hideGameLoading } from './ui/GameLoadingOverlay';
 import { enemyDiscoveryStore } from './ui/EnemyDiscoveryStore';
@@ -823,7 +828,13 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
   player.respawn(0.5, 0.5);
   player.lives = level.lives > 0 ? level.lives : 3; // Default to 3 lives, not 99
   player.bombs = level.bombs;
+  applyPlayerGridLayering(player.mesh);
   game.scene.add(player.mesh);
+  const playerGridOccluder = createPlayerGridOccluder();
+  if (playerGridOccluder) {
+    syncPlayerGridOccluder(playerGridOccluder, player.mesh);
+    game.scene.add(playerGridOccluder);
+  }
   game.cameraTarget = player.mesh;
 
   // Create MeshWalker for player (mesh-based movement, no UV pole singularity).
@@ -2437,6 +2448,7 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
 
   // -- Render callback --
   game.onRender = (alpha: number) => {
+    syncPlayerGridOccluder(playerGridOccluder, player.mesh);
     renderLoop.render(ctx, alpha);
     // Visibility debug overlay update (throttled internally to 500ms; zero cost when null)
     if (_visibilityOverlay) _visibilityOverlay.update();

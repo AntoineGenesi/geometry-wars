@@ -18,11 +18,14 @@ const DEV_PORT = Number(getArg('port') || process.env.DEV_PORT || 3008);
 const SERVER_PORT = Number(getArg('server-port') || process.env.SERVER_PORT || 2570);
 const PHASE = getArg('phase') || 'baseline';
 const SURFACE = getArg('surface') || 'sphere';
+const VISUAL_MODE = getArg('visual-mode') || 'pixelated';
 const INCLUDE_SP_CONTROL = getArg('sp-control') === 'true';
 const RUN_ID = new Date().toISOString().replace(/[:.]/g, '-');
 const ARTIFACT_DIR = resolve(ROOT, 'test-screenshots/mp-pixelated-grid-layering-proof', `${PHASE}-${RUN_ID}`);
 const JSON_PATH = resolve(ROOT, 'reports', `mp-pixelated-grid-layering-${PHASE}-${RUN_ID}.json`);
 const MD_PATH = resolve(ROOT, 'reports', `mp-pixelated-grid-layering-${PHASE}-${RUN_ID}.md`);
+const PLAYER_GRID_OCCLUDER_NAME = 'mp-player-grid-occluder';
+const PLAYER_BODY_DELTA_THRESHOLD = 60;
 const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
 
 function getArg(name) {
@@ -124,11 +127,11 @@ async function createPage(browser, label) {
     if (page.__consoleTail.length > 160) page.__consoleTail.shift();
     if (message.type() === 'error') page.__errors.push(message.text());
   });
-  await page.evaluateOnNewDocument(() => {
-    localStorage.setItem('gw3d-visual-mode', 'pixelated');
+  await page.evaluateOnNewDocument((visualMode) => {
+    localStorage.setItem('gw3d-visual-mode', visualMode);
     localStorage.removeItem('gw3d-visual-style');
     localStorage.setItem('gw3d-music-muted', 'true');
-  });
+  }, VISUAL_MODE);
   return page;
 }
 
@@ -228,7 +231,7 @@ async function runSpSetup(page) {
 }
 
 async function captureLayering(page, proofMode) {
-  const result = await page.evaluate(async (mode) => {
+  const result = await page.evaluate(async (mode, playerGridOccluderName, playerBodyDeltaThreshold) => {
     const waitFrames = async (count = 3) => {
       for (let i = 0; i < count; i++) await new Promise((done) => requestAnimationFrame(done));
     };
@@ -260,7 +263,10 @@ async function captureLayering(page, proofMode) {
         spRestore.push({ object: player, visible: player.visible });
       }
       for (const object of scene.children) {
-        object.visible = object.isLight || object === surface.group || object === player;
+        object.visible = object.isLight
+          || object === surface.group
+          || object === player
+          || object.name === playerGridOccluderName;
       }
       surface.group.visible = true;
       surface.mesh.visible = false;
@@ -270,6 +276,9 @@ async function captureLayering(page, proofMode) {
       player.traverse((object) => {
         object.visible = showPlayer;
       });
+      for (const object of scene.children) {
+        if (object.name === playerGridOccluderName) object.visible = showPlayer;
+      }
       return getSpState();
     };
     const getSpState = () => {
@@ -277,6 +286,7 @@ async function captureLayering(page, proofMode) {
       const surface = ctx?.surface;
       const player = ctx?.player?.mesh;
       const game = ctx?.game;
+      const scene = game?.scene;
       const gridMat = surface?.gridMesh?.material;
       let centerWorld = null;
       let centerScreen = null;
@@ -310,7 +320,11 @@ async function captureLayering(page, proofMode) {
           gridDepthWrite: gridMat?.depthWrite ?? null,
           gridOpacity: gridMat?.opacity ?? null,
         },
-        player: { centerWorld, centerScreen },
+        player: {
+          centerWorld,
+          centerScreen,
+          occluderCount: scene?.children?.filter?.((object) => object.name === playerGridOccluderName)?.length ?? 0,
+        },
       };
     };
 
@@ -370,6 +384,10 @@ async function captureLayering(page, proofMode) {
       overlapPixels: 0,
       gridAffectsPlayerPixels: 0,
       preservedPlayerPixels: 0,
+      playerBodyPixels: 0,
+      bodyOverlapPixels: 0,
+      gridAffectsPlayerBodyPixels: 0,
+      preservedPlayerBodyPixels: 0,
       maxLayerDelta: 0,
       maxGridDelta: 0,
       maxPlayerDelta: 0,
@@ -396,6 +414,7 @@ async function captureLayering(page, proofMode) {
         metrics.maxGridDelta = Math.max(metrics.maxGridDelta, gridDelta);
         if (playerDelta > 12) metrics.playerPixels++;
         if (gridDelta > 12) metrics.gridPixels++;
+        if (playerDelta > playerBodyDeltaThreshold) metrics.playerBodyPixels++;
         if (playerDelta <= 12 || gridDelta <= 12) continue;
         metrics.overlapPixels++;
         const layerDelta = Math.max(
@@ -406,22 +425,29 @@ async function captureLayering(page, proofMode) {
         metrics.maxLayerDelta = Math.max(metrics.maxLayerDelta, layerDelta);
         if (layerDelta > 10) metrics.gridAffectsPlayerPixels++;
         else metrics.preservedPlayerPixels++;
+        if (playerDelta > playerBodyDeltaThreshold) {
+          metrics.bodyOverlapPixels++;
+          if (layerDelta > 10) metrics.gridAffectsPlayerBodyPixels++;
+          else metrics.preservedPlayerBodyPixels++;
+        }
       }
     }
     const overlap = Math.max(1, metrics.overlapPixels);
     const gridAffectsPlayerRatio = metrics.gridAffectsPlayerPixels / overlap;
-    const reproduced = metrics.overlapPixels >= 8
-      && metrics.gridAffectsPlayerPixels >= 4
-      && gridAffectsPlayerRatio >= 0.18
+    const bodyOverlap = Math.max(1, metrics.bodyOverlapPixels);
+    const gridAffectsPlayerBodyRatio = metrics.gridAffectsPlayerBodyPixels / bodyOverlap;
+    const reproduced = metrics.bodyOverlapPixels >= 8
+      && metrics.gridAffectsPlayerBodyPixels >= 4
+      && gridAffectsPlayerBodyRatio >= 0.18
       && metrics.maxLayerDelta >= 18;
-    const fixed = metrics.overlapPixels >= 8
-      && metrics.gridAffectsPlayerPixels <= Math.max(3, Math.floor(metrics.overlapPixels * 0.10));
+    const fixed = metrics.bodyOverlapPixels >= 8
+      && metrics.gridAffectsPlayerBodyPixels <= Math.max(3, Math.floor(metrics.bodyOverlapPixels * 0.10));
     return {
       ok: true,
       proofMode: mode,
       reproduced,
       fixed,
-      metrics: { ...metrics, gridAffectsPlayerRatio },
+      metrics: { ...metrics, gridAffectsPlayerRatio, gridAffectsPlayerBodyRatio },
       states: {
         initial: getState(),
         background: background.state,
@@ -436,7 +462,7 @@ async function captureLayering(page, proofMode) {
         layered: layered.dataUrl,
       },
     };
-  }, proofMode);
+  }, proofMode, PLAYER_GRID_OCCLUDER_NAME, PLAYER_BODY_DELTA_THRESHOLD);
 
   const prefix = `${proofMode}-${SURFACE}`;
   if (result?.dataUrls) {
@@ -449,7 +475,7 @@ async function captureLayering(page, proofMode) {
 
 function makeMarkdown(report) {
   const lines = [
-    `# MP Pixelated Grid Layering ${report.phase}`,
+    `# MP Player Grid Layering ${report.phase} (${report.visualMode ?? 'pixelated'})`,
     '',
     `- verdict: ${report.verdict}`,
     `- command: ${report.command}`,
@@ -464,6 +490,8 @@ function makeMarkdown(report) {
     `- grid depthTest: ${report.mp?.states?.layered?.surface?.gridDepthTest}`,
     `- overlap pixels: ${report.mp?.metrics?.overlapPixels}`,
     `- grid-affects-player pixels: ${report.mp?.metrics?.gridAffectsPlayerPixels}`,
+    `- body overlap pixels: ${report.mp?.metrics?.bodyOverlapPixels}`,
+    `- grid-affects-player-body pixels: ${report.mp?.metrics?.gridAffectsPlayerBodyPixels}`,
     `- max layer delta: ${report.mp?.metrics?.maxLayerDelta}`,
   ];
   if (report.spControl) {
@@ -475,6 +503,8 @@ function makeMarkdown(report) {
       `- grid depthTest: ${report.spControl.states?.layered?.surface?.gridDepthTest}`,
       `- overlap pixels: ${report.spControl.metrics?.overlapPixels}`,
       `- grid-affects-player pixels: ${report.spControl.metrics?.gridAffectsPlayerPixels}`,
+      `- body overlap pixels: ${report.spControl.metrics?.bodyOverlapPixels}`,
+      `- grid-affects-player-body pixels: ${report.spControl.metrics?.gridAffectsPlayerBodyPixels}`,
       `- max layer delta: ${report.spControl.metrics?.maxLayerDelta}`,
     );
   }
@@ -557,10 +587,10 @@ async function main() {
       verdict,
       phase: PHASE,
       runId: RUN_ID,
-      command: `node tests/visual/mp-pixelated-grid-layering-proof.mjs --phase=${PHASE} --port=${DEV_PORT} --server-port=${SERVER_PORT}${INCLUDE_SP_CONTROL ? ' --sp-control=true' : ''}`,
+      command: `node tests/visual/mp-pixelated-grid-layering-proof.mjs --phase=${PHASE} --port=${DEV_PORT} --server-port=${SERVER_PORT} --visual-mode=${VISUAL_MODE}${INCLUDE_SP_CONTROL ? ' --sp-control=true' : ''}`,
       proofBoundary: 'Linux headless Chrome, SwiftShader WebGL2 backend forced by ?renderer=webgl, loopback Colyseus MP plus optional SP adjacent control; no Windows/WebGPU/physical-LAN claim.',
       surface: SURFACE,
-      visualMode: 'pixelated',
+      visualMode: VISUAL_MODE,
       chrome,
       devPort: DEV_PORT,
       serverPort: SERVER_PORT,

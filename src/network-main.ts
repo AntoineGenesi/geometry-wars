@@ -160,6 +160,11 @@ import {
   type SurfaceTransformFn,
 } from './rendering/SharedGameSetup';
 import {
+  applyPlayerGridLayering,
+  createPlayerGridOccluder,
+  syncPlayerGridOccluder as syncGridOccluderToPlayer,
+} from './rendering/PlayerGridLayering';
+import {
   isStartupCacheFresh,
   setStartupCache,
   type StartupConfigData,
@@ -687,69 +692,6 @@ function orientPlayerOnSurface(
 // ---------------------------------------------------------------------------
 
 const PLAYER_COLORS = [0x00ffff, 0xff00ff, 0x00ff00, 0xffaa00];
-const MP_PLAYER_RENDER_ORDER = 2;
-const MP_PLAYER_GRID_OCCLUDER_NAME = 'mp-player-grid-occluder';
-
-function createMultiplayerPlayerGridOccluder(): THREE.Sprite | null {
-  const canvas = document.createElement('canvas');
-  canvas.width = 64;
-  canvas.height = 64;
-  const context = canvas.getContext('2d');
-  if (!context) return null;
-  const image = context.createImageData(64, 64);
-  const rx = 30;
-  const ry = 27;
-  for (let y = 0; y < 64; y++) {
-    for (let x = 0; x < 64; x++) {
-      const nx = (x + 0.5 - 32) / rx;
-      const ny = (y + 0.5 - 32) / ry;
-      if ((nx * nx) + (ny * ny) > 1) continue;
-      const index = (y * 64 + x) * 4;
-      image.data[index] = 2;
-      image.data[index + 1] = 8;
-      image.data[index + 2] = 23;
-      image.data[index + 3] = 255;
-    }
-  }
-  context.putImageData(image, 0, 0);
-  const texture = new THREE.CanvasTexture(canvas);
-  texture.colorSpace = THREE.SRGBColorSpace;
-  texture.magFilter = THREE.NearestFilter;
-  texture.minFilter = THREE.NearestFilter;
-  texture.generateMipmaps = false;
-
-  const material = new THREE.SpriteMaterial({
-    map: texture,
-    transparent: true,
-    opacity: 1,
-    alphaTest: 0.5,
-    depthTest: false,
-    depthWrite: false,
-  });
-  const occluder = new THREE.Sprite(material);
-  occluder.name = MP_PLAYER_GRID_OCCLUDER_NAME;
-  occluder.renderOrder = MP_PLAYER_RENDER_ORDER - 0.1;
-  occluder.scale.set(0.68, 0.62, 1);
-  return occluder;
-}
-
-function applyMultiplayerPlayerLayering(root: THREE.Object3D): void {
-  root.renderOrder = MP_PLAYER_RENDER_ORDER;
-  root.traverse((child) => {
-    child.renderOrder = MP_PLAYER_RENDER_ORDER;
-    if (!(child instanceof THREE.Mesh) && !(child instanceof THREE.LineSegments)) return;
-    const materials = Array.isArray(child.material) ? child.material : [child.material];
-    for (const material of materials) {
-      if (!(material instanceof THREE.Material)) continue;
-      material.transparent = true;
-      material.blending = THREE.NoBlending;
-      material.opacity = 1;
-      material.depthTest = false;
-      material.depthWrite = true;
-      material.needsUpdate = true;
-    }
-  });
-}
 
 // ---------------------------------------------------------------------------
 // Main
@@ -3808,11 +3750,11 @@ async function main() {
 
     // Set player color (same as co-op)
     player.setColor(netPlayer.color);
-    applyMultiplayerPlayerLayering(player.mesh);
+    applyPlayerGridLayering(player.mesh);
 
     scene.add(player.mesh);
     networkPlayers.set(id, player);
-    const gridOccluder = createMultiplayerPlayerGridOccluder();
+    const gridOccluder = createPlayerGridOccluder();
     if (gridOccluder) {
       gridOccluder.visible = player.mesh.visible;
       gridOccluder.position.copy(player.mesh.position);
@@ -3844,8 +3786,7 @@ async function main() {
   function syncPlayerGridOccluder(id: string, player: Player): void {
     const occluder = playerGridOccluders.get(id);
     if (!occluder) return;
-    occluder.visible = player.mesh.visible;
-    occluder.position.copy(player.mesh.position);
+    syncGridOccluderToPlayer(occluder, player.mesh);
   }
 
   // -----------------------------------------------------------------------
