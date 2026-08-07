@@ -24,6 +24,10 @@ import {
 } from './ServerMeshLocation';
 import { PLAYER_WORLD_SPEED } from '../shared/GameConstants';
 
+const SPHERE_TUNNEL_RADIUS = 10;
+const SPHERE_TUNNEL_TUNNEL_RADIUS = 3;
+const SPHERE_TUNNEL_BEVEL_RADIUS = 0.6;
+
 export class ServerSurfaceManager {
   private meshSurface: MeshSurface | null = null;
   private surfaceType: SupportedSurface | null = null;
@@ -171,6 +175,10 @@ export class ServerSurfaceManager {
    * (via BVH closestPointOnSurface) corrects any approximation error.
    */
   private _uvToApproxWorldPos(u: number, v: number): THREE.Vector3 {
+    if (this.surfaceType === 'sphere-tunnel') {
+      return this._sphereTunnelUVToWorldPos(u, v);
+    }
+
     // Clamp v away from exact poles to avoid degenerate surface queries
     const safeV = Math.max(0.02, Math.min(0.98, v));
     const phi = safeV * Math.PI;
@@ -180,6 +188,62 @@ export class ServerSurfaceManager {
       r * Math.sin(phi) * Math.cos(theta),
       r * Math.cos(phi),
       r * Math.sin(phi) * Math.sin(theta),
+    );
+  }
+
+  private _sphereTunnelUVToWorldPos(u: number, v: number): THREE.Vector3 {
+    const R = SPHERE_TUNNEL_RADIUS * this.scaleFactor;
+    const tr = SPHERE_TUNNEL_TUNNEL_RADIUS * this.scaleFactor;
+    const bR = SPHERE_TUNNEL_BEVEL_RADIUS * this.scaleFactor;
+
+    const sinPhiEnd = Math.min((tr + bR) / (R - bR), 0.99);
+    const phiEnd = Math.asin(sinPhiEnd);
+    const bevelCenterYTop = Math.cos(phiEnd) * (R - bR);
+    const bevelCenterR = tr + bR;
+    const bevelAngle = Math.PI / 2 + phiEnd;
+    const sphereArcLen = (Math.PI - 2 * phiEnd) * R;
+    const bevelArcLen = bR * bevelAngle;
+    const tunnelLength = 2 * bevelCenterYTop;
+    const totalPerimeter = sphereArcLen + 2 * bevelArcLen + tunnelLength;
+
+    const pos = ((v % 1) + 1) % 1 * totalPerimeter;
+    let acc = 0;
+    let radial: number;
+    let y: number;
+
+    acc += sphereArcLen;
+    if (pos < acc) {
+      const localT = pos / sphereArcLen;
+      const phi = (Math.PI - phiEnd) - localT * (Math.PI - 2 * phiEnd);
+      radial = R * Math.sin(phi);
+      y = R * Math.cos(phi);
+    } else {
+      acc += bevelArcLen;
+      if (pos < acc) {
+        const localT = (pos - (acc - bevelArcLen)) / bevelArcLen;
+        const angle = (Math.PI / 2 - phiEnd) + localT * bevelAngle;
+        radial = bevelCenterR + bR * Math.cos(angle);
+        y = bevelCenterYTop + bR * Math.sin(angle);
+      } else {
+        acc += tunnelLength;
+        if (pos < acc) {
+          const localT = (pos - (acc - tunnelLength)) / tunnelLength;
+          radial = tr;
+          y = bevelCenterYTop * (1 - 2 * localT);
+        } else {
+          const localT = (pos - acc) / bevelArcLen;
+          const angle = Math.PI + localT * bevelAngle;
+          radial = bevelCenterR + bR * Math.cos(angle);
+          y = -bevelCenterYTop + bR * Math.sin(angle);
+        }
+      }
+    }
+
+    const theta = ((u % 1) + 1) % 1 * Math.PI * 2;
+    return new THREE.Vector3(
+      radial * Math.cos(theta),
+      y,
+      radial * Math.sin(theta),
     );
   }
 

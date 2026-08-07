@@ -721,8 +721,9 @@ function cubeTunnelChordDist(u1: number, v1: number, u2: number, v2: number, sca
 }
 
 /**
- * Sphere-tunnel: compound surface — outer sphere (radius 8) with bevel + inner tunnel (radius 2).
- * MUST match SphereWithTunnelSurface.ts defaults: radius=8, tunnelRadius=2, bevelRadius=0.8.
+ * Sphere-tunnel: compound surface — outer sphere (radius 10) with bevel + inner tunnel (radius 3).
+ * MUST match createStandardSurfaceConfig('sphere-tunnel') and SurfaceGeometryBuilder:
+ * radius=10, tunnelRadius=3, bevelRadius=0.6.
  *
  * s44r7-04: Sphere-tunnel was falling through to sphereGreatCircleDist() — completely wrong
  * because sphere-tunnel UV is an arc-length parameterization of a compound profile (outer
@@ -739,9 +740,9 @@ function cubeTunnelChordDist(u1: number, v1: number, u2: number, v2: number, sca
  *   3. Inner tunnel (straight): top → center → bottom (v≈0.58 to v≈0.95)
  *   4. Bottom bevel arc: tunnel → sphere junction (v≈0.95 to v≈1.0, wraps to v=0)
  */
-const SWT_SPHERE_R  = 8;    // outer sphere radius — must match SphereWithTunnelSurface radius default
-const SWT_TUNNEL_R  = 2;    // tunnel radius — must match SphereWithTunnelSurface tunnelRadius default
-const SWT_BEVEL_R   = 0.8;  // bevel radius — must match SphereWithTunnelSurface bevelRadius default
+const SWT_SPHERE_R  = 10;   // outer sphere radius — must match MP/client standard config
+const SWT_TUNNEL_R  = 3;    // tunnel radius — must match MP/client standard config
+const SWT_BEVEL_R   = 0.6;  // bevel radius — must match MP/client standard config
 
 function sphereTunnelPoint3D(u: number, v: number, scaleFactor: number): [number, number, number] {
   const R  = SWT_SPHERE_R * scaleFactor;
@@ -3268,6 +3269,10 @@ export class GameRoom extends Room<GameState> {
       return this._cubeTunnelWorldToUV(wx, wy, wz);
     }
 
+    if (this.state.surfaceType === 'sphere-tunnel') {
+      return this._sphereTunnelWorldToUV(wx, wy, wz);
+    }
+
     // s44r33-03 FIX: Cube-ring — accurate parametric inversion.
     // Sphere approximation gives surfaceV = polar angle (acos(y/r)/π), mapping the
     // outer face (r=R+H, y≈0) to v≈0.5 instead of the correct v≈0.125.
@@ -3282,6 +3287,44 @@ export class GameRoom extends Room<GameState> {
     const v = Math.acos(Math.max(-1, Math.min(1, wy / r))) / Math.PI;
     const u = ((Math.atan2(wz, wx) / (2 * Math.PI)) + 1) % 1;
     return { u, v };
+  }
+
+  private _sphereTunnelWorldToUV(wx: number, wy: number, wz: number): { u: number; v: number } {
+    const scaleFactor = this.state.mapSizeScaleFactor ?? 1;
+    const radialDistance = Math.sqrt(wx * wx + wz * wz);
+    const u = ((Math.atan2(wz, wx) / (2 * Math.PI)) + 1) % 1;
+
+    const profileDistanceSq = (v: number): number => {
+      const [sx, sy, sz] = sphereTunnelPoint3D(0, v, scaleFactor);
+      const sampleRadial = Math.sqrt(sx * sx + sz * sz);
+      const dr = radialDistance - sampleRadial;
+      const dy = wy - sy;
+      return dr * dr + dy * dy;
+    };
+
+    let bestV = 0;
+    let bestDistSq = Infinity;
+    const samples = 128;
+    for (let i = 0; i < samples; i++) {
+      const v = i / samples;
+      const distSq = profileDistanceSq(v);
+      if (distSq < bestDistSq) {
+        bestDistSq = distSq;
+        bestV = v;
+      }
+    }
+
+    let lo = bestV - 1 / samples;
+    let hi = bestV + 1 / samples;
+    for (let i = 0; i < 20; i++) {
+      const m1 = lo + (hi - lo) / 3;
+      const m2 = hi - (hi - lo) / 3;
+      if (profileDistanceSq(m1) < profileDistanceSq(m2)) hi = m2;
+      else lo = m1;
+    }
+
+    bestV = ((lo + hi) / 2 % 1 + 1) % 1;
+    return { u, v: bestV };
   }
 
   private _cubeWorldToUV(wx: number, wy: number, wz: number): { u: number; v: number } {

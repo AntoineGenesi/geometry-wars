@@ -19,17 +19,17 @@
  */
 
 import * as THREE from 'three';
-import { describe, it, expect, vi } from 'vitest';
+import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
 import { ServerMeshWalker } from '../movement/ServerMeshWalker';
 import type { ServerMeshLocation } from '../movement/ServerMeshLocation';
 import type { ServerSurfaceManager } from '../movement/ServerSurfaceManager';
 import { EnemyState, GameState, PlayerState } from '../schema/GameState';
-import { sphereGreatCircleDist, sphereTunnelChordDist } from './GameRoom';
+import { sphereGreatCircleDist, sphereTunnelChordDist, surfaceUVToWorld3D } from './GameRoom';
 import { GameRoom } from './GameRoom';
 
-// ─── Expected geometry constants (must match SphereWithTunnelSurface.ts defaults) ───
-// radius=8, tunnelRadius=2, bevelRadius=0.8, scaleFactor=1.0
-// At v≈0 (bottom hole edge): r≈3.11, y≈-7.37 — a real ring, NOT a pole
+// ─── Expected geometry constants (must match MP/client standard config) ───
+// radius=10, tunnelRadius=3, bevelRadius=0.6, scaleFactor=1.0
+// At v≈0 (bottom hole edge): a real ring, NOT a pole.
 
 describe('s44r7-04: sphere-tunnel hit detection — sphereGreatCircleDist gives wrong results', () => {
   /**
@@ -125,9 +125,11 @@ interface ContactRoomInternals {
   applyWalkerStateToPlayer(player: PlayerState, location: ServerMeshLocation): void;
   applyWalkerStateToEnemy(enemy: EnemyState, location: ServerMeshLocation): void;
   checkCollisions(): void;
+  drainInvincibility(dt: number): void;
+  spawnSingleEnemy(type: string): boolean;
 }
 
-function makeSphereTunnelContactScenario(mode: 'king' | 'waves') {
+function makeSphereTunnelContactScenario(mode: 'king' | 'waves' | 'pvpve') {
   const room = new GameRoom();
   (room as any).setState(new GameState());
   (room as any).broadcast = vi.fn();
@@ -137,9 +139,9 @@ function makeSphereTunnelContactScenario(mode: 'king' | 'waves') {
   room.state.roomPhase = 'playing';
   room.state.gameStarted = true;
   room.state.gameTime = 3;
-  room.state.gameMode = mode;
-  room.state.pvpMode = '';
-  room.state.pvpEnabled = false;
+  room.state.gameMode = mode === 'pvpve' ? 'waves' : mode;
+  room.state.pvpMode = mode === 'pvpve' ? 'pvpve' : '';
+  room.state.pvpEnabled = mode === 'pvpve';
 
   const internals = room as unknown as ContactRoomInternals;
   internals.surfaceManager.initSurface('sphere-tunnel', 1);
@@ -184,7 +186,7 @@ function makeSphereTunnelContactScenario(mode: 'king' | 'waves') {
 }
 
 describe('sphere-tunnel MP nearby-enemy contact health/life semantics', () => {
-  it.each(['king', 'waves'] as const)(
+  it.each(['king', 'waves', 'pvpve'] as const)(
     'uses health damage without spending a life on a nonlethal nearby enemy touch in %s mode',
     (mode) => {
       const { internals, player } = makeSphereTunnelContactScenario(mode);
@@ -197,4 +199,107 @@ describe('sphere-tunnel MP nearby-enemy contact health/life semantics', () => {
       expect(internals.playerInvincibility.get(player.id)).toBeGreaterThan(0);
     },
   );
+
+  it.each(['pvpve', 'waves'] as const)(
+    'applies sustained overlap damage on the shared hurt cadence until a life is lost in %s',
+    (mode) => {
+      const { internals, player } = makeSphereTunnelContactScenario(mode);
+
+      const hitSamples: Array<{ health: number; lives: number; lifeLost: boolean }> = [];
+      (internals as unknown as { broadcast: (type: string, data: Record<string, unknown>) => void }).broadcast = (
+        type,
+        data,
+      ) => {
+        if (type !== 'player_hit') return;
+        hitSamples.push({
+          health: data.healthRemaining as number,
+          lives: data.livesRemaining as number,
+          lifeLost: data.lifeLost as boolean,
+        });
+      };
+
+      for (let hit = 0; hit < 4; hit++) {
+        internals.checkCollisions();
+        internals.checkCollisions();
+        internals.drainInvincibility(3.1);
+      }
+
+      expect(hitSamples).toEqual([
+        { health: 75, lives: 3, lifeLost: false },
+        { health: 50, lives: 3, lifeLost: false },
+        { health: 25, lives: 3, lifeLost: false },
+        { health: 100, lives: 2, lifeLost: true },
+      ]);
+      expect(player.health).toBe(100);
+      expect(player.lives).toBe(2);
+      expect(player.alive).toBe(true);
+    },
+  );
+});
+
+describe('sphere-tunnel MP spawn warning/materialization alignment', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('draws the warning ring at the same world position where the enemy materializes', () => {
+    const room = new GameRoom();
+    (room as any).setState(new GameState());
+    room.state.surfaceType = 'sphere-tunnel';
+    room.state.mapSize = 'medium';
+    room.state.mapSizeScaleFactor = 1;
+    room.state.roomPhase = 'playing';
+    room.state.gameStarted = true;
+    room.state.gameTime = 3;
+
+    const internals = room as unknown as ContactRoomInternals;
+    internals.surfaceManager.initSurface('sphere-tunnel', 1);
+
+    const player = new PlayerState();
+    player.id = 'player-1';
+    player.name = 'Player 1';
+    player.alive = true;
+    player.surfaceU = 0.18;
+    player.surfaceV = 0.29;
+    room.state.players.set(player.id, player);
+    const playerWalker = internals.surfaceManager.createWalker(player.id, player.surfaceU, player.surfaceV)!;
+    internals.applyWalkerStateToPlayer(player, playerWalker.getLocation());
+    player.surfaceU = 0.18;
+    player.surfaceV = 0.29;
+
+    let warning: { id: string; type: string; u: number; v: number } | null = null;
+    (room as any).broadcast = vi.fn((type: string, data: { id: string; type: string; u: number; v: number }) => {
+      if (type === 'pre_spawn') warning = { ...data };
+    });
+
+    const originalRandom = Math.random;
+    try {
+      const randomValues = [
+        0,    // target player index
+        0.10, // spawn angle
+        0.50, // spawn distance between MIN_DIST and MAX_DIST
+      ];
+      Math.random = () => randomValues.shift() ?? 0.5;
+
+      expect(internals.spawnSingleEnemy('grunt')).toBe(true);
+    } finally {
+      Math.random = originalRandom;
+    }
+
+    expect(warning).not.toBeNull();
+    vi.advanceTimersByTime(1500);
+    expect(room.state.enemies.length).toBe(1);
+    const enemy = room.state.enemies[0]!;
+    expect(enemy.id).toBe(warning!.id);
+
+    const [wx, wy, wz] = surfaceUVToWorld3D('sphere-tunnel', warning!.u, warning!.v, 1, 10);
+    const warningToEnemyWorld = Math.hypot(enemy.wx - wx, enemy.wy - wy, enemy.wz - wz);
+    expect(warningToEnemyWorld).toBeLessThan(0.35);
+    expect(enemy.surfaceU).toBeCloseTo(warning!.u, 3);
+    expect(enemy.surfaceV).toBeCloseTo(warning!.v, 2);
+  });
 });

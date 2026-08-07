@@ -102,6 +102,56 @@ function makeScenario(surfaceType: string, enemyType = 'grunt'): EnemyScenario {
   return { room, internals, player, enemy, pathfinder, startLocation };
 }
 
+function makeUvScenario(
+  surfaceType: string,
+  playerU: number,
+  playerV: number,
+  enemyU: number,
+  enemyV: number,
+  enemyType = 'grunt',
+): EnemyScenario {
+  const room = new GameRoom();
+  (room as any).setState(new GameState());
+  room.state.surfaceType = surfaceType;
+  room.state.mapSize = 'medium';
+  room.state.gameTime = 0;
+  room.state.roomPhase = 'playing';
+
+  const internals = room as unknown as EnemyRoomInternals;
+  internals.surfaceManager.initSurface(surfaceType);
+  const meshSurface = internals.surfaceManager.getMeshSurface()!;
+  const pathfinder = new ServerMeshPathfinder(meshSurface);
+  internals.enemyPathfinder = pathfinder;
+
+  const player = new PlayerState();
+  player.id = 'player-1';
+  player.alive = true;
+  room.state.players.set(player.id, player);
+  const playerWalker = internals.surfaceManager.createWalker(player.id, playerU, playerV)!;
+  internals.applyWalkerStateToPlayer(player, playerWalker.getLocation());
+  player.surfaceU = playerU;
+  player.surfaceV = playerV;
+
+  const enemy = new EnemyState();
+  enemy.id = 'enemy-1';
+  enemy.type = enemyType;
+  enemy.health = 5;
+  enemy.maxHealth = 5;
+  enemy.surfaceU = enemyU;
+  enemy.surfaceV = enemyV;
+  const enemyWalker = new ServerMeshWalker(
+    meshSurface,
+    new THREE.Vector3(...surfaceUVToWorld3D(surfaceType, enemyU, enemyV, 1, 10)),
+    1,
+  );
+  internals.enemyWalkers.set(enemy.id, enemyWalker);
+  internals.applyWalkerStateToEnemy(enemy, enemyWalker.getLocation());
+  internals.enemyAI.set(enemy.id, {});
+  room.state.enemies.push(enemy);
+
+  return { room, internals, player, enemy, pathfinder, startLocation: enemyWalker.getLocation() };
+}
+
 function advanceScenario(scenario: EnemyScenario, seconds: number): void {
   const dt = 1 / 60;
   const ticks = Math.round(seconds / dt);
@@ -130,7 +180,7 @@ function compatibilityWorldDistance(surfaceType: string, enemy: EnemyState): num
   return Math.hypot(enemy.wx - x, enemy.wy - y, enemy.wz - z);
 }
 
-describe.each(['cube', 'cube-ring', 'cube-tunnel', 'sphere'])(
+describe.each(['cube', 'cube-ring', 'cube-tunnel', 'sphere', 'sphere-tunnel'])(
   'GameRoom canonical enemy chase on %s',
   (surfaceType) => {
     it('reduces mesh-path distance at fixed checkpoints', () => {
@@ -182,6 +232,19 @@ describe('GameRoom enemy target authority and damage aggro', () => {
     );
     expect(finalDistance).toBeLessThan(startDistance);
     expect(moved).toBeGreaterThan(0.25);
+  });
+
+  it('keeps sphere-tunnel outer-surface pursuit away from the tunnel seam when a shorter outer route exists', () => {
+    const scenario = makeUvScenario('sphere-tunnel', 0.24, 0.30, 0.31, 0.33);
+    const startDistance = pathDistance(scenario);
+    const startV = scenario.enemy.surfaceV;
+
+    advanceScenario(scenario, 1.5);
+
+    expect(pathDistance(scenario)).toBeLessThan(startDistance);
+    expect(scenario.enemy.surfaceV).toBeGreaterThan(0.05);
+    expect(scenario.enemy.surfaceV).toBeLessThan(0.55);
+    expect(Math.abs(scenario.enemy.surfaceV - startV)).toBeLessThan(0.08);
   });
 
   it('sets timed player aggro on surviving damage and resumes the original strategy', () => {
