@@ -13,6 +13,7 @@ import { t } from '../i18n';
 import type { GPUCapabilityReport } from '../rendering/GPUCapabilities';
 import { detectGPUCapabilities } from '../rendering/GPUCapabilities';
 import type { RendererBackend } from '../rendering/RendererFactory';
+import { getRequestedRendererPreference, persistRendererPreference } from '../rendering/RendererPreference';
 import { QualityLevel, QUALITY_LEVELS } from '../rendering/AdaptiveQuality';
 import type { MusicPreset } from '../audio/BackgroundMusic';
 import type { BenchmarkResult } from './GPUBenchmark';
@@ -1155,9 +1156,7 @@ export class SettingsMenu {
 
     const benchBtnLabel = this.benchmarkRunning ? t('settings.gpu.running') : t('settings.gpu.runBenchmark');
 
-    const rendererParam = typeof window !== 'undefined'
-      ? new URLSearchParams(window.location.search).get('renderer')
-      : null;
+    const rendererParam = getRequestedRendererPreference();
     const rendererDisplay = buildRendererDisplayState({
       requestedRendererParam: rendererParam,
       actualIsWebGPU: this.rendererIsWebGPU,
@@ -1596,19 +1595,21 @@ export class SettingsMenu {
       this.launchFullBenchmark();
     });
 
-    // WebGPU toggle: reload page with ?renderer=webgpu
+    // WebGPU toggle: persist preference and reload page with ?renderer=webgpu
     const enableWebGPUBtn = this.container.querySelector('#enable-webgpu') as HTMLButtonElement | null;
     enableWebGPUBtn?.addEventListener('click', () => {
       const url = new URL(window.location.href);
+      persistRendererPreference('webgpu');
       url.searchParams.set('renderer', 'webgpu');
       window.location.href = url.toString();
     });
 
-    // Switch back to WebGL2: remove ?renderer param and reload
+    // Switch back to WebGL2: persist preference and reload with explicit WebGL2 request
     const switchToWebGLBtn = this.container.querySelector('#switch-to-webgl') as HTMLButtonElement | null;
     switchToWebGLBtn?.addEventListener('click', () => {
       const url = new URL(window.location.href);
-      url.searchParams.delete('renderer');
+      persistRendererPreference('webgl2');
+      url.searchParams.set('renderer', 'webgl2');
       window.location.href = url.toString();
     });
   }

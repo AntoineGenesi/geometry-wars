@@ -99,6 +99,17 @@ describe('RendererFactory', () => {
       vi.unstubAllGlobals();
     });
 
+    it('defaults to webgl2 when ?renderer=webgl2', () => {
+      const mockLocation = { search: '?renderer=webgl2' } as Location;
+      vi.stubGlobal('window', { location: mockLocation });
+
+      const caps = mockCapabilities({ webgpu: true });
+      const result = resolveRendererPreference(caps);
+      expect(result).toBe('webgl2');
+
+      vi.unstubAllGlobals();
+    });
+
     it('returns webgpu when ?renderer=webgpu and WebGPU is available', () => {
       const mockLocation = { search: '?renderer=webgpu' } as Location;
       vi.stubGlobal('window', { location: mockLocation });
@@ -115,6 +126,34 @@ describe('RendererFactory', () => {
       vi.stubGlobal('window', { location: mockLocation });
 
       const caps = mockCapabilities({ webgpu: false });
+      const result = resolveRendererPreference(caps);
+      expect(result).toBe('webgl2');
+
+      vi.unstubAllGlobals();
+    });
+
+    it('uses persisted WebGPU preference when URL has no explicit renderer', () => {
+      const mockLocation = { search: '?surface=sphere' } as Location;
+      vi.stubGlobal('window', { location: mockLocation });
+      vi.stubGlobal('localStorage', {
+        getItem: vi.fn((key: string) => key === 'gw3d-renderer-preference' ? 'webgpu' : null),
+      });
+
+      const caps = mockCapabilities({ webgpu: true });
+      const result = resolveRendererPreference(caps);
+      expect(result).toBe('webgpu');
+
+      vi.unstubAllGlobals();
+    });
+
+    it('lets an explicit URL renderer override persisted WebGPU preference', () => {
+      const mockLocation = { search: '?renderer=webgl2' } as Location;
+      vi.stubGlobal('window', { location: mockLocation });
+      vi.stubGlobal('localStorage', {
+        getItem: vi.fn((key: string) => key === 'gw3d-renderer-preference' ? 'webgpu' : null),
+      });
+
+      const caps = mockCapabilities({ webgpu: true });
       const result = resolveRendererPreference(caps);
       expect(result).toBe('webgl2');
 

@@ -9,6 +9,7 @@
  * URL parameters:
  *   ?renderer=webgpu  - Force WebGPU renderer
  *   ?renderer=webgl   - Force WebGL2 renderer
+ *   ?renderer=webgl2  - Force WebGL2 renderer
  *   ?mode=network     - Defaults to WebGL2 unless renderer is explicitly set
  *   ?testMode=true    - Enable preserveDrawingBuffer for automated testing
  *
@@ -18,6 +19,7 @@
 
 import * as THREE from 'three';
 import { GPUCapabilityReport } from './GPUCapabilities';
+import { getRequestedRendererPreference } from './RendererPreference';
 
 /** Which rendering backend is active. */
 export type RendererBackend = 'webgpu' | 'webgl2';
@@ -41,11 +43,10 @@ export function resolveRendererPreference(
 ): RendererBackend {
   if (typeof window === 'undefined') return 'webgl2';
 
-  const params = new URLSearchParams(window.location.search);
-  const pref = params.get('renderer');
+  const pref = getRequestedRendererPreference();
 
   // Explicit URL override
-  if (pref === 'webgl') return 'webgl2';
+  if (pref === 'webgl2') return 'webgl2';
   if (pref === 'webgpu' && capabilities.webgpu) return 'webgpu';
 
   // Keep the playable default on the proven WebGL2 path. Windows Chrome can

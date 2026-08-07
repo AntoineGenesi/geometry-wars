@@ -128,6 +128,7 @@ import {
 import { initI18n } from './i18n';
 import { showGameLoading, hideGameLoading } from './ui/GameLoadingOverlay';
 import { enemyDiscoveryStore } from './ui/EnemyDiscoveryStore';
+import { getRequestedRendererPreference } from './rendering/RendererPreference';
 import { EnemyDiscoveryToast } from './ui/EnemyDiscoveryToast';
 // Portal import removed — portals are PvP-only and belong in network-main.ts
 
@@ -2555,7 +2556,7 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
         getRendererInfo: () => ({
           backend: game.backend,
           isWebGPU: game.isWebGPU,
-          requestedRenderer: new URLSearchParams(window.location.search).get('renderer') || 'auto',
+          requestedRenderer: getRequestedRendererPreference() || 'auto',
           canvas: {
             width: game.renderer.domElement.width,
             height: game.renderer.domElement.height,
@@ -2838,7 +2839,7 @@ if (isTestArenaMode()) {
 
     // Preserve debug/test URL params through mode transitions
     const prevParams = new URLSearchParams(window.location.search);
-    const preserveKeys = ['debug', 'testMode'];
+    const preserveKeys = ['debug', 'testMode', 'renderer'];
     function buildUrl(params: Record<string, string>): string {
       const p = new URLSearchParams(params);
       for (const key of preserveKeys) {
