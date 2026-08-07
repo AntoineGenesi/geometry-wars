@@ -118,6 +118,15 @@ function sendRedirect(res: ServerResponse, url: string, status = 302): void {
   res.end();
 }
 
+function getRequestHostname(req: IncomingMessage): string {
+  const host = req.headers.host ?? 'localhost';
+  if (host.startsWith('[')) {
+    const end = host.indexOf(']');
+    return end >= 0 ? host.slice(1, end) : host;
+  }
+  return host.split(':')[0] || 'localhost';
+}
+
 // Generate a random 5-digit code (10000-99999)
 function generateShortCode(): string {
   const code = Math.floor(Math.random() * (99999 - 10000 + 1)) + 10000;
@@ -429,7 +438,11 @@ export default function lanPlugin(): Plugin {
         if (shortCodeMatch) {
           const code = shortCodeMatch[1];
           if (shortCodeMap.has(code)) {
-            const params = shortCodeMap.get(code)!;
+            const params = { ...shortCodeMap.get(code)! };
+            if (!params.server) {
+              const serverPort = params.port || String(SERVER_PORT);
+              params.server = `ws://${getRequestHostname(req)}:${serverPort}`;
+            }
             const queryString = new URLSearchParams(params).toString();
             const fullUrl = `/?mode=network&${queryString}`;
             sendRedirect(res, fullUrl);

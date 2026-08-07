@@ -2526,10 +2526,9 @@ export class StartMenu {
         const result = await this.lanClient.startHost({ shutdownTimeout });
         if (result.ok) {
           const vitePort = parseInt(window.location.port, 10) || 3000;
-          // Use Vite proxy path for host too — consistent with how LAN clients connect.
-          // This also makes the host connection go through the same code path as clients,
-          // reducing the chance of proxy-only bugs going undetected.
-          hostedServerUrl = `ws://localhost:${vitePort}/ws`;
+          // Connect the host directly to Colyseus. The page still loads from
+          // Vite/frontend on 3000, but gameplay traffic belongs on 2567.
+          hostedServerUrl = this.lanClient.getServerWsUrl('localhost', result.port);
           
           // Register short code once for this surface/port combination
           const shortCodeUrl = await this.lanClient.registerShortCode('localhost', this.lanSelectedSurface, result.port, vitePort);
@@ -2674,9 +2673,7 @@ export class StartMenu {
     lanConnectBtn?.addEventListener('click', () => {
       const ip = lanIpInput.value.trim();
       if (!ip) return;
-      // Use Vite proxy path (/ws) — only port 3000 needs to be accessible, not 2567 separately.
-      const vitePort = parseInt(window.location.port, 10) || 3000;
-      const serverUrl = `ws://${ip}:${vitePort}/ws`;
+      const serverUrl = this.lanClient.getServerWsUrl(ip, 2567);
       this.showNameDialog(this.lanSelectedSurface, serverUrl);
     });
 
@@ -3117,7 +3114,7 @@ export class StartMenu {
       // to that server's Vite URL. This avoids cross-origin issues entirely —
       // the page loads from the target server, making the connection same-origin.
       if (isSelf || ip === window.location.hostname) {
-        const serverUrl = `ws://${window.location.hostname}:${vitePort}/ws`;
+        const serverUrl = this.lanClient.getServerWsUrl(window.location.hostname, port);
         this.showNameDialog(serverSurface, serverUrl);
       } else {
         // Different server: redirect to that server's page (same-origin there)

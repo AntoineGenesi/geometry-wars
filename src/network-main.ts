@@ -349,33 +349,35 @@ function isValidSurfaceType(s: string): s is SurfaceType {
 
 /**
  * Returns { primary, fallback } server URLs for the Colyseus connection.
- * Primary: Vite proxy path (ws://host:3000/ws) — only needs port 3000 on LAN.
- * Fallback: direct Colyseus (ws://host:2567) — in case proxy fails (browser
- * cache, proxy misconfiguration, etc.).
+ * Primary: direct Colyseus (ws://host:2567 by default) so LAN devices attempt
+ * the backend port and server logs show the request. Fallback: Vite proxy
+ * path (ws://host:3000/ws) for older WSL/proxy setups where only the frontend
+ * port is exposed.
  */
 function getServerUrls(): { primary: string; fallback: string | null } {
   const params = new URLSearchParams(window.location.search);
   const explicitServer = params.get('server');
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const proxyUrl = `${protocol}//${window.location.host}/ws`;
   if (explicitServer) {
-    // If an explicit server URL is provided, also compute a fallback.
-    // If it goes through the proxy (/ws path), fallback is direct port 2567.
-    // If it's already direct (port 2567), no fallback needed.
+    // If an explicit server URL is provided, keep it primary and compute the
+    // opposite routing style as fallback when possible.
     let fallback: string | null = null;
     try {
       const url = new URL(explicitServer);
       if (url.pathname === '/ws' || url.pathname.startsWith('/ws/')) {
-        // Proxy URL → fallback to direct port 2567
-        fallback = `${url.protocol}//${url.hostname}:2567`;
+        const serverPort = params.get('port') || '2567';
+        fallback = `${url.protocol}//${url.hostname}:${serverPort}`;
+      } else if (window.location.port && window.location.host !== `${url.hostname}:${url.port}`) {
+        fallback = proxyUrl;
       }
     } catch { /* not a valid URL, no fallback */ }
     return { primary: explicitServer, fallback };
   }
-  // Route through Vite dev server proxy (/ws → localhost:2567).
-  // LAN clients only need port 3000 (the Vite port) to be accessible.
-  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const primary = `${protocol}//${window.location.host}/ws`;
-  // Fallback: try direct Colyseus port in case proxy is broken
-  const fallback = `${protocol}//${window.location.hostname}:2567`;
+
+  const serverPort = params.get('port') || '2567';
+  const primary = `${protocol}//${window.location.hostname}:${serverPort}`;
+  const fallback = window.location.port === serverPort ? null : proxyUrl;
   return { primary, fallback };
 }
 
@@ -6396,7 +6398,7 @@ async function main() {
   // Results are stored so the error panel can display them.
   const diagnosticResults: Record<string, string> = {};
   {
-    const proxyHealthUrl = serverUrl.replace('ws://', 'http://').replace('wss://', 'https://') + '/health';
+    const primaryHealthUrl = serverUrl.replace('ws://', 'http://').replace('wss://', 'https://') + '/health';
     const directHealthUrl = `http://${window.location.hostname}:2567/health`;
     const checkHealth = async (label: string, url: string) => {
       try {
@@ -6429,7 +6431,7 @@ async function main() {
         console.warn(`[NetworkMain] Matchmake check FAILED: ${msg} (${matchmakeTestUrl})`);
       }
     };
-    checkHealth('Proxy', proxyHealthUrl);
+    checkHealth('Primary', primaryHealthUrl);
     checkHealth('Direct', directHealthUrl);
     checkMatchmake();
   }

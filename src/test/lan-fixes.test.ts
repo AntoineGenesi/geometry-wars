@@ -277,52 +277,85 @@ describe('Bullet orientation with surface tangent frame', () => {
 });
 
 // ---------------------------------------------------------------------------
-// s25-mp04: LAN join URL simplification
-// getJoinUrl should not include server= param (it's redundant and ugly)
+// LAN join URL routing
+// Join URLs must load the frontend on Vite while carrying the direct Colyseus
+// websocket endpoint so mobile devices attempt the backend port.
 // ---------------------------------------------------------------------------
 
-describe('LANClient URL simplification', () => {
-  it('getJoinUrl default port: no server= param, no port= param', async () => {
+describe('LANClient URL routing', () => {
+  it('getJoinUrl default port: frontend on 3000, websocket server on 2567', async () => {
     const { LANClient } = await import('../network/LANClient');
     const client = new LANClient();
     const url = client.getJoinUrl('192.168.1.100', 2567, 'sphere', 3000);
-    expect(url).toBe('http://192.168.1.100:3000/?mode=network&surface=sphere');
-    expect(url).not.toContain('server=');
-    expect(url).not.toContain('%3A%2F%2F');
+    const parsed = new URL(url);
+    expect(parsed.origin).toBe('http://192.168.1.100:3000');
+    expect(parsed.searchParams.get('mode')).toBe('network');
+    expect(parsed.searchParams.get('surface')).toBe('sphere');
+    expect(parsed.searchParams.get('server')).toBe('ws://192.168.1.100:2567');
     expect(url).not.toContain('port=');
   });
 
-  it('getJoinUrl non-default port: includes port= but no server=', async () => {
+  it('getJoinUrl non-default port: includes matching port and direct server', async () => {
     const { LANClient } = await import('../network/LANClient');
     const client = new LANClient();
     const url = client.getJoinUrl('192.168.1.100', 2568, 'torus', 3000);
-    expect(url).toBe('http://192.168.1.100:3000/?mode=network&surface=torus&port=2568');
-    expect(url).not.toContain('server=');
-    expect(url).not.toContain('%3A%2F%2F');
+    const parsed = new URL(url);
+    expect(parsed.origin).toBe('http://192.168.1.100:3000');
+    expect(parsed.searchParams.get('surface')).toBe('torus');
+    expect(parsed.searchParams.get('server')).toBe('ws://192.168.1.100:2568');
+    expect(parsed.searchParams.get('port')).toBe('2568');
   });
 
-  it('getMobileJoinUrl default port: clean URL with mobile flag', async () => {
+  it('getMobileJoinUrl default port: mobile frontend with direct server', async () => {
     const { LANClient } = await import('../network/LANClient');
     const client = new LANClient();
     const url = client.getMobileJoinUrl('192.168.1.100', 2567, 'sphere', 3000);
-    expect(url).toBe('http://192.168.1.100:3000/?mobile=true&mode=network&surface=sphere');
-    expect(url).not.toContain('server=');
-    expect(url).not.toContain('%3A%2F%2F');
+    const parsed = new URL(url);
+    expect(parsed.origin).toBe('http://192.168.1.100:3000');
+    expect(parsed.searchParams.get('mobile')).toBe('true');
+    expect(parsed.searchParams.get('mode')).toBe('network');
+    expect(parsed.searchParams.get('surface')).toBe('sphere');
+    expect(parsed.searchParams.get('server')).toBe('ws://192.168.1.100:2567');
   });
 
   it('getMobileJoinUrl non-default port: includes port= param', async () => {
     const { LANClient } = await import('../network/LANClient');
     const client = new LANClient();
     const url = client.getMobileJoinUrl('192.168.1.100', 3000, 'cube', 3001);
-    expect(url).toBe('http://192.168.1.100:3001/?mobile=true&mode=network&surface=cube&port=3000');
-    expect(url).not.toContain('server=');
+    const parsed = new URL(url);
+    expect(parsed.origin).toBe('http://192.168.1.100:3001');
+    expect(parsed.searchParams.get('mobile')).toBe('true');
+    expect(parsed.searchParams.get('surface')).toBe('cube');
+    expect(parsed.searchParams.get('server')).toBe('ws://192.168.1.100:3000');
+    expect(parsed.searchParams.get('port')).toBe('3000');
   });
 
-  it('URL is human-readable (no percent-encoded characters)', async () => {
+  it('URL keeps surface readable and server decodable', async () => {
     const { LANClient } = await import('../network/LANClient');
     const client = new LANClient();
     const url = client.getJoinUrl('192.168.1.100', 2567, 'sphere', 3000);
-    // Should be directly typeable — no percent encoding
-    expect(url).not.toMatch(/%[0-9A-F]{2}/i);
+    const parsed = new URL(url);
+    expect(parsed.searchParams.get('surface')).toBe('sphere');
+    expect(parsed.searchParams.get('server')).toBe('ws://192.168.1.100:2567');
+  });
+
+  it('startHost sanitizes backend HTML 404s instead of exposing raw markup', async () => {
+    const { LANClient } = await import('../network/LANClient');
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async () => new Response(
+      '<!DOCTYPE html><html><body>Cannot POST /__lan/start</body></html>',
+      { status: 404, headers: { 'content-type': 'text/html; charset=utf-8' } },
+    )) as typeof fetch;
+
+    try {
+      const result = await new LANClient().startHost({ shutdownTimeout: 0 });
+      expect(result.ok).toBe(false);
+      expect(result.error).toContain('LAN hosting API unavailable (HTTP 404)');
+      expect(result.error).toContain('frontend dev server');
+      expect(result.error).not.toContain('<!DOCTYPE html>');
+      expect(result.error).not.toContain('Cannot POST /__lan/start');
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 });
