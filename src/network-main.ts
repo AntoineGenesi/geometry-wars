@@ -174,6 +174,7 @@ import { EnemyKillStreakAnnouncer } from './ui/EnemyKillStreakAnnouncer';
 import { Portal, createPortalPair } from './entities/Portal';
 import { PerformanceProfiler as DebugPerformanceProfiler } from './debug/PerformanceProfiler';
 import { createEnemyBodyProofDebug } from './debug/EnemyBodyProofDebug';
+import { createGridPlayerLayeringProofDebug } from './debug/GridPlayerLayeringProofDebug';
 import {
   createPickupVisualProofDebug,
   type PickupVisualProofRecord,
@@ -236,6 +237,8 @@ interface GameDebugAPI {
   getEnemyInstanceDebug: () => Record<string, unknown>;
   getEnemyRenderSamples: () => Record<string, unknown>[];
   setVisualProofIsolation: (enabled: boolean, includeSurface?: boolean, includeAuxiliary?: boolean) => Record<string, unknown>;
+  getGridPlayerLayeringState: () => Record<string, unknown>;
+  setGridPlayerLayeringIsolation: (mode: 'restore' | 'background' | 'player' | 'grid' | 'layered') => Record<string, unknown>;
   spawnPickupVisualProofSet: () => Array<{ id: string; type: string }>;
   getPickupVisualProofSamples: () => unknown[];
   setPickupVisualProofIsolation: (pickupId: string | null) => Record<string, unknown>;
@@ -661,6 +664,54 @@ function orientPlayerOnSurface(
 // ---------------------------------------------------------------------------
 
 const PLAYER_COLORS = [0x00ffff, 0xff00ff, 0x00ff00, 0xffaa00];
+const MP_PLAYER_RENDER_ORDER = 2;
+const MP_PLAYER_GRID_OCCLUDER_NAME = 'mp-player-grid-occluder';
+
+function createMultiplayerPlayerGridOccluder(): THREE.Sprite | null {
+  const canvas = document.createElement('canvas');
+  canvas.width = 64;
+  canvas.height = 64;
+  const context = canvas.getContext('2d');
+  if (!context) return null;
+  context.clearRect(0, 0, 64, 64);
+  context.fillStyle = 'rgb(2, 8, 23)';
+  context.beginPath();
+  context.ellipse(32, 32, 26, 22, 0, 0, Math.PI * 2);
+  context.fill();
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+
+  const material = new THREE.SpriteMaterial({
+    map: texture,
+    transparent: true,
+    opacity: 1,
+    depthTest: false,
+    depthWrite: false,
+  });
+  const occluder = new THREE.Sprite(material);
+  occluder.name = MP_PLAYER_GRID_OCCLUDER_NAME;
+  occluder.renderOrder = MP_PLAYER_RENDER_ORDER - 0.1;
+  occluder.scale.set(0.58, 0.5, 1);
+  return occluder;
+}
+
+function applyMultiplayerPlayerLayering(root: THREE.Object3D): void {
+  root.renderOrder = MP_PLAYER_RENDER_ORDER;
+  root.traverse((child) => {
+    child.renderOrder = MP_PLAYER_RENDER_ORDER;
+    if (!(child instanceof THREE.Mesh) && !(child instanceof THREE.LineSegments)) return;
+    const materials = Array.isArray(child.material) ? child.material : [child.material];
+    for (const material of materials) {
+      if (!(material instanceof THREE.Material)) continue;
+      material.transparent = true;
+      material.blending = THREE.NoBlending;
+      material.opacity = 1;
+      material.depthTest = false;
+      material.depthWrite = true;
+      material.needsUpdate = true;
+    }
+  });
+}
 
 // ---------------------------------------------------------------------------
 // Main
@@ -1285,6 +1336,7 @@ async function main() {
   // Maps server player ID -> real Player instance (same class as single player)
   const networkPlayers = new Map<string, Player>();
   const playerGlowTrails = new Map<string, GlowTrail>();
+  const playerGridOccluders = new Map<string, THREE.Sprite>();
   const playerAliveState = new Map<string, boolean>();
 
   // -- EntityGlow for local player (pulsing halo, same as single-player) --
@@ -3649,9 +3701,17 @@ async function main() {
 
     // Set player color (same as co-op)
     player.setColor(netPlayer.color);
+    applyMultiplayerPlayerLayering(player.mesh);
 
     scene.add(player.mesh);
     networkPlayers.set(id, player);
+    const gridOccluder = createMultiplayerPlayerGridOccluder();
+    if (gridOccluder) {
+      gridOccluder.visible = player.mesh.visible;
+      gridOccluder.position.copy(player.mesh.position);
+      scene.add(gridOccluder);
+      playerGridOccluders.set(id, gridOccluder);
+    }
 
     // Create glow trail (same as single player's GlowTrail)
     const trail = new GlowTrail(new THREE.Color(netPlayer.color), 60, 0.4);
@@ -3672,6 +3732,13 @@ async function main() {
     }
 
     return player;
+  }
+
+  function syncPlayerGridOccluder(id: string, player: Player): void {
+    const occluder = playerGridOccluders.get(id);
+    if (!occluder) return;
+    occluder.visible = player.mesh.visible;
+    occluder.position.copy(player.mesh.position);
   }
 
   // -----------------------------------------------------------------------
@@ -4607,6 +4674,13 @@ async function main() {
         if (player) {
           glowManager.removeGlow(player.mesh);
           scene.remove(player.mesh);
+        }
+        const occluder = playerGridOccluders.get(id);
+        if (occluder) {
+          scene.remove(occluder);
+          occluder.material.map?.dispose();
+          occluder.material.dispose();
+          playerGridOccluders.delete(id);
         }
         // Remove PlayerLevel aura ring when local player disconnects
         if (id === localPlayerId) {
@@ -6431,6 +6505,13 @@ async function main() {
         if (player) {
           glowManager.removeGlow(player.mesh);
           scene.remove(player.mesh);
+        }
+        const occluder = playerGridOccluders.get(id);
+        if (occluder) {
+          scene.remove(occluder);
+          occluder.material.map?.dispose();
+          occluder.material.dispose();
+          playerGridOccluders.delete(id);
         }
         if (id === localPlayerId) {
           scene.remove(playerLevel.auraRing);
@@ -8955,6 +9036,10 @@ async function main() {
     }
     particles.setEntityScaleFactor(entityScaleFactor);
 
+    networkPlayers.forEach((player, id) => {
+      syncPlayerGridOccluder(id, player);
+    });
+
     // Update floating name labels (project 3D -> screen)
     const labelPositions = new Map<string, PlayerLabelData>();
     networkPlayers.forEach((player, id) => {
@@ -9089,6 +9174,15 @@ async function main() {
         ...Array.from(networkEnemies.entries()).map(([id, enemy]) => ({ id, enemy })),
         ...Array.from(visibilityProofEnemies.entries()).map(([id, enemy]) => ({ id, enemy })),
       ],
+    });
+    const gridPlayerLayeringProofDebug = createGridPlayerLayeringProofDebug({
+      scene,
+      camera: game.camera,
+      renderer: game.renderer,
+      getSurface: () => surface,
+      getPlayerRoot: () => networkPlayers.get(localPlayerId)?.mesh ?? null,
+      getSurfaceType: () => lastCreatedSurfaceType,
+      getVisualMode: () => savedVisualMode,
     });
     window.__gameDebug = {
       getPlayerPosition: () => {
@@ -9626,6 +9720,8 @@ async function main() {
       getEnemyInstanceDebug: enemyBodyProofDebug.getEnemyInstanceDebug,
       getEnemyRenderSamples: enemyBodyProofDebug.getEnemyRenderSamples,
       setVisualProofIsolation: enemyBodyProofDebug.setVisualProofIsolation,
+      getGridPlayerLayeringState: gridPlayerLayeringProofDebug.getGridPlayerLayeringState,
+      setGridPlayerLayeringIsolation: gridPlayerLayeringProofDebug.setGridPlayerLayeringIsolation,
       spawnPickupVisualProofSet,
       getPickupVisualProofSamples: pickupVisualProofDebug.getPickupVisualProofSamples,
       setPickupVisualProofIsolation: pickupVisualProofDebug.setPickupVisualProofIsolation,
