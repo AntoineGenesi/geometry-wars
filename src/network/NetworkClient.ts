@@ -213,6 +213,7 @@ export interface NetworkGameState {
   gameOver: boolean;
   hostId: string;
   isPaused: boolean;
+  pauseRevision?: number;
   // Lobby voting state machine fields (Phase 1 server additions)
   /** Canonical room phase: 'lobby' | 'playing' | 'voting' */
   roomPhase: string;
@@ -278,7 +279,7 @@ export interface NetworkGameState {
   /** Portal B UV position (0-1). */
   portalBU?: number;
   portalBV?: number;
-  /** When true, any player can pause for all — set by host via set_allow_all_pause message. */
+  /** When true, any player can pause for all — defaults on, can be changed by host. */
   allowAllPlayersPause?: boolean;
   /** Session ID of the player who triggered the current pause (empty when not paused). */
   pausedById?: string;
@@ -427,7 +428,8 @@ export interface NetworkCallbacks {
    * Allows immediate routing to the correct screen (e.g. voting) without waiting
    * for the polling interval. (s44j-14)
    */
-  onPhaseSync?: (data: { phase: string; isPaused: boolean }) => void;
+  onPhaseSync?: (data: { phase: string; isPaused: boolean; pauseRevision?: number }) => void;
+  onPauseSync?: (data: { isPaused: boolean; pauseRevision: number; pausedById: string }) => void;
   /**
    * Fired when the host broadcasts updated lobby settings to all clients.
    * Non-host players use this to display read-only settings. (s44j-settings-16c)
@@ -756,10 +758,25 @@ export class NetworkClient {
     // Phase sync: server sends this on join when game is in voting/playing phase.
     // Allows the client to immediately route to the correct screen. (s44j-14)
     // isPaused added in s44j-21 so joining clients can show the pause overlay immediately.
-    this.room.onMessage('phase_sync', (data: { phase: string; isPaused?: boolean }) => {
-      netLog(`[Network] Received phase_sync: phase=${data.phase} isPaused=${data.isPaused}`);
-      this.callbacks.onPhaseSync?.({ phase: data.phase, isPaused: data.isPaused ?? false });
+    this.room.onMessage('phase_sync', (data: { phase: string; isPaused?: boolean; pauseRevision?: number }) => {
+      netLog(`[Network] Received phase_sync: phase=${data.phase} isPaused=${data.isPaused} pauseRevision=${data.pauseRevision}`);
+      this.callbacks.onPhaseSync?.({
+        phase: data.phase,
+        isPaused: data.isPaused ?? false,
+        pauseRevision: data.pauseRevision ?? 0,
+      });
       // Also schedule a state refresh so onStateChange runs with fresh state
+      this.scheduleStateChange();
+    });
+
+    this.room.onMessage('pause_sync', (data: { isPaused?: boolean; pauseRevision?: number; pausedById?: string }) => {
+      const pauseRevision = data.pauseRevision ?? 0;
+      netLog(`[Network] Received pause_sync: isPaused=${data.isPaused} pauseRevision=${pauseRevision}`);
+      this.callbacks.onPauseSync?.({
+        isPaused: data.isPaused ?? false,
+        pauseRevision,
+        pausedById: data.pausedById ?? '',
+      });
       this.scheduleStateChange();
     });
 
@@ -883,6 +900,7 @@ export class NetworkClient {
       gameOver: boolean;
       hostId: string;
       isPaused: boolean;
+      pauseRevision?: number;
       roomPhase: string;
       voteMap: Map<string, string>;
       votingCountdown: number;
@@ -952,6 +970,7 @@ export class NetworkClient {
       gameOver: s.gameOver,
       hostId: s.hostId,
       isPaused: s.isPaused,
+      pauseRevision: s.pauseRevision ?? 0,
       roomPhase: s.roomPhase || 'lobby',
       voteMap: s.voteMap || emptyMap,
       votingCountdown: s.votingCountdown ?? 0,
@@ -989,7 +1008,7 @@ export class NetworkClient {
       portalAV: s.portalAV ?? 0.25,
       portalBU: s.portalBU ?? 0.75,
       portalBV: s.portalBV ?? 0.75,
-      allowAllPlayersPause: s.allowAllPlayersPause ?? false,
+      allowAllPlayersPause: s.allowAllPlayersPause ?? true,
       pausedById: s.pausedById ?? '',
     };
   }

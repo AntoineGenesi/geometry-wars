@@ -44,6 +44,14 @@ function makeState(
 }
 
 describe('NetworkClient Black Hole field synchronization', () => {
+  it('defaults missing allowAllPlayersPause to enabled for legacy or partial state snapshots', () => {
+    const client = new NetworkClient();
+    const converted = (client as any).convertState(makeState());
+
+    expect(converted.allowAllPlayersPause).toBe(true);
+    expect(converted.pauseRevision).toBe(0);
+  });
+
   it('passes authoritative travelling bolt collections through without prediction or copying', () => {
     const bolts: NetworkBlackHoleBoltState[] = [{
       id: 'bhb1',

@@ -716,7 +716,7 @@ export function createQRCodeDisplay(
   `;
 
   const mobileHint = document.createElement('div');
-  mobileHint.textContent = 'Mobile-optimized view';
+  mobileHint.textContent = 'Same Wi-Fi/LAN as host PC';
   mobileHint.style.cssText = `
     color: #557777;
     font: 10px monospace;

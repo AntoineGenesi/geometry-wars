@@ -869,7 +869,7 @@ async function main() {
 
   // -- CameraController: orbit (middle mouse), zoom (scroll wheel), follow (same as single-player) --
   const cameraController = new CameraController(camera);
-  cameraController.setCameraDistance(20); // Match existing LAN camera distance
+  cameraController.setCameraDistance(15); // Match single-player desktop follow distance
   // Start zoomed in closer on mobile for better visibility of the player (3× closer than desktop, matching SP parity)
   if (mobile) {
     cameraController.setCameraDistance(5);
@@ -1568,6 +1568,7 @@ async function main() {
   const _localRenderLatestServerPos = new THREE.Vector3();
   const _localRenderVelocity = new THREE.Vector3();
   const _localRenderFrameTarget = new THREE.Vector3();
+  const _localRenderAuthoritativeSnapTarget = new THREE.Vector3();
   const _localRenderPrevTarget = new THREE.Vector3();
   const _localRenderPrevCameraPos = new THREE.Vector3();
   const _localRenderTelemetryTarget = new THREE.Vector3();
@@ -1923,7 +1924,9 @@ async function main() {
   // Key: player server ID, Value: lives count from last onStateChange call.
   const prevLivesMap = new Map<string, number>();
   let isPaused = false;
-  let allowAllPlayersPause = false;
+  let allowAllPlayersPause = true;
+  let lastAuthoritativePaused = false;
+  let lastPauseRevision = -1;
   let pausedByName = '';
   let isInLookMode = false;
   // Holds the startup config hash received from the server so onStartupConfig
@@ -3104,9 +3107,50 @@ async function main() {
       pauseMenu.show();
     } else {
       isInLookMode = false; // Reset look mode when game resumes
+      localMenuOpen = false;
+      localMenuEl.style.display = 'none';
       pauseMenu.hide();
       game.resume(); // Resync game clock to avoid massive dt spike on first frame after resume
     }
+  }
+
+  function publishPauseTelemetryState(): void {
+    if (!_netMainDebug) return;
+    const currentTelemetry = ((window as any).__GAME_TELEMETRY ?? {}) as Record<string, unknown>;
+    const networkTelemetry = ((currentTelemetry.network ?? {}) as Record<string, unknown>);
+    (window as any).__GAME_TELEMETRY = {
+      ...currentTelemetry,
+      isPaused,
+      pauseRevision: lastPauseRevision,
+      network: {
+        ...networkTelemetry,
+        roomPhase: currentRoomPhase,
+        isHost,
+        localPlayerId,
+      },
+    };
+  }
+
+  function syncAuthoritativePauseState(authoritativePaused: boolean, pauseRevision: number): void {
+    if (pauseRevision < lastPauseRevision) return;
+    if (authoritativePaused) {
+      if (!isPaused) {
+        showPauseOverlay(true);
+      }
+      updateStatusText(pausedByName ? `PAUSED by ${pausedByName}` : 'PAUSED');
+    } else if (lastAuthoritativePaused || isPaused || isInLookMode || pauseMenu.showingServerPause) {
+      showPauseOverlay(false);
+    }
+    if (!authoritativePaused) {
+      pausedByName = '';
+      if (currentRoomPhase === 'playing') {
+        const waveNumber = latestGameState?.waveNumber;
+        updateStatusText(Number.isFinite(waveNumber) ? `Wave ${waveNumber}` : 'PLAYING');
+      }
+    }
+    lastAuthoritativePaused = authoritativePaused;
+    lastPauseRevision = pauseRevision;
+    publishPauseTelemetryState();
   }
 
   // -----------------------------------------------------------------------
@@ -4303,7 +4347,7 @@ async function main() {
       //   Hard-snap was replaced with threshold+blend to eliminate rubber-banding and
       //   "direction inversion" bugs (S34b). The server position is RTT-delayed (~50ms
       //   behind client), so hard-snapping moved the player backward on every state update.
-      //   - Large error (>10% UV = respawn / round-start / genuine desync): hard snap
+      //   - Large error (world-space when available, UV fallback otherwise): hard snap
       //   - Small error (normal RTT drift): gentle 10% blend per state update
       //   Mesh position is NOT updated here; the render loop (onRender) handles it at 60Hz
       //   from the corrected surfaceU/V values.
@@ -4314,6 +4358,7 @@ async function main() {
       // Threshold: 0.1 UV ≈ 1 second of movement at PLAYER_SPEED (0.105 UV/s, updated S44b-09).
       // Normal RTT drift ≈ 0.005 UV (50ms * 0.105). Snap threshold is 20x RTT drift.
       const SERVER_SNAP_THRESHOLD_SQ = 0.1 * 0.1; // squared for cheap distance check
+      const SERVER_WORLD_SNAP_THRESHOLD_SQ = 3.0 * 3.0; // ~1s of world-space movement
       const SERVER_CORRECTION_BLEND = 0.1;         // 10% blend per 30Hz state update
       if (id === localPlayerId) {
         const prevAlive = playerAliveState.get(id) ?? true;
@@ -4388,10 +4433,24 @@ async function main() {
         const dv = _serverSnapV - player.surfaceV;
         const errSq = du * du + dv * dv;
 
-        if (justRespawned || isDeadNow || errSq > SERVER_SNAP_THRESHOLD_SQ) {
+        let worldErrSq = Infinity;
+        if (_hasServerWorldPos) {
+          const nx = netPlayer.nx ?? 0; const ny = netPlayer.ny ?? 1; const nz = netPlayer.nz ?? 0;
+          _localRenderAuthoritativeSnapTarget.set(
+            netPlayer.wx! + nx * LOCAL_PLAYER_RENDER_OFFSET,
+            netPlayer.wy! + ny * LOCAL_PLAYER_RENDER_OFFSET,
+            netPlayer.wz! + nz * LOCAL_PLAYER_RENDER_OFFSET,
+          );
+          worldErrSq = player.mesh.position.distanceToSquared(_localRenderAuthoritativeSnapTarget);
+        }
+        const hasLargeAuthoritativeCorrection = _hasServerWorldPos
+          ? worldErrSq > SERVER_WORLD_SNAP_THRESHOLD_SQ
+          : errSq > SERVER_SNAP_THRESHOLD_SQ;
+
+        if (justRespawned || isDeadNow || hasLargeAuthoritativeCorrection) {
           // Hard snap on: respawn (always snap to spawn location), death/dead state
           // (client prediction may have drifted the UV while dead), large discrepancy
-          // (round-start reset or genuine multi-second desync).
+          // (round-start reset, portal/teleport, or genuine multi-second desync).
           // s44f-06: Reset smoothed orientation so next frame snaps to new facing direction
           // instead of slurring from the pre-respawn orientation.
           _localPlayerQuatInitialized = false;
@@ -5931,7 +5990,7 @@ async function main() {
     }
 
     // Sync pause state from server
-    allowAllPlayersPause = state.allowAllPlayersPause ?? false;
+    allowAllPlayersPause = state.allowAllPlayersPause ?? true;
     if (state.pausedById && state.players) {
       const pauser = state.players.get(state.pausedById);
       pausedByName = pauser?.name ?? '';
@@ -5939,9 +5998,7 @@ async function main() {
       pausedByName = '';
     }
     pauseMenu.setAllowAllPlayersPause(allowAllPlayersPause);
-    if (state.isPaused !== isPaused) {
-      showPauseOverlay(state.isPaused);
-    }
+    syncAuthoritativePauseState(state.isPaused === true, state.pauseRevision ?? 0);
 
     // Show Resume button if host and timer is paused at game start
     const shouldShowResumeBtn = isHost && state.gameStarted && state.countdownPaused && state.roomPhase === 'playing';
@@ -6713,7 +6770,7 @@ async function main() {
         netMainLog(`[NetworkMain] startup_config cached (hash=${pendingStartupHash})`);
         pendingStartupHash = null;
       },
-      onPhaseSync: (data: { phase: string; isPaused: boolean }) => {
+      onPhaseSync: (data: { phase: string; isPaused: boolean; pauseRevision?: number }) => {
         // Server told us the current game phase on join. Hide lobby UI immediately
         // and let onStateChange (triggered by the phase_sync handler) show the
         // correct screen. Without this, lobby buttons flash briefly before voting
@@ -6727,10 +6784,17 @@ async function main() {
           modeSelectorDiv.style.display = 'none';
           // If the game is currently paused, show the pause overlay immediately so the
           // joining client sees the pause screen instead of a blank canvas. (s44j-21)
-          if (data.isPaused && !isPaused) {
-            showPauseOverlay(true);
-          }
+          syncAuthoritativePauseState(data.isPaused, data.pauseRevision ?? 0);
         }
+      },
+      onPauseSync: (data: { isPaused: boolean; pauseRevision: number; pausedById: string }) => {
+        if (data.pausedById && latestGameState?.players) {
+          const pauser = latestGameState.players.get(data.pausedById);
+          pausedByName = pauser?.name ?? pausedByName;
+        } else if (!data.isPaused) {
+          pausedByName = '';
+        }
+        syncAuthoritativePauseState(data.isPaused, data.pauseRevision);
       },
       onLobbySettings: (settings: GameSettings) => {
         // Non-host: server relayed the host's settings — update read-only display.

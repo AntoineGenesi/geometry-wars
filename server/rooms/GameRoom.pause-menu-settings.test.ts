@@ -353,6 +353,76 @@ describe('settings validation on apply', () => {
   });
 });
 
+describe('pause permission — default and validation mirror', () => {
+  interface PauseState {
+    hostId: string;
+    allowAllPlayersPause: boolean;
+    isPaused: boolean;
+    pauseRevision: number;
+    pausedById: string;
+  }
+
+  function handlePause(sessionId: string, state: PauseState, paused: boolean): void {
+    const isHost = sessionId === state.hostId;
+    if (!isHost && !state.allowAllPlayersPause) return;
+    state.isPaused = paused;
+    state.pauseRevision++;
+    state.pausedById = paused ? sessionId : '';
+  }
+
+  it('allows a joiner to pause when the default permission is enabled', () => {
+    const state: PauseState = {
+      hostId: 'host-123',
+      allowAllPlayersPause: true,
+      isPaused: false,
+      pauseRevision: 0,
+      pausedById: '',
+    };
+
+    handlePause('joiner-456', state, true);
+
+    expect(state.isPaused).toBe(true);
+    expect(state.pauseRevision).toBe(1);
+    expect(state.pausedById).toBe('joiner-456');
+  });
+
+  it('still rejects joiner pause when the host disables permission', () => {
+    const state: PauseState = {
+      hostId: 'host-123',
+      allowAllPlayersPause: false,
+      isPaused: false,
+      pauseRevision: 0,
+      pausedById: '',
+    };
+
+    handlePause('joiner-456', state, true);
+
+    expect(state.isPaused).toBe(false);
+    expect(state.pauseRevision).toBe(0);
+    expect(state.pausedById).toBe('');
+  });
+
+  it('always allows the host to pause or resume regardless of permission toggle', () => {
+    const state: PauseState = {
+      hostId: 'host-123',
+      allowAllPlayersPause: false,
+      isPaused: false,
+      pauseRevision: 0,
+      pausedById: '',
+    };
+
+    handlePause('host-123', state, true);
+    expect(state.isPaused).toBe(true);
+    expect(state.pauseRevision).toBe(1);
+    expect(state.pausedById).toBe('host-123');
+
+    handlePause('host-123', state, false);
+    expect(state.isPaused).toBe(false);
+    expect(state.pauseRevision).toBe(2);
+    expect(state.pausedById).toBe('');
+  });
+});
+
 // ---------------------------------------------------------------------------
 // Regression tests for s44k-04: Server Settings Not Applying in MP
 // ---------------------------------------------------------------------------

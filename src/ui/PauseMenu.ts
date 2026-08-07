@@ -196,13 +196,13 @@ export class PauseMenu {
               <span class="btn-icon">&#x2699;</span>
               <span>SERVER SETTINGS</span>
             </button>
+          </div>
+
+          <div class="pause-stats-container">
             <label class="allow-pause-toggle hidden">
               <input type="checkbox" class="allow-pause-checkbox" />
               <span>Allow all players to pause</span>
             </label>
-          </div>
-
-          <div class="pause-stats-container">
             <div class="pause-qr-section hidden">
               <div class="stats-section-title">${t('pauseMenu.stats.joinThisGame')}</div>
               <div class="stats-qr-content"></div>
@@ -428,7 +428,7 @@ export class PauseMenu {
         display: flex;
         align-items: center;
         gap: 8px;
-        margin-top: 4px;
+        margin: 0 0 10px;
         padding: 6px 10px;
         background: rgba(255,255,255,0.05);
         border-radius: 4px;
@@ -436,6 +436,8 @@ export class PauseMenu {
         font-size: 11px;
         cursor: pointer;
         user-select: none;
+        width: 100%;
+        box-sizing: border-box;
       }
 
       #pause-menu .allow-pause-toggle.hidden {
@@ -1125,6 +1127,14 @@ export class PauseMenu {
    */
   get paused(): boolean {
     return this.isPaused;
+  }
+
+  get visible(): boolean {
+    return !this.container.classList.contains('hidden');
+  }
+
+  get showingServerPause(): boolean {
+    return this.visible && this.serverPaused;
   }
 
   /**

@@ -1586,9 +1586,15 @@ export class GameRoom extends Room<GameState> {
       const isHost = client.sessionId === this.state.hostId;
       if (!isHost && !this.state.allowAllPlayersPause) return;
       this.state.isPaused = data.paused;
+      this.state.pauseRevision++;
       this.state.pausedById = data.paused ? client.sessionId : '';
+      this.broadcast('pause_sync', {
+        isPaused: this.state.isPaused,
+        pauseRevision: this.state.pauseRevision,
+        pausedById: this.state.pausedById,
+      });
       const playerName = this.state.players.get(client.sessionId)?.name ?? 'Unknown';
-      this.logger.log(`[GameRoom] Game ${data.paused ? 'paused' : 'resumed'} by ${playerName}`);
+      this.logger.log(`[GameRoom] Game ${data.paused ? 'paused' : 'resumed'} by ${playerName} (pauseRevision=${this.state.pauseRevision})`);
     });
 
     this.onMessage('set_allow_all_pause', (client, data: { allowed: boolean }) => {
@@ -2022,7 +2028,11 @@ export class GameRoom extends Room<GameState> {
     // Also sends isPaused so a mobile client joining a paused game shows the pause screen
     // immediately instead of a blank canvas. (s44j-21)
     if (this.state.roomPhase !== 'lobby') {
-      client.send('phase_sync', { phase: this.state.roomPhase, isPaused: this.state.isPaused });
+      client.send('phase_sync', {
+        phase: this.state.roomPhase,
+        isPaused: this.state.isPaused,
+        pauseRevision: this.state.pauseRevision,
+      });
     }
 
     // Initialize DDA performance window for new player (reconnects restore from savedRecord)
