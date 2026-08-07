@@ -497,7 +497,7 @@ export class TestHarnessAPI {
     } else {
       playerWalker.position.copy(worldPos);
     }
-    player.mesh.position.copy(playerWalker.position);
+    player.syncMeshToSurface(playerWalker.position, playerWalker.normal);
     const frame = playerWalker.getTangentFrame();
     this.ctx.cameraController.snapToFrame(playerWalker.position, playerWalker.normal, frame);
   }

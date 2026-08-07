@@ -829,7 +829,7 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
   const playerWalker = new MeshWalker(meshSurface, initialPoint.position, PLAYER_MOVE_SPEED * mapSizeScaleFactor);
 
   // Sync player position from walker
-  player.mesh.position.copy(playerWalker.position);
+  player.syncMeshToSurface(playerWalker.position, playerWalker.normal);
   // Bridge: set initial UV from world position for enemies/geoms that still use UV
   const initialUV = surface.worldToSurface(playerWalker.position);
   player.surfaceU = initialUV.u;
@@ -1404,7 +1404,7 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
         scoreManager.awardKill(enemy.scoreValue, enemyType);
         // Show points value when enemy is killed by special weapon
         scorePopups.spawnScore(enemy.position.clone(), enemy.scoreValue);
-        screenShake.shake(0.15, 0.15);
+        screenShake.shakeKill(0.15, 0.15);
         getSoundEngine().play('enemyDeath', { pitch: 0.8 + Math.random() * 0.4 });
         killLog.addKill(enemyType, color.getHex());
         playerLevel.addKill();
@@ -1584,7 +1584,7 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
       'bottom:18px',
       'left:50%',
       'transform:translateX(-50%)',
-      'display:flex',
+      'display:none',
       'flex-direction:column',
       'align-items:center',
       'gap:3px',
@@ -1628,6 +1628,7 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
 
     return {
       update(health: number, maxHealth: number, shields: number) {
+        container.style.display = 'none';
         const pct = Math.max(0, Math.min(100, (health / maxHealth) * 100));
         barFill.style.width = `${pct}%`;
         // Colour: green → yellow → red as HP drops
@@ -2476,6 +2477,7 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
 
   // -- Player death callback --
   player.onDeath = (position: THREE.Vector3) => {
+    spHealthHUD.update(player.health, player.maxHealth, player.shieldCount);
     particles.playerDeath(position);
     screenShake.shake(0.5, 0.4);
     scoreManager.onPlayerDeath();

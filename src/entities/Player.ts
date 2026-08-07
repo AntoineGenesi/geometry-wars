@@ -37,6 +37,7 @@ const ROTATION_SMOOTHING = 0.4; // Higher = faster rotation (0-1) - increased fo
 
 // Neon cyan colour.
 const SHIP_COLOR = 0x00ffff;
+export const PLAYER_SURFACE_CLEARANCE = 0.44;
 
 // ---------------------------------------------------------------------------
 // Player entity
@@ -275,7 +276,7 @@ export class Player {
       this.surfaceV,
     );
 
-    this.mesh.position.copy(position);
+    this.syncMeshToSurface(position, normal);
 
     // Build a rotation matrix from the surface frame.
     // tangent   = local X
@@ -298,6 +299,10 @@ export class Player {
     }
 
     this.mesh.quaternion.copy(this.smoothedQuaternion);
+  }
+
+  syncMeshToSurface(position: THREE.Vector3, normal: THREE.Vector3): void {
+    this.mesh.position.copy(position).addScaledVector(normal, PLAYER_SURFACE_CLEARANCE);
   }
 
   /**

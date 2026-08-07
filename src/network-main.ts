@@ -122,6 +122,7 @@ import {
 import { PlayerNameLabels, PlayerLabelData } from './ui/PlayerNameLabel';
 import { Minimap } from './ui/Minimap';
 import { GameOverScreen, PvpPlayerStat, PvpvePlayerStat } from './ui/GameOverScreen';
+import { shouldShowBottomPlayerHealthHud } from './ui/PlayerHealthHudVisibility';
 import { VotingScreen } from './ui/VotingScreen';
 import { PauseMenu, PauseMenuGameData } from './ui/PauseMenu';
 import { UIHelpers } from './ui/UIHelpers';
@@ -4105,8 +4106,10 @@ async function main() {
       latestPvpEnabled = newPvpEnabled;
       nameLabels.setShowHealthBars(latestPvpEnabled);
     }
-    // Health HUD shows in all modes (enemies deal HP damage in waves/pvpve too)
-    pvpHudContainer.style.display = state.gameStarted ? 'flex' : 'none';
+    pvpHudContainer.style.display = shouldShowBottomPlayerHealthHud({
+      gameStarted: state.gameStarted,
+      pvpEnabled: latestPvpEnabled,
+    }) ? 'flex' : 'none';
 
     // Update game mode indicator
     if (state.gameMode && latestGameMode) {
@@ -4856,7 +4859,7 @@ async function main() {
         const enemyType = enemy.baseTypeName || enemy.constructor.name.toLowerCase();
         const color = ENEMY_COLORS[enemyType] ?? new THREE.Color(0xff0000);
         particles.enemyDeath(enemy.position, color);
-        screenShake.shake(0.15, 0.15);
+        screenShake.shakeKill(0.15, 0.15);
         // Shockwave only for boss-tier enemies (not every regular enemy death)
         if (enemy.baseTypeName.startsWith('boss_')) {
           shockwaveEffect.spawnShockwave(enemy.position, 0.04, 0.7, 0.6);

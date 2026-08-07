@@ -214,7 +214,7 @@ export class GameLoop {
           if (projected) {
             ctx.playerWalker.teleportTo(projected.point, projected.faceIndex, projected.normal);
           }
-          ctx.player.mesh.position.copy(ctx.playerWalker.position);
+          ctx.player.syncMeshToSurface(ctx.playerWalker.position, ctx.playerWalker.normal);
           // s44r6-05: Reset camera frame before snapping to respawn position.
           // On pill/torus/peanut, respawn lands on the opposite side of the surface where
           // the outward normal points in the opposite direction from the pre-death normal.
@@ -313,7 +313,7 @@ export class GameLoop {
       }
 
       // Sync player mesh position from walker
-      ctx.player.mesh.position.copy(ctx.playerWalker.position);
+      ctx.player.syncMeshToSurface(ctx.playerWalker.position, ctx.playerWalker.normal);
 
       // Bridge: convert world position to UV for enemies/geoms that still use UV
       // CRITICAL: worldToSurface expects local coordinates, so apply inverse rotation first
@@ -841,7 +841,7 @@ export class GameLoop {
             if (projected) {
               ctx.playerWalker.teleportTo(projected.point, projected.faceIndex, projected.normal);
             }
-            ctx.player.mesh.position.copy(ctx.playerWalker.position);
+            ctx.player.syncMeshToSurface(ctx.playerWalker.position, ctx.playerWalker.normal);
 
             // Grant brief invincibility after teleport
             ctx.player.grantTeleportInvincibility();

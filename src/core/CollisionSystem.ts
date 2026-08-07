@@ -262,7 +262,7 @@ export class CollisionSystem {
             // Scale screen shake intensity based on enemy size: small enemies minimal jitter, large enemies pronounced
             const jitterIntensity = Math.max(0.05, Math.min(0.35, enemy.radius * 0.5));
             const jitterDuration = 0.15;
-            screenShake.shake(jitterIntensity, jitterDuration);
+            screenShake.shakeKill(jitterIntensity, jitterDuration);
             getSoundEngine().play('enemyDeath', { pitch: 0.8 + Math.random() * 0.4 });
             onKillLog?.(enemyType, color.getHex());
 

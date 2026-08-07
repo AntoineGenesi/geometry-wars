@@ -239,6 +239,7 @@ export class GameTelemetryExporter {
         multipliedKillScore: ctx.scoreManager.getMultipliedKillScore(),
         alive: player.alive,
         collisionRadius: playerRadius,
+        visualClearance: pPos.clone().sub(playerWalker.position).dot(playerWalker.normal),
       },
       enemies: enemyData,
       bullets: bulletData,
@@ -303,6 +304,9 @@ export class GameTelemetryExporter {
       },
       isPaused: state.isPaused,
       isGameOver: state.isGameOver,
+      screenShake: typeof (ctx.screenShake as any).getDebugState === 'function'
+        ? (ctx.screenShake as any).getDebugState()
+        : null,
     };
   }
 }
