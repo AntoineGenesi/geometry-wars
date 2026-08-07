@@ -20,6 +20,8 @@ import { SoundEngine } from '../audio/SoundEngine';
 import { BrailleAnimator } from './BrailleAnimator';
 import type { BraillePattern } from './BrailleAnimator';
 import {
+  getAnimationForStreak,
+  getAsciiFrameForStreak,
   getStreakName,
   getStreakTier,
   STREAK_MILESTONES,
@@ -34,23 +36,6 @@ const VISIBLE_DURATION = 2.5;
 /** Seconds to fade from full opacity to zero. */
 const FADE_DURATION = 1.0;
 
-/**
- * Map streak tier minStreak → Braille animation pattern.
- * Tiers are ordered ascending (1, 6, 11, 16, 21, 31, 51, 76, 101, 151).
- */
-const TIER_PATTERNS: BraillePattern[] = [
-  'breathing',      // tier 0 (minStreak 1)
-  'wave',           // tier 1 (minStreak 6)
-  'columns',        // tier 2 (minStreak 11)
-  'orbit',          // tier 3 (minStreak 16)
-  'vortex',         // tier 4 (minStreak 21)
-  'spiral',         // tier 5 (minStreak 31)
-  'fireworks',      // tier 6 (minStreak 51)
-  'helix',          // tier 7 (minStreak 76)
-  'ripple',         // tier 8 (minStreak 101)
-  'static',         // tier 9 (minStreak 151)
-];
-
 // ---------------------------------------------------------------------------
 // EnemyKillStreakAnnouncer
 // ---------------------------------------------------------------------------
@@ -59,6 +44,7 @@ export class EnemyKillStreakAnnouncer {
   private readonly styleEl: HTMLStyleElement;
   private readonly container: HTMLDivElement;
   private readonly brailleEl: HTMLPreElement;
+  private readonly asciiEl: HTMLDivElement;
   private readonly nameEl: HTMLDivElement;
   private readonly countEl: HTMLDivElement;
 
@@ -66,6 +52,10 @@ export class EnemyKillStreakAnnouncer {
   private brailleAnimator: BrailleAnimator;
 
   private _streakCount = 0;
+  private visible = true;
+  private currentAnnouncementCount = 0;
+  private asciiFrameIndex = 0;
+  private asciiFrameAccumulator = 0;
   /** Time remaining on the current announcement. Negative = idle. */
   private timeRemaining = -1;
 
@@ -95,6 +85,17 @@ export class EnemyKillStreakAnnouncer {
         color: rgba(255,255,255,0.25);
         margin-bottom: 6px;
         letter-spacing: 0;
+        white-space: pre;
+      }
+
+      #enemy-kill-streak-announcer .eksa-ascii {
+        font-size: 16px;
+        font-weight: 900;
+        font-family: 'Courier New', monospace;
+        letter-spacing: 2px;
+        color: #ffffff;
+        text-shadow: 0 0 8px #ffffff;
+        margin-bottom: 3px;
         white-space: pre;
       }
 
@@ -137,6 +138,9 @@ export class EnemyKillStreakAnnouncer {
     this.brailleEl = document.createElement('pre');
     this.brailleEl.className = 'eksa-braille';
 
+    this.asciiEl = document.createElement('div');
+    this.asciiEl.className = 'eksa-ascii';
+
     this.nameEl = document.createElement('div');
     this.nameEl.className = 'eksa-name';
 
@@ -144,6 +148,7 @@ export class EnemyKillStreakAnnouncer {
     this.countEl.className = 'eksa-count';
 
     this.container.appendChild(this.brailleEl);
+    this.container.appendChild(this.asciiEl);
     this.container.appendChild(this.nameEl);
     this.container.appendChild(this.countEl);
     document.body.appendChild(this.container);
@@ -168,7 +173,7 @@ export class EnemyKillStreakAnnouncer {
   /** Call on each enemy kill. Shows announcement at milestone counts. */
   recordKill(): void {
     this._streakCount++;
-    if (STREAK_MILESTONES.includes(this._streakCount)) {
+    if (this.visible && STREAK_MILESTONES.includes(this._streakCount)) {
       this._announce(this._streakCount);
     }
   }
@@ -181,9 +186,15 @@ export class EnemyKillStreakAnnouncer {
 
   /** Advance fade-out timer. Call once per frame with delta time in seconds. */
   update(dt: number): void {
-    if (this.timeRemaining < 0) return;
+    if (!this.visible || this.timeRemaining < 0) return;
 
     this.timeRemaining -= dt;
+    this.asciiFrameAccumulator += dt;
+    if (this.currentAnnouncementCount > 0 && this.asciiFrameAccumulator >= 0.12) {
+      this.asciiFrameAccumulator = 0;
+      this.asciiFrameIndex++;
+      this.asciiEl.textContent = getAsciiFrameForStreak(this.currentAnnouncementCount, this.asciiFrameIndex);
+    }
 
     if (this.timeRemaining <= 0) {
       this._hide();
@@ -200,6 +211,15 @@ export class EnemyKillStreakAnnouncer {
     this.styleEl.remove();
   }
 
+  setVisible(visible: boolean): void {
+    this.visible = visible;
+    if (!visible) this._hide();
+  }
+
+  isVisible(): boolean {
+    return this.visible;
+  }
+
   // ---------------------------------------------------------------------------
   // Internals
   // ---------------------------------------------------------------------------
@@ -211,10 +231,16 @@ export class EnemyKillStreakAnnouncer {
     }
 
     const tier = getStreakTier(count);
-    const tiers = this._getTierIndex(tier.minStreak);
-    const pattern = TIER_PATTERNS[Math.min(tiers, TIER_PATTERNS.length - 1)];
+    const animation = getAnimationForStreak(count);
+    const pattern = animation.pattern as BraillePattern;
+    this.currentAnnouncementCount = count;
+    this.asciiFrameIndex = 0;
+    this.asciiFrameAccumulator = 0;
 
     // Update text content
+    this.asciiEl.textContent = getAsciiFrameForStreak(count, 0);
+    this.asciiEl.style.color = tier.color;
+    this.asciiEl.style.textShadow = `0 0 8px ${tier.glowColor}, 0 0 16px ${tier.glowColor}`;
     this.nameEl.textContent = getStreakName(count);
     this.nameEl.style.color = tier.color;
     this.nameEl.style.textShadow = [
@@ -253,16 +279,9 @@ export class EnemyKillStreakAnnouncer {
     this.container.style.display = 'none';
     this.container.classList.remove('eksa-active');
     this.brailleAnimator.stop();
+    this.currentAnnouncementCount = 0;
+    this.asciiFrameAccumulator = 0;
     this.timeRemaining = -1;
   }
 
-  /**
-   * Returns the index of the tier whose minStreak matches the given value.
-   * Used to pick a Braille pattern from TIER_PATTERNS.
-   */
-  private _getTierIndex(minStreak: number): number {
-    const TIER_MIN_STREAKS = [1, 6, 11, 16, 21, 31, 51, 76, 101, 151];
-    const idx = TIER_MIN_STREAKS.indexOf(minStreak);
-    return idx >= 0 ? idx : 0;
-  }
 }

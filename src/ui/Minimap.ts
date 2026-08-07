@@ -23,6 +23,7 @@ export class Minimap {
 
   constructor() {
     this.canvas = document.createElement('canvas');
+    this.canvas.id = 'minimap';
     this.canvas.width = this.size;
     this.canvas.height = this.size;
     this.canvas.style.cssText = `
@@ -118,6 +119,10 @@ export class Minimap {
   setVisible(visible: boolean): void {
     this.visible = visible;
     this.canvas.style.display = visible ? 'block' : 'none';
+  }
+
+  isVisible(): boolean {
+    return this.visible;
   }
 
   dispose(): void {

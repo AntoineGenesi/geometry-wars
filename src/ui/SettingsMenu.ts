@@ -28,6 +28,11 @@ import {
   saveGridDensity,
   type GridDensityPreset,
 } from '../core/MobileGridConfig';
+import {
+  loadHUDVisibilitySettings,
+  saveHUDVisibilitySettings,
+  type HUDVisibilitySettings,
+} from './HUDVisibilitySettings';
 
 // ---------------------------------------------------------------------------
 // Exported settings interfaces
@@ -422,6 +427,8 @@ export class SettingsMenu {
   private static globalVisualStyleChangeCallback: ((preset: import('./VisualPlayground').VisualPreset | null) => void) | null = null;
   /** Global debug settings change callback -- set once, called by ANY SettingsMenu instance. */
   private static globalDebugChangeCallback: ((settings: DebugSettings) => void) | null = null;
+  /** Global HUD visibility change callback -- set once, called by ANY SettingsMenu instance. */
+  private static globalHUDVisibilityChangeCallback: ((settings: HUDVisibilitySettings) => void) | null = null;
 
   private container: HTMLDivElement;
   private styleElement: HTMLStyleElement | null = null;
@@ -430,12 +437,14 @@ export class SettingsMenu {
   private onAudioChangeCallback: ((settings: AudioSettings) => void) | null = null;
   private onDebugChangeCallback: ((settings: DebugSettings) => void) | null = null;
   private onDDAChangeCallback: ((enabled: boolean) => void) | null = null;
+  private onHUDVisibilityChangeCallback: ((settings: HUDVisibilitySettings) => void) | null = null;
   private onVisualStyleChangeCallback: ((preset: import('./VisualPlayground').VisualPreset | null) => void) | null = null;
 
   private activeTab: TabName = 'gpu';
   private graphicsSettings: GraphicsSettings;
   private audioSettings: AudioSettings;
   private debugSettings: DebugSettings;
+  private hudVisibilitySettings: HUDVisibilitySettings;
 
   // External data injected before show()
   private gpuReport: GPUCapabilityReport | null = null;
@@ -455,6 +464,7 @@ export class SettingsMenu {
     this.graphicsSettings = loadGraphicsSettings();
     this.audioSettings = loadAudioSettings();
     this.debugSettings = loadDebugSettings();
+    this.hudVisibilitySettings = loadHUDVisibilitySettings();
     this.ddaSettings = loadDDASettings();
 
     this.container = document.createElement('div');
@@ -502,6 +512,11 @@ export class SettingsMenu {
     SettingsMenu.globalDebugChangeCallback = callback;
   }
 
+  /** Static setter for HUD visibility changes from any SettingsMenu instance. */
+  static setGlobalHUDVisibilityChangeCallback(callback: (settings: HUDVisibilitySettings) => void): void {
+    SettingsMenu.globalHUDVisibilityChangeCallback = callback;
+  }
+
   /** Set a function that returns live perf data each tick. */
   setPerfDataProvider(provider: () => { fps: number; drawCalls: number; entityCount: number; memoryMB: number }): void {
     this.perfDataProvider = provider;
@@ -531,6 +546,10 @@ export class SettingsMenu {
   /** Register callback for DDA toggle changes. */
   onDDAChange(callback: (enabled: boolean) => void): void {
     this.onDDAChangeCallback = callback;
+  }
+
+  onHUDVisibilityChange(callback: (settings: HUDVisibilitySettings) => void): void {
+    this.onHUDVisibilityChangeCallback = callback;
   }
 
   /** Register callback for visual style changes. Receives the selected preset, or null if reset to default. */
@@ -576,6 +595,7 @@ export class SettingsMenu {
     this.onAudioChangeCallback = null;
     this.onDebugChangeCallback = null;
     this.onDDAChangeCallback = null;
+    this.onHUDVisibilityChangeCallback = null;
     this.onVisualStyleChangeCallback = null;
     this.container.remove();
     if (this.styleElement) {
@@ -593,6 +613,10 @@ export class SettingsMenu {
 
   getDebugSettings(): DebugSettings {
     return { ...this.debugSettings };
+  }
+
+  getHUDVisibilitySettings(): HUDVisibilitySettings {
+    return { ...this.hudVisibilitySettings };
   }
 
   // -----------------------------------------------------------------------
@@ -1485,6 +1509,7 @@ export class SettingsMenu {
   // ---- Gameplay Tab ----
 
   private renderGameplayTab(): string {
+    const h = this.hudVisibilitySettings;
     return `
       <div class="section-heading">${t('settings.gameplay.difficulty')}</div>
       <div class="setting-row">
@@ -1493,6 +1518,27 @@ export class SettingsMenu {
       </div>
       <div style="color:#668888;font-size:12px;margin-top:4px;line-height:1.5;">
         ${t('settings.gameplay.ddaHint')}
+      </div>
+
+      <div class="section-heading">HUD Visibility</div>
+      <div class="setting-row">
+        <span class="setting-label">Minimap</span>
+        <div class="toggle ${h.minimap ? 'on' : ''}" id="toggle-hud-minimap" data-setting="hudMinimap"></div>
+      </div>
+      <div class="setting-row">
+        <span class="setting-label">Per-Type Kill Streaks</span>
+        <div class="toggle ${h.killLog ? 'on' : ''}" id="toggle-hud-kill-log" data-setting="hudKillLog"></div>
+      </div>
+      <div class="setting-row">
+        <span class="setting-label">Total Kills</span>
+        <div class="toggle ${h.totalKillCounter ? 'on' : ''}" id="toggle-hud-total-kills" data-setting="hudTotalKills"></div>
+      </div>
+      <div class="setting-row">
+        <span class="setting-label">Enemy Streak Announcements</span>
+        <div class="toggle ${h.enemyStreakAnnouncements ? 'on' : ''}" id="toggle-hud-enemy-streaks" data-setting="hudEnemyStreaks"></div>
+      </div>
+      <div style="color:#668888;font-size:12px;margin-top:4px;line-height:1.5;">
+        These settings hide or show live HUD overlays in single-player and LAN where the widget exists. Mobile still keeps its existing uncluttered defaults.
       </div>
     `;
   }
@@ -1730,6 +1776,19 @@ export class SettingsMenu {
       saveDDASettings(this.ddaSettings);
       this.onDDAChangeCallback?.(on);
     });
+
+    this.attachToggle('toggle-hud-minimap', (on) => {
+      this.saveAndNotifyHUDVisibility({ ...this.hudVisibilitySettings, minimap: on });
+    });
+    this.attachToggle('toggle-hud-kill-log', (on) => {
+      this.saveAndNotifyHUDVisibility({ ...this.hudVisibilitySettings, killLog: on });
+    });
+    this.attachToggle('toggle-hud-total-kills', (on) => {
+      this.saveAndNotifyHUDVisibility({ ...this.hudVisibilitySettings, totalKillCounter: on });
+    });
+    this.attachToggle('toggle-hud-enemy-streaks', (on) => {
+      this.saveAndNotifyHUDVisibility({ ...this.hudVisibilitySettings, enemyStreakAnnouncements: on });
+    });
   }
 
   private attachAudioListeners(): void {
@@ -1804,6 +1863,14 @@ export class SettingsMenu {
   private saveAndNotifyAudio(): void {
     saveAudioSettings(this.audioSettings);
     this.onAudioChangeCallback?.(this.getAudioSettings());
+  }
+
+  private saveAndNotifyHUDVisibility(settings: HUDVisibilitySettings): void {
+    this.hudVisibilitySettings = { ...settings };
+    saveHUDVisibilitySettings(this.hudVisibilitySettings);
+    const next = this.getHUDVisibilitySettings();
+    this.onHUDVisibilityChangeCallback?.(next);
+    SettingsMenu.globalHUDVisibilityChangeCallback?.(next);
   }
 
   private escapeHtml(str: string): string {

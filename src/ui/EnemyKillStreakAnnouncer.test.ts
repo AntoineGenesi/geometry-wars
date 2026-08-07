@@ -11,15 +11,29 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 // Mock BrailleAnimator (avoids requestAnimationFrame)
 // ---------------------------------------------------------------------------
 
+const brailleMock = vi.hoisted(() => ({
+  instances: [] as Array<{
+    start: ReturnType<typeof vi.fn>;
+    stop: ReturnType<typeof vi.fn>;
+    dispose: ReturnType<typeof vi.fn>;
+    setPattern: ReturnType<typeof vi.fn>;
+  }>,
+}));
+
 vi.mock('./BrailleAnimator', () => {
   class BrailleAnimator {
     start = vi.fn();
     stop = vi.fn();
     dispose = vi.fn();
     setPattern = vi.fn();
-    constructor(_container: unknown, _opts?: unknown) {}
+    constructor(_container: unknown, _opts?: unknown) {
+      brailleMock.instances.push(this);
+    }
   }
-  return { BrailleAnimator, ALL_PATTERNS: [] };
+  return {
+    BrailleAnimator,
+    ALL_PATTERNS: ['pulse', 'wave', 'orbit', 'snake', 'cascade', 'helix'],
+  };
 });
 
 import { EnemyKillStreakAnnouncer } from './EnemyKillStreakAnnouncer';
@@ -122,6 +136,7 @@ describe('EnemyKillStreakAnnouncer', () => {
 
   beforeEach(() => {
     setupDOMMock();
+    brailleMock.instances.length = 0;
     sound = makeSoundStub();
     announcer = new EnemyKillStreakAnnouncer(sound);
     // Register the container by id (it's appended to body in constructor)
@@ -188,6 +203,36 @@ describe('EnemyKillStreakAnnouncer', () => {
     for (let i = 0; i < 7; i++) announcer.recordKill();
     // Milestones hit: 1, 2, 3, 4, 5, 7 → 6 calls
     expect(sound.play).toHaveBeenCalledTimes(6);
+  });
+
+  it('uses killStreakNames animation mapping for the visible Braille pattern', () => {
+    for (let i = 0; i < 10; i++) announcer.recordKill();
+
+    const animator = brailleMock.instances[0];
+    expect(animator.setPattern).toHaveBeenLastCalledWith('wave');
+  });
+
+  it('renders and advances ASCII streak frames while the announcement is active', () => {
+    announcer.recordKill();
+    const container = bodyChildren.find(el => el.id === 'enemy-kill-streak-announcer')!;
+    const asciiEl = container.children.find(el => el.className === 'eksa-ascii');
+    const before = asciiEl?.textContent;
+
+    announcer.update(0.13);
+
+    expect(before?.length).toBeGreaterThan(0);
+    expect(asciiEl?.textContent).not.toBe(before);
+  });
+
+  it('setVisible(false) suppresses announcements without resetting the streak counter', () => {
+    announcer.setVisible(false);
+
+    announcer.recordKill();
+
+    const container = bodyChildren.find(el => el.id === 'enemy-kill-streak-announcer');
+    expect(announcer.streakCount).toBe(1);
+    expect(container?.style['display']).not.toBe('block');
+    expect(sound.play).not.toHaveBeenCalled();
   });
 
   // ── resetStreak after 50 kills → next kill triggers streak=1 ─────────────

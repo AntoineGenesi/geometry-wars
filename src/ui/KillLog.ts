@@ -54,6 +54,7 @@ export class KillLog {
   private container: HTMLDivElement;
   private entries: KillEntry[] = [];
   private styleEl: HTMLStyleElement;
+  private visible = true;
 
   /** Optional callback fired on every kill (type, color). */
   onKill: ((enemyType: string, color: number) => void) | null = null;
@@ -217,6 +218,8 @@ export class KillLog {
    * Call once per frame with the delta time in seconds.
    */
   update(dt: number): void {
+    if (!this.visible) return;
+
     for (let i = this.entries.length - 1; i >= 0; i--) {
       const entry = this.entries[i];
       entry.age += dt;
@@ -248,6 +251,15 @@ export class KillLog {
    */
   getEntries(): ReadonlyArray<{ type: string; count: number; age: number }> {
     return this.entries.map(e => ({ type: e.type, count: e.count, age: e.age }));
+  }
+
+  setVisible(visible: boolean): void {
+    this.visible = visible;
+    this.container.style.display = visible ? 'flex' : 'none';
+  }
+
+  isVisible(): boolean {
+    return this.visible;
   }
 
   /**

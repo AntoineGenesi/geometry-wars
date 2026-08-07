@@ -139,6 +139,7 @@ import {
   loadDebugSettings,
   loadGraphicsSettings,
 } from './ui/SettingsMenu';
+import { loadHUDVisibilitySettings } from './ui/HUDVisibilitySettings';
 import { VisualPlayground } from './ui/VisualPlayground';
 import { loadVisualStyle, loadVisualMode, saveVisualMode, getVisualModeFeaturedPreset } from './ui/VisualStyleSettings';
 import { applyVisualPresetToLiveGame, getAdjustedBloomStrength } from './ui/VisualStyleApplication';
@@ -1329,11 +1330,14 @@ async function main() {
   // Performance logger for post-game score graph + analytics panel
   let mpPerfLogger = new PerformanceLogger('mp');
   const analyticsPanel = new AnalyticsPanel();
+  const hudVisibilitySettings = loadHUDVisibilitySettings();
 
   // Kill log + total kill counter (same as co-op / single player)
   const killLog = new KillLog();
   const totalKillCounter = new TotalKillCounter();
   killLog.onKill = (type, color) => totalKillCounter.addKill(type, color);
+  killLog.setVisible(hudVisibilitySettings.killLog);
+  totalKillCounter.setVisible(hudVisibilitySettings.totalKillCounter && !mobile);
 
   // PvP kill feed — top-right corner, shows "EnemyType → PlayerName" on player death
   const killFeed = new KillFeed();
@@ -1361,9 +1365,7 @@ async function main() {
 
   // Minimap (same as single-player — shows local player, enemies, geoms)
   const minimap = new Minimap();
-  if (mobile) {
-    minimap.setVisible(false);
-  }
+  minimap.setVisible(hudVisibilitySettings.minimap && !mobile);
 
   // -- Player tracking --
   // Maps server player ID -> real Player instance (same class as single player)
@@ -1397,6 +1399,13 @@ async function main() {
   killStreakAnnouncer.preloadVoice();
   // -- EnemyKillStreakAnnouncer: consecutive enemy kills overlay (client-local, MP) --
   const enemyStreakAnnouncer = new EnemyKillStreakAnnouncer(sound);
+  enemyStreakAnnouncer.setVisible(hudVisibilitySettings.enemyStreakAnnouncements);
+  SettingsMenu.setGlobalHUDVisibilityChangeCallback((settings) => {
+    minimap.setVisible(settings.minimap && !mobile);
+    killLog.setVisible(settings.killLog);
+    totalKillCounter.setVisible(settings.totalKillCounter && !mobile);
+    enemyStreakAnnouncer.setVisible(settings.enemyStreakAnnouncements);
+  });
 
   // -- PvPvE leaderboard: shows P/E/Total kill columns for all players --
   // Only visible in pvpve mode; updated on each state change.

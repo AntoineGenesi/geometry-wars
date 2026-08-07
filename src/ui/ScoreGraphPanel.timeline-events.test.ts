@@ -3,6 +3,7 @@ import type { GameEvent } from '../core/PerformanceLogger';
 import {
   filterScoreGraphEvents,
   getScoreGraphEventLabel,
+  getVisibleKillTimeline,
 } from './ScoreGraphPanel';
 
 describe('ScoreGraphPanel timeline event semantics', () => {
@@ -66,5 +67,42 @@ describe('ScoreGraphPanel timeline event semantics', () => {
         streakCount: 1,
       },
     })).toBe('Host defeated Join');
+  });
+});
+
+describe('ScoreGraphPanel kills-by-type visibility', () => {
+  const timeline = {
+    times: [1, 2, 3],
+    types: ['wanderer', 'spinner', 'titan_grunt'],
+    series: [
+      [1, 2, 3],
+      [0, 1, 1],
+      [0, 0, 2],
+    ],
+  };
+
+  it('keeps exact killed type labels while excluding hidden series from the visible timeline', () => {
+    const visible = getVisibleKillTimeline(timeline, new Set(['spinner']));
+
+    expect(visible.types).toEqual(['wanderer', 'titan_grunt']);
+    expect(visible.hiddenTypes).toEqual(['spinner']);
+    expect(visible.originalIndices).toEqual([0, 2]);
+    expect(visible.types).not.toContain('other');
+    expect(visible.series).toEqual([
+      [1, 2, 3],
+      [0, 0, 2],
+    ]);
+  });
+
+  it('allows an all-hidden visible timeline for fallback callers without inventing Other', () => {
+    const visible = getVisibleKillTimeline(
+      timeline,
+      new Set(['wanderer', 'spinner', 'titan_grunt']),
+    );
+
+    expect(visible.types).toEqual([]);
+    expect(visible.series).toEqual([]);
+    expect(visible.hiddenTypes).toEqual(['wanderer', 'spinner', 'titan_grunt']);
+    expect(visible.hiddenTypes).not.toContain('other');
   });
 });

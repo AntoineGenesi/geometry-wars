@@ -20,6 +20,17 @@ import type { PerformanceDataPoint } from '../core/PerformanceLogger';
 import { ENEMY_DISPLAY, ENEMY_TYPE_COLORS } from './AnalyticsPanel';
 import { createEnemyModelPreviewElement } from './EnemyModelPreview';
 
+export interface KillTimelineData {
+  times: number[];
+  types: string[];
+  series: number[][];
+}
+
+export interface VisibleKillTimelineData extends KillTimelineData {
+  originalIndices: number[];
+  hiddenTypes: string[];
+}
+
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
@@ -127,6 +138,7 @@ export class ScoreGraphPanel {
     types: string[];
     series: number[][];
   } | null = null;
+  private hiddenKillTypeKeys = new Set<string>();
 
   // Zoom state (normalized fractions of total time, 0..1)
   private zoomStart = 0;
@@ -177,6 +189,7 @@ export class ScoreGraphPanel {
     // Store reference for kill timeline computation
     this.perfLoggerRef = perfLogger;
     this.killTimeline = perfLogger.getKillTimelineByEnemyType();
+    this.hiddenKillTypeKeys.clear();
 
     // Reset zoom/hover
     this.zoomStart = 0;
@@ -405,8 +418,27 @@ export class ScoreGraphPanel {
       for (const typeName of this.killTimeline.types) {
         const color = ENEMY_TYPE_COLORS[typeName] ?? '#666688';
         const displayName = ENEMY_DISPLAY[typeName] ?? (typeName.charAt(0).toUpperCase() + typeName.slice(1).replace(/_/g, ' '));
+        const totalKills = this.getKillTypeTotal(typeName);
+        const hidden = this.hiddenKillTypeKeys.has(typeName);
         const entry = document.createElement('div');
-        entry.className = 'sgp-legend-entry sgp-legend-entry-by-type';
+        entry.className = `sgp-legend-entry sgp-legend-entry-by-type${hidden ? ' sgp-legend-entry-hidden' : ''}`;
+        entry.dataset.enemyType = typeName;
+        entry.dataset.visible = String(!hidden);
+        entry.title = hidden
+          ? `${displayName}: hidden (${totalKills} kills). Click to restore.`
+          : `${displayName}: visible (${totalKills} kills). Click to hide.`;
+        entry.setAttribute('role', 'button');
+        entry.setAttribute('tabindex', '0');
+        entry.setAttribute('aria-pressed', hidden ? 'false' : 'true');
+        entry.setAttribute('aria-label', entry.title);
+        const toggle = () => this.toggleKillTypeVisibility(typeName);
+        entry.addEventListener('click', toggle);
+        entry.addEventListener('keydown', (event) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            toggle();
+          }
+        });
         entry.appendChild(createEnemyModelPreviewElement(typeName, displayName, color));
         const swatch = document.createElement('span');
         swatch.className = 'sgp-legend-swatch';
@@ -417,6 +449,10 @@ export class ScoreGraphPanel {
         text.className = 'sgp-legend-text';
         text.textContent = displayName;
         entry.appendChild(text);
+        const count = document.createElement('span');
+        count.className = 'sgp-legend-count';
+        count.textContent = hidden ? `${totalKills} hidden` : String(totalKills);
+        entry.appendChild(count);
         this.legendEl.appendChild(entry);
       }
     } else {
@@ -437,6 +473,30 @@ export class ScoreGraphPanel {
         this.legendEl.appendChild(entry);
       }
     }
+  }
+
+  private getKillTypeTotal(typeName: string): number {
+    if (!this.killTimeline) return 0;
+    const index = this.killTimeline.types.indexOf(typeName);
+    if (index < 0) return 0;
+    const series = this.killTimeline.series[index];
+    return series.length > 0 ? series[series.length - 1] : 0;
+  }
+
+  private toggleKillTypeVisibility(typeName: string): void {
+    if (!this.killTimeline) return;
+    const hidden = this.hiddenKillTypeKeys.has(typeName);
+    if (hidden) {
+      this.hiddenKillTypeKeys.delete(typeName);
+    } else {
+      const visibleCount = this.killTimeline.types
+        .filter(type => !this.hiddenKillTypeKeys.has(type))
+        .length;
+      if (visibleCount <= 1) return;
+      this.hiddenKillTypeKeys.add(typeName);
+    }
+    this.redraw();
+    this.updateByTypeLegend();
   }
 
   // ---------------------------------------------------------------------------
@@ -699,16 +759,19 @@ export class ScoreGraphPanel {
 
     // Choose data series
     const isKills = this.viewMode === 'kills';
+    const isByTypeKills = isKills && this.killsSubMode === 'byType' && this.killTimeline && this.killTimeline.types.length > 0;
     // Use kills or score from data points directly
     const seriesValues: number[] = isKills
       ? pts.map(p => p.kills ?? 0)
       : pts.map(p => p.score);
 
     // Compute max within visible window for Y scaling
-    const inRangeValues = pts
-      .map((p, i) => ({ time: p.time, val: seriesValues[i] ?? 0 }))
-      .filter(pv => pv.time >= visibleStart && pv.time <= visibleEnd)
-      .map(pv => pv.val);
+    const inRangeValues = isByTypeKills
+      ? this.getVisibleKillTypeTotals(visibleStart, visibleEnd)
+      : pts
+        .map((p, i) => ({ time: p.time, val: seriesValues[i] ?? 0 }))
+        .filter(pv => pv.time >= visibleStart && pv.time <= visibleEnd)
+        .map(pv => pv.val);
     const maxVal = Math.max(1, ...inRangeValues);
 
     // Map helpers
@@ -764,7 +827,7 @@ export class ScoreGraphPanel {
     }
 
     // --- Stacked area chart for kills BY TYPE mode ---
-    if (isKills && this.killsSubMode === 'byType' && this.killTimeline && this.killTimeline.types.length > 0) {
+    if (isByTypeKills) {
       this.renderStackedArea(ctx, plotX, plotY, plotW, plotH, visibleStart, visibleEnd, visibleRange, progress, maxTime);
     } else {
       // --- Single-line mode (score or total kills) ---
@@ -944,7 +1007,7 @@ export class ScoreGraphPanel {
     visibleStart: number, visibleEnd: number, visibleRange: number,
     progress: number, _maxTime: number,
   ): void {
-    const kt = this.killTimeline!;
+    const kt = getVisibleKillTimeline(this.killTimeline!, this.hiddenKillTypeKeys);
     if (kt.times.length < 2 || kt.types.length === 0) return;
 
     const toX = (t: number) => plotX + ((t - visibleStart) / visibleRange) * plotW;
@@ -1043,6 +1106,21 @@ export class ScoreGraphPanel {
     }
   }
 
+  private getVisibleKillTypeTotals(visibleStart: number, visibleEnd: number): number[] {
+    if (!this.killTimeline) return [];
+    const kt = getVisibleKillTimeline(this.killTimeline, this.hiddenKillTypeKeys);
+    const totals = new Array(kt.times.length).fill(0);
+    for (let ti = 0; ti < kt.times.length; ti++) {
+      for (let si = 0; si < kt.types.length; si++) {
+        totals[ti] += kt.series[si][ti];
+      }
+    }
+    return kt.times
+      .map((time, index) => ({ time, val: totals[index] }))
+      .filter(pv => pv.time >= visibleStart && pv.time <= visibleEnd)
+      .map(pv => pv.val);
+  }
+
 }
 
 // ---------------------------------------------------------------------------
@@ -1117,6 +1195,35 @@ export function getScoreGraphEventLabel(ev: GameEvent): string {
     case 'weapon_pickup':return 'Weapon picked up';
     default:             return ev.type;
   }
+}
+
+export function getVisibleKillTimeline(
+  timeline: KillTimelineData,
+  hiddenTypeKeys: ReadonlySet<string>,
+): VisibleKillTimelineData {
+  const originalIndices: number[] = [];
+  const types: string[] = [];
+  const series: number[][] = [];
+  const hiddenTypes: string[] = [];
+
+  for (let i = 0; i < timeline.types.length; i++) {
+    const type = timeline.types[i];
+    if (hiddenTypeKeys.has(type)) {
+      hiddenTypes.push(type);
+      continue;
+    }
+    originalIndices.push(i);
+    types.push(type);
+    series.push(timeline.series[i]);
+  }
+
+  return {
+    times: timeline.times,
+    types,
+    series,
+    originalIndices,
+    hiddenTypes,
+  };
 }
 
 function formatScore(val: number): string {
@@ -1315,10 +1422,29 @@ export function injectScoreGraphStyles(): void {
       display: flex;
       align-items: center;
       gap: 5px;
+      border: 1px solid transparent;
+      border-radius: 4px;
+      padding: 2px 4px;
     }
     .sgp-legend-entry-by-type {
       gap: 7px;
       min-height: 34px;
+      cursor: pointer;
+      transition: opacity 0.15s, border-color 0.15s, background 0.15s;
+    }
+    .sgp-legend-entry-by-type:hover,
+    .sgp-legend-entry-by-type:focus-visible {
+      border-color: rgba(0, 255, 255, 0.35);
+      background: rgba(0, 255, 255, 0.05);
+      outline: none;
+    }
+    .sgp-legend-entry-hidden {
+      opacity: 0.42;
+      background: rgba(255, 255, 255, 0.035);
+    }
+    .sgp-legend-entry-hidden .sgp-legend-text {
+      text-decoration: line-through;
+      text-decoration-thickness: 2px;
     }
     .sgp-legend-entry-by-type .ap-enemy-preview,
     .sgp-legend-entry-by-type .ap-enemy-preview-img {
@@ -1343,6 +1469,13 @@ export function injectScoreGraphStyles(): void {
       font-size: 10px;
       color: #446688;
       letter-spacing: 1px;
+    }
+    .sgp-legend-count {
+      color: #556677;
+      font-size: 10px;
+      font-family: monospace;
+      min-width: 16px;
+      text-align: right;
     }
   `;
   document.head.appendChild(style);

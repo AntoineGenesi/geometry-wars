@@ -50,6 +50,7 @@ export class TotalKillCounter {
   private totalEl: HTMLDivElement;
   private rows: RowCache[] = [];
   private styleEl: HTMLStyleElement;
+  private visible = true;
 
   /** Cached sorted entries, rebuilt on addKill. */
   private sortedEntries: Array<{ type: string; count: number }> = [];
@@ -255,7 +256,16 @@ export class TotalKillCounter {
    * Hide the counter (e.g. on mobile where screen space is limited).
    */
   hide(): void {
-    this.container.style.display = 'none';
+    this.setVisible(false);
+  }
+
+  setVisible(visible: boolean): void {
+    this.visible = visible;
+    this.container.style.display = visible ? 'block' : 'none';
+  }
+
+  isVisible(): boolean {
+    return this.visible;
   }
 
   /**

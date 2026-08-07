@@ -221,6 +221,56 @@ async function main() {
       };
     });
 
+    const byTypeCanvasBeforeToggle = await page.$eval('.sgp-canvas', canvas => canvas.toDataURL());
+    await page.click('.sgp-legend-entry-by-type[data-enemy-type="titan_grunt"]');
+    await wait(350);
+    const byTypeToggleHiddenScreenshot = resolve(SCREENSHOT_DIR, `score-graph-by-type-titan-hidden-${RUN_ID}.png`);
+    await page.screenshot({ path: byTypeToggleHiddenScreenshot, fullPage: false });
+    const byTypeCanvasHidden = await page.$eval('.sgp-canvas', canvas => canvas.toDataURL());
+    const byTypeToggleHiddenEvidence = await page.evaluate(() => {
+      const entry = document.querySelector('.sgp-legend-entry-by-type[data-enemy-type="titan_grunt"]');
+      const text = entry?.querySelector('.sgp-legend-text');
+      return {
+        entryExists: Boolean(entry),
+        datasetVisible: entry?.getAttribute('data-visible') ?? null,
+        className: entry?.className ?? '',
+        ariaPressed: entry?.getAttribute('aria-pressed') ?? null,
+        label: text?.textContent ?? null,
+        textDecorationLine: text ? getComputedStyle(text).textDecorationLine : null,
+        countText: entry?.querySelector('.sgp-legend-count')?.textContent ?? null,
+      };
+    });
+    await page.click('.sgp-legend-entry-by-type[data-enemy-type="titan_grunt"]');
+    await wait(350);
+    const byTypeCanvasRestored = await page.$eval('.sgp-canvas', canvas => canvas.toDataURL());
+    const byTypeToggleRestoredEvidence = await page.evaluate(() => {
+      const entry = document.querySelector('.sgp-legend-entry-by-type[data-enemy-type="titan_grunt"]');
+      const text = entry?.querySelector('.sgp-legend-text');
+      return {
+        entryExists: Boolean(entry),
+        datasetVisible: entry?.getAttribute('data-visible') ?? null,
+        className: entry?.className ?? '',
+        ariaPressed: entry?.getAttribute('aria-pressed') ?? null,
+        label: text?.textContent ?? null,
+        textDecorationLine: text ? getComputedStyle(text).textDecorationLine : null,
+        countText: entry?.querySelector('.sgp-legend-count')?.textContent ?? null,
+      };
+    });
+    const byTypeToggleWorked = (
+      byTypeToggleHiddenEvidence.entryExists &&
+      byTypeToggleHiddenEvidence.datasetVisible === 'false' &&
+      byTypeToggleHiddenEvidence.className.includes('sgp-legend-entry-hidden') &&
+      byTypeToggleHiddenEvidence.ariaPressed === 'false' &&
+      byTypeToggleHiddenEvidence.label === 'Titan Grunt' &&
+      byTypeToggleHiddenEvidence.textDecorationLine.includes('line-through') &&
+      byTypeCanvasHidden !== byTypeCanvasBeforeToggle &&
+      byTypeToggleRestoredEvidence.datasetVisible === 'true' &&
+      byTypeToggleRestoredEvidence.ariaPressed === 'true' &&
+      !byTypeToggleRestoredEvidence.className.includes('sgp-legend-entry-hidden') &&
+      byTypeToggleRestoredEvidence.label === 'Titan Grunt' &&
+      byTypeCanvasRestored !== byTypeCanvasHidden
+    );
+
     const byTypeCanvasBox = await page.$eval('.sgp-canvas', el => {
       const rect = el.getBoundingClientRect();
       return { left: rect.left, top: rect.top, width: rect.width, height: rect.height };
@@ -287,6 +337,7 @@ async function main() {
       graphEvidence.legendText.includes('PvP Kill') &&
       graphEvidence.hasCanvas &&
       byTypeHasModelLegend &&
+      byTypeToggleWorked &&
       dragZoomWorked &&
       killsTabMatchesExpectedTypes &&
       byTypeMatchesExpectedTypes
@@ -296,6 +347,7 @@ async function main() {
       killsTabAnimated: killsSecondScreenshot,
       scoreGraph: graphScreenshot,
       scoreGraphByType: byTypeScreenshot,
+      scoreGraphByTypeTitanHidden: byTypeToggleHiddenScreenshot,
       scoreGraphDragReset: dragScreenshot,
     };
     report.evidence = {
@@ -304,6 +356,9 @@ async function main() {
       previewAnimationAfter,
       graphEvidence,
       byTypeEvidence,
+      byTypeToggleHiddenEvidence,
+      byTypeToggleRestoredEvidence,
+      byTypeToggleWorked,
       zoomBefore,
       zoomAfterDrag,
       zoomAfterReset,

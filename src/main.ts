@@ -87,6 +87,7 @@ import {
   loadDebugSettings,
   loadGraphicsSettings,
 } from './ui/SettingsMenu';
+import { loadHUDVisibilitySettings, type HUDVisibilitySettings } from './ui/HUDVisibilitySettings';
 import { VisualPlayground } from './ui/VisualPlayground';
 import {
   computeDifficultyLevel,
@@ -1051,17 +1052,22 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
 
   // -- Minimap --
   const minimap = new Minimap();
-  if (mobile) {
-    minimap.setVisible(false);
-  }
 
   // -- Kill log (bottom-left) + total kill counter (bottom-right) --
   const killLog = new KillLog();
   const totalKillCounter = new TotalKillCounter();
   killLog.onKill = (type, color) => totalKillCounter.addKill(type, color);
-  if (mobile) {
-    totalKillCounter.hide();
-  }
+  const applyHUDVisibilitySettings = (
+    settings: HUDVisibilitySettings,
+    gameLoopRef?: GameLoop,
+  ) => {
+    minimap.setVisible(settings.minimap && !mobile);
+    killLog.setVisible(settings.killLog);
+    totalKillCounter.setVisible(settings.totalKillCounter && !mobile);
+    gameLoopRef?.setEnemyStreakAnnouncementsVisible(settings.enemyStreakAnnouncements);
+  };
+  const hudVisibilitySettings = loadHUDVisibilitySettings();
+  applyHUDVisibilitySettings(hudVisibilitySettings);
 
   // -- Player leveling system (kill-based progression) --
   const playerLevel = new PlayerLevel();
@@ -2309,6 +2315,10 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
     bgMusic,
     sound,
     applyStatMultipliers,
+  });
+  applyHUDVisibilitySettings(loadHUDVisibilitySettings(), gameLoop);
+  SettingsMenu.setGlobalHUDVisibilityChangeCallback((settings) => {
+    applyHUDVisibilitySettings(settings, gameLoop);
   });
   applyLiveGraphicsSettings(loadGraphicsSettings());
 

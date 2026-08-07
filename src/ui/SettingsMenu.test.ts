@@ -12,6 +12,12 @@ import {
   type GraphicsSettings,
   type AudioSettings,
 } from './SettingsMenu';
+import {
+  getDefaultHUDVisibilitySettings,
+  loadHUDVisibilitySettings,
+  saveHUDVisibilitySettings,
+  type HUDVisibilitySettings,
+} from './HUDVisibilitySettings';
 
 // ---------------------------------------------------------------------------
 // localStorage mock
@@ -436,6 +442,40 @@ describe('Settings round-trip', () => {
     expect(Object.keys(store)).toContain('gw3d-graphics-settings');
     expect(Object.keys(store)).toContain('gw3d-audio-settings');
     expect(Object.keys(store)).toHaveLength(2);
+  });
+});
+
+describe('HUD visibility settings', () => {
+  it('defaults preserve the existing visible desktop HUD behavior', () => {
+    expect(loadHUDVisibilitySettings()).toEqual({
+      minimap: true,
+      killLog: true,
+      totalKillCounter: true,
+      enemyStreakAnnouncements: true,
+    });
+  });
+
+  it('saves and loads minimap, per-type kill log, total kills, and enemy streak announcement toggles', () => {
+    const custom: HUDVisibilitySettings = {
+      minimap: false,
+      killLog: false,
+      totalKillCounter: false,
+      enemyStreakAnnouncements: false,
+    };
+
+    saveHUDVisibilitySettings(custom);
+
+    expect(loadHUDVisibilitySettings()).toEqual(custom);
+    expect(JSON.parse(store['gw3d-hud-visibility-settings'])).toEqual(custom);
+  });
+
+  it('merges old partial saves with HUD defaults', () => {
+    store['gw3d-hud-visibility-settings'] = JSON.stringify({ minimap: false });
+
+    expect(loadHUDVisibilitySettings()).toEqual({
+      ...getDefaultHUDVisibilitySettings(),
+      minimap: false,
+    });
   });
 });
 

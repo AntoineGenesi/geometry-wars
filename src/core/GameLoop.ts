@@ -135,6 +135,10 @@ export class GameLoop {
     }
   }
 
+  setEnemyStreakAnnouncementsVisible(visible: boolean): void {
+    this.enemyStreakAnnouncer?.setVisible(visible);
+  }
+
   update(ctx: GameContext, dt: number): void {
     // Skip update if paused or game over
     if (ctx.state.isPaused || ctx.state.isGameOver || ctx.state.isLevelComplete) return;

@@ -6,7 +6,9 @@ import {
   getStreakName,
   getStreakTier,
   getAnimationForStreak,
+  getAsciiFrameForStreak,
 } from './killStreakNames';
+import { readFileSync } from 'fs';
 
 describe('STREAK_NAMES', () => {
   it('has exactly 200 entries (keys 1–200)', () => {
@@ -21,6 +23,16 @@ describe('STREAK_NAMES', () => {
     const names = Object.values(STREAK_NAMES);
     const unique = new Set(names);
     expect(unique.size).toBe(200);
+  });
+
+  it('source keys are unique from 1 through 200', () => {
+    const source = readFileSync(new URL('./killStreakNames.ts', import.meta.url), 'utf8');
+    const keys = Array.from(source.matchAll(/^\s+(\d+):\s+['"]/gm)).map(match => Number(match[1]));
+    const unique = new Set(keys);
+    expect(keys.length).toBe(200);
+    expect(unique.size).toBe(200);
+    expect(Math.min(...keys)).toBe(1);
+    expect(Math.max(...keys)).toBe(200);
   });
 
   it('no name is empty or whitespace-only', () => {
@@ -96,12 +108,14 @@ describe('getStreakName', () => {
     expect(getStreakName(200)).toBe('The Incomprehensible');
   });
 
-  it('wraps 201 to name for 1', () => {
-    expect(getStreakName(201)).toBe(getStreakName(1));
+  it('adds a higher-tier prefix at 201 instead of silently repeating kill 1', () => {
+    expect(getStreakName(201)).toBe('Ascendant Nice Shot');
+    expect(getStreakName(201)).not.toBe(getStreakName(1));
   });
 
-  it('wraps 400 to name for 200', () => {
-    expect(getStreakName(400)).toBe(getStreakName(200));
+  it('adds a higher-tier prefix at 400 instead of silently repeating kill 200', () => {
+    expect(getStreakName(400)).toBe('Ascendant The Incomprehensible');
+    expect(getStreakName(400)).not.toBe(getStreakName(200));
   });
 
   it('does not crash for 2001', () => {
@@ -109,9 +123,10 @@ describe('getStreakName', () => {
     expect(typeof getStreakName(2001)).toBe('string');
   });
 
-  it('wraps consistently: getStreakName(n) === getStreakName(n + 200)', () => {
+  it('keeps the base name while escalating the prefix after 200', () => {
     for (let i = 1; i <= 200; i++) {
-      expect(getStreakName(i)).toBe(getStreakName(i + 200));
+      expect(getStreakName(i + 200)).toContain(getStreakName(i));
+      expect(getStreakName(i + 200)).not.toBe(getStreakName(i));
     }
   });
 });
@@ -184,5 +199,20 @@ describe('getAnimationForStreak', () => {
   it('does not crash for extreme values', () => {
     expect(() => getAnimationForStreak(0)).not.toThrow();
     expect(() => getAnimationForStreak(999999)).not.toThrow();
+  });
+});
+
+describe('getAsciiFrameForStreak', () => {
+  it('returns non-empty ASCII-only frames for low, mid, and extreme streaks', () => {
+    for (const count of [1, 50, 100, 200, 2000]) {
+      const frame = getAsciiFrameForStreak(count, 3);
+      expect(frame.length).toBeGreaterThan(0);
+      expect(/^[\x20-\x7E]+$/.test(frame)).toBe(true);
+    }
+  });
+
+  it('cycles frames within a tier', () => {
+    expect(getAsciiFrameForStreak(25, 0)).toBe(getAsciiFrameForStreak(25, 6));
+    expect(getAsciiFrameForStreak(25, 0)).not.toBe(getAsciiFrameForStreak(25, 1));
   });
 });

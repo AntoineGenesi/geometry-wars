@@ -262,17 +262,51 @@ export const STREAK_TIERS: StreakTier[] = [
 ];
 // Count: 10 tiers ✓
 
+const POST_200_STREAK_PREFIXES = [
+  'Ascendant',
+  'Mythic',
+  'Singularity',
+  'Infinite',
+  'Absolute',
+  'Impossible',
+  'Eternal',
+  'Final',
+  'Beyond',
+  'Ultra',
+] as const;
+
+const ASCII_STREAK_FRAMES: ReadonlyArray<ReadonlyArray<string>> = [
+  ['[>      ]', '[=>     ]', '[==>    ]', '[===>   ]', '[ ===>  ]', '[  ===> ]'],
+  ['<*>     ', ' <*>    ', '  <*>   ', '   <*>  ', '    <*> ', '     <*>'],
+  ['//  //  ', ' //  // ', '  //  //', '\\\\  \\\\  ', ' \\\\  \\\\', '  \\\\  \\\\'],
+  ['[+-----]', '[-+----]', '[--+---]', '[---+--]', '[----+-]', '[-----+]'],
+  ['<>      ', ' <><>   ', '  <><><>', '   <><> ', '      <>', '   <><> '],
+  ['x.....x', '.x...x.', '..x.x..', '...x...', '..x.x..', '.x...x.'],
+  ['* . . *', '.* . *.', '..* *..', '...*...', '..* *..', '.* . *.'],
+  ['|=====|', '/=====/', '-=====-', '\\=====\\', '|=====|', '/=====/'],
+] as const;
+
 // ---------------------------------------------------------------------------
 // Helper functions
 // ---------------------------------------------------------------------------
 
 /**
  * Returns the name for the given streak count.
- * Wraps above 200: count 201 → same name as 1, count 400 → same as 200.
+ * Counts above 200 keep the base 1-200 name and add escalating prefixes, so
+ * ultra-long runs keep feeling different without needing an unbounded table.
  */
 export function getStreakName(count: number): string {
+  if (count <= 0) count = 1;
   const wrapped = count % 200 || 200;
-  return STREAK_NAMES[wrapped];
+  const baseName = STREAK_NAMES[wrapped];
+  if (count <= 200) return baseName;
+
+  const cycle = Math.floor((count - 1) / 200);
+  const prefix = POST_200_STREAK_PREFIXES[(cycle - 1) % POST_200_STREAK_PREFIXES.length];
+  const rank = cycle > POST_200_STREAK_PREFIXES.length
+    ? ` ${Math.floor((cycle - 1) / POST_200_STREAK_PREFIXES.length) + 1}`
+    : '';
+  return `${prefix}${rank} ${baseName}`;
 }
 
 /**
@@ -346,4 +380,15 @@ export function getAnimationForStreak(count: number): { pattern: BraillePattern;
   const pattern = ALL_PATTERNS[cycleTier % ALL_PATTERNS.length];
   const intensity = 0.8 + 0.2 * (cycleOffset / 10);
   return { pattern, intensity };
+}
+
+export function getAsciiFrameForStreak(count: number, frameIndex: number): string {
+  if (count <= 0) count = 1;
+  const normalizedFrame = Math.max(0, Math.floor(frameIndex));
+  const tierIndex = Math.min(
+    ASCII_STREAK_FRAMES.length - 1,
+    Math.floor((Math.min(count, 200) - 1) / 25),
+  );
+  const frames = ASCII_STREAK_FRAMES[tierIndex];
+  return frames[normalizedFrame % frames.length];
 }
