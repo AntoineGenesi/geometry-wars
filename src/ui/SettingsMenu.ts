@@ -292,6 +292,100 @@ export function applyQualityPreset(preset: string): GraphicsSettings {
   };
 }
 
+export interface RendererDisplayStateInput {
+  requestedRendererParam: string | null;
+  actualIsWebGPU: boolean;
+  webgpuAvailable: boolean | null;
+}
+
+export interface RendererDisplayState {
+  requestedRendererValue: string;
+  requestedRendererLabel: string;
+  requestedRendererClass: '' | 'warn';
+  actualRendererLabel: 'WebGPU' | 'WebGL2';
+  actualRendererClass: '' | 'good';
+  webgpuStatus: 'active' | 'fallback' | 'unavailable-requested' | 'available' | 'unavailable';
+  webgpuStatusLabel: string;
+  webgpuStatusClass: '' | 'good' | 'warn' | 'bad';
+  webgpuRequestDidNotActivate: boolean;
+  showWebGPURetry: boolean;
+  showWebGLSwitch: boolean;
+  webgpuStatusDetail: string;
+}
+
+export function buildRendererDisplayState(input: RendererDisplayStateInput): RendererDisplayState {
+  const rawRequest = input.requestedRendererParam;
+  const requestedRendererValue = rawRequest ?? 'auto';
+  const requestedWebGPU = rawRequest === 'webgpu';
+  const requestedRendererLabel = requestedWebGPU
+    ? 'WebGPU'
+    : rawRequest === 'webgl' || rawRequest === 'webgl2'
+      ? 'WebGL2'
+      : rawRequest
+        ? `Auto (${rawRequest} ignored)`
+        : 'Auto';
+  const actualRendererLabel = input.actualIsWebGPU ? 'WebGPU' : 'WebGL2';
+  const actualRendererClass = input.actualIsWebGPU ? 'good' : '';
+  const webgpuRequestDidNotActivate = requestedWebGPU && !input.actualIsWebGPU;
+  const webgpuAvailable = input.webgpuAvailable === true;
+
+  if (input.actualIsWebGPU) {
+    return {
+      requestedRendererValue,
+      requestedRendererLabel,
+      requestedRendererClass: '',
+      actualRendererLabel,
+      actualRendererClass,
+      webgpuStatus: 'active',
+      webgpuStatusLabel: 'WebGPU active',
+      webgpuStatusClass: 'good',
+      webgpuRequestDidNotActivate: false,
+      showWebGPURetry: false,
+      showWebGLSwitch: true,
+      webgpuStatusDetail: 'The actual renderer is WebGPU.',
+    };
+  }
+
+  if (webgpuRequestDidNotActivate) {
+    const unavailable = input.webgpuAvailable === false;
+    return {
+      requestedRendererValue,
+      requestedRendererLabel,
+      requestedRendererClass: 'warn',
+      actualRendererLabel,
+      actualRendererClass,
+      webgpuStatus: unavailable ? 'unavailable-requested' : 'fallback',
+      webgpuStatusLabel: unavailable
+        ? 'WebGPU requested, unavailable'
+        : 'WebGPU requested, fallback active',
+      webgpuStatusClass: 'warn',
+      webgpuRequestDidNotActivate: true,
+      showWebGPURetry: webgpuAvailable,
+      showWebGLSwitch: true,
+      webgpuStatusDetail: unavailable
+        ? 'WebGPU is not currently usable in this browser/GPU session, so the game stayed on WebGL2.'
+        : 'WebGPU capability was detected, but renderer initialization did not become active.',
+    };
+  }
+
+  return {
+    requestedRendererValue,
+    requestedRendererLabel,
+    requestedRendererClass: '',
+    actualRendererLabel,
+    actualRendererClass,
+    webgpuStatus: webgpuAvailable ? 'available' : 'unavailable',
+    webgpuStatusLabel: webgpuAvailable ? 'WebGPU available' : 'WebGPU unavailable',
+    webgpuStatusClass: webgpuAvailable ? 'good' : 'bad',
+    webgpuRequestDidNotActivate: false,
+    showWebGPURetry: webgpuAvailable,
+    showWebGLSwitch: false,
+    webgpuStatusDetail: webgpuAvailable
+      ? 'WebGPU can be requested from Settings. The game is currently using WebGL2.'
+      : 'WebGPU is not currently usable in this browser/GPU session.',
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Surface appearance presets
 // ---------------------------------------------------------------------------
@@ -1033,41 +1127,46 @@ export class SettingsMenu {
 
     const benchBtnLabel = this.benchmarkRunning ? t('settings.gpu.running') : t('settings.gpu.runBenchmark');
 
-    const activeRendererLabel = this.rendererIsWebGPU ? 'WebGPU' : 'WebGL2';
-    const activeRendererClass = this.rendererIsWebGPU ? 'good' : '';
+    const rendererParam = typeof window !== 'undefined'
+      ? new URLSearchParams(window.location.search).get('renderer')
+      : null;
+    const rendererDisplay = buildRendererDisplayState({
+      requestedRendererParam: rendererParam,
+      actualIsWebGPU: this.rendererIsWebGPU,
+      webgpuAvailable: r?.webgpu ?? null,
+    });
 
     // WebGPU toggle button section
     // Detect: did the user explicitly request WebGPU (via button click) but it failed?
-    const requestedWebGPU = typeof window !== 'undefined' &&
-      new URLSearchParams(window.location.search).get('renderer') === 'webgpu';
+    const requestedWebGPU = rendererParam === 'webgpu';
 
     const webgpuToggleSection = (() => {
-      if (r?.webgpu && !this.rendererIsWebGPU && requestedWebGPU) {
-        // User already clicked Enable WebGPU and page reloaded with ?renderer=webgpu,
-        // but the renderer is still WebGL2. WebGPU initialization failed silently.
-        // Show a diagnostic message and a retry/fallback option.
+      if (rendererDisplay.webgpuRequestDidNotActivate) {
+        const retryButton = rendererDisplay.showWebGPURetry
+          ? `<button class="action-btn" id="enable-webgpu" style="background:linear-gradient(180deg,#006644 0%,#003322 100%);border-color:#00ffcc;margin-bottom:4px;">
+              Retry WebGPU
+            </button>`
+          : '';
         return `
-          <div style="margin-top:12px;padding:10px 12px;background:rgba(255,100,50,0.08);border:1px solid rgba(255,100,50,0.35);border-radius:6px;">
+          <div id="webgpu-request-status" data-requested-renderer="webgpu" data-actual-renderer="${rendererDisplay.actualRendererLabel}" data-webgpu-status="${rendererDisplay.webgpuStatus}" style="margin-top:12px;padding:10px 12px;background:rgba(255,100,50,0.08);border:1px solid rgba(255,100,50,0.35);border-radius:6px;">
             <div style="color:#ff8866;font-weight:bold;margin-bottom:6px;font-size:12px;">
-              ⚠ WebGPU initialization failed
+              WebGPU request did not activate
             </div>
             <div style="color:#886655;font-size:11px;line-height:1.5;margin-bottom:8px;">
-              WebGPU was detected as available but the renderer failed to initialize.
-              Check the browser console (F12) for detailed error logs tagged [RendererFactory].
+              Requested: WebGPU. Actual renderer: ${rendererDisplay.actualRendererLabel}.
+              ${rendererDisplay.webgpuStatusDetail}
               <br><br>
-              Common causes: outdated GPU driver, browser GPU blocklist, or driver bug.
+              Settings is showing the actual renderer in use, not just the requested URL.
               <br>
-              Try: update GPU driver → restart Chrome → retry.
+              To diagnose: open DevTools and run __webgpuDiagnostic(), then check chrome://gpu.
             </div>
-            <button class="action-btn" id="enable-webgpu" style="background:linear-gradient(180deg,#006644 0%,#003322 100%);border-color:#00ffcc;margin-bottom:4px;">
-              Retry WebGPU
-            </button>
+            ${retryButton}
             <button class="action-btn" id="switch-to-webgl" style="background:linear-gradient(180deg,#332211 0%,#1a1108 100%);border-color:#664422;margin-left:8px;">
               Stay on WebGL2
             </button>
           </div>`;
       }
-      if (r?.webgpu && !this.rendererIsWebGPU) {
+      if (rendererDisplay.showWebGPURetry) {
         // WebGPU is available but we're on WebGL2 — show Enable button
         return `
           <div style="margin-top:12px;padding:10px 12px;background:rgba(0,255,200,0.06);border:1px solid rgba(0,255,200,0.18);border-radius:6px;">
@@ -1080,7 +1179,7 @@ export class SettingsMenu {
             </div>
           </div>`;
       }
-      if (this.rendererIsWebGPU) {
+      if (rendererDisplay.showWebGLSwitch) {
         // Already using WebGPU — show Switch to WebGL2 button
         return `
           <div style="margin-top:12px;padding:10px 12px;background:rgba(0,200,255,0.06);border:1px solid rgba(0,200,255,0.15);border-radius:6px;">
@@ -1115,8 +1214,16 @@ export class SettingsMenu {
     return `
       <div class="section-heading">${t('settings.gpu.renderer')}</div>
       <div class="info-row">
+        <span class="info-label">Requested Renderer</span>
+        <span id="requested-renderer-value" class="info-value ${rendererDisplay.requestedRendererClass}" data-renderer-requested="${rendererDisplay.requestedRendererValue}">${rendererDisplay.requestedRendererLabel}</span>
+      </div>
+      <div class="info-row">
         <span class="info-label">${t('settings.gpu.activeRenderer')}</span>
-        <span class="info-value ${activeRendererClass}">${activeRendererLabel}</span>
+        <span id="active-renderer-value" class="info-value ${rendererDisplay.actualRendererClass}" data-renderer-actual="${this.rendererBackend}" data-renderer-is-webgpu="${String(this.rendererIsWebGPU)}">${rendererDisplay.actualRendererLabel}</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">WebGPU Status</span>
+        <span id="webgpu-status-value" class="info-value ${rendererDisplay.webgpuStatusClass}" data-webgpu-status="${rendererDisplay.webgpuStatus}">${rendererDisplay.webgpuStatusLabel}</span>
       </div>
       ${webgpuToggleSection}
 
