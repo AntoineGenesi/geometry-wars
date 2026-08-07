@@ -131,7 +131,7 @@
       "loadCustom": "تحميل مخصص",
       "weaponMastery": "إتقان الأسلحة",
       "weaponDatabase": "قاعدة بيانات الأسلحة",
-      "visualStyles": "الأنماط المرئية"
+      "visualStyles": "أنماط الخريطة"
     },
     "headings": {
       "adventureLevels": "مستويات المغامرة",
@@ -176,7 +176,7 @@
     "stylePixelated": "الأسلوب: بكسل",
     "styleModern": "الأسلوب: حديث",
     "styleDesktopDefender": "الأسلوب: ديسكتوب",
-    "visualStyles": "الأنماط المرئية",
+    "visualStyles": "أنماط الخريطة",
     "performanceGraphs": "رسوم بيانية للأداء",
     "music": "الموسيقى: {{name}}",
     "exitToMenu": "خروج إلى القائمة",
@@ -229,7 +229,7 @@
       "maxAt30fps": "الحد الأقصى عند 30fps (متعدد النسخ)"
     },
     "graphics": {
-      "visualStyle": "الأسلوب المرئي",
+      "visualStyle": "أنماط الخريطة",
       "qualityPreset": "إعداد الجودة",
       "visualEffects": "التأثيرات المرئية",
       "limits": "الحدود",

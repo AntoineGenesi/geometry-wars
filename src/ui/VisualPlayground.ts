@@ -1,5 +1,5 @@
 /**
- * Visual Styles Playground
+ * Map Styles Playground
  *
  * Displays a scrollable grid of 30 visual style presets. Each preset shows a live-rendered
  * mini-surface with different combinations of:
@@ -12,7 +12,7 @@
  * Single shared WebGL renderer with scissor/viewport-based rendering for
  * efficiency (no 16 separate canvases).
  *
- * Accessible from the start menu via a "VISUAL STYLES" button.
+ * Accessible from the start menu via a "MAP STYLES" button.
  */
 
 import * as THREE from 'three';
@@ -1203,7 +1203,7 @@ export class VisualPlayground {
     return `
       <div class="vp-container">
         <div class="vp-header">
-          <h2 class="vp-title">VISUAL STYLES</h2>
+          <h2 class="vp-title">MAP STYLES</h2>
           <div class="vp-controls">
             <label class="vp-surface-label">Surface:
               <select class="vp-surface-select">${surfaceOptions}</select>

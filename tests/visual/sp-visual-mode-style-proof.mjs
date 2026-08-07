@@ -264,6 +264,9 @@ async function captureMode(browser, baseUrl, mode, errors) {
 
   await page.keyboard.press('Escape');
   await waitForPage(page, () => !document.querySelector('#pause-menu.hidden'), 10000);
+  await page.addStyleTag({
+    content: '#test-arena-hud, #debug-overlay, #profiling-overlay, .debug-overlay, .profiling-overlay { display: none !important; }',
+  });
   const pauseCommands = await page.evaluate(() => Array.from(document.querySelectorAll('#pause-menu .pause-btn'))
     .map((button) => ({
       action: button.getAttribute('data-action'),
@@ -272,6 +275,27 @@ async function captureMode(browser, baseUrl, mode, errors) {
   const pauseScreenshotPath = resolve(screenshotDir, `${mode}-pause.png`);
   await page.screenshot({ path: pauseScreenshotPath });
   const pauseHash = screenshotHash(pauseScreenshotPath);
+
+  const nextMode = {
+    modern: 'pixelated',
+    pixelated: 'crt',
+    crt: 'desktop-defender',
+    'desktop-defender': 'modern',
+  }[mode];
+  const pauseStyleToggleProbe = await page.evaluate(async (expectedNextMode) => {
+    const button = document.querySelector('#pause-menu [data-action="visual-mode"]');
+    if (!button) return { buttonPresent: false };
+    const beforeText = button.textContent?.replace(/\s+/g, ' ').trim() ?? '';
+    button.click();
+    await new Promise((resolveDone) => setTimeout(resolveDone, 250));
+    return {
+      buttonPresent: true,
+      beforeText,
+      afterText: button.textContent?.replace(/\s+/g, ' ').trim() ?? '',
+      storedMode: localStorage.getItem('gw3d-visual-mode'),
+      expectedNextMode,
+    };
+  }, nextMode);
   await page.close();
 
   return {
@@ -285,6 +309,7 @@ async function captureMode(browser, baseUrl, mode, errors) {
       pause: pauseHash,
     },
     pauseCommands,
+    pauseStyleToggleProbe,
     fireProbe,
     bulletProofProbe,
     bulletPixelProbe,
@@ -295,14 +320,69 @@ async function captureMode(browser, baseUrl, mode, errors) {
       enemiesPresent: (beforeToggle.telemetry?.enemyCount ?? 0) > 0,
       visibleEnemyCandidates: (beforeToggle.telemetry?.visibleCandidates ?? 0) > 0,
       settingsCommandPresent: pauseCommands.some((command) => command.action === 'settings'),
-      noPauseVisualStylesCommand: !pauseCommands.some((command) =>
+      quickStyleCommandPresent: pauseCommands.some((command) =>
         command.action === 'visual-mode'
-        || command.action === 'open-styles-gallery'
-        || /visual styles/i.test(command.text)),
+        && /STYLE:/i.test(command.text)),
+      noPauseMapStylesGalleryCommand: !pauseCommands.some((command) =>
+        command.action === 'open-styles-gallery'
+        || /visual styles/i.test(command.text)
+        || /map styles/i.test(command.text)),
+      quickStyleToggleLive: pauseStyleToggleProbe.buttonPresent === true
+        && pauseStyleToggleProbe.storedMode === nextMode
+        && /STYLE:/i.test(pauseStyleToggleProbe.afterText ?? ''),
       bulletFired: fireProbe?.firedSignal === true,
       proofBulletsAdded: bulletProofProbe?.added === true,
       warmBulletPixelsPresent: (bulletPixelProbe?.warmBulletPixels ?? 0) > 8,
       pinkBulletPixelsPresent: (bulletPixelProbe?.pinkBulletPixels ?? 0) > 8,
+    },
+  };
+}
+
+async function captureMobilePause(browser, baseUrl, errors) {
+  const page = await browser.newPage();
+  await page.setViewport({ width: 390, height: 844 });
+  page.on('pageerror', (error) => errors.push(`[pause-mobile] pageerror: ${error.message}`));
+  page.on('console', (message) => {
+    if (['error', 'warning'].includes(message.type())) {
+      errors.push(`[pause-mobile] ${message.type()}: ${message.text()}`);
+    }
+  });
+  await page.evaluateOnNewDocument(() => {
+    localStorage.setItem('gw3d-visual-mode', 'modern');
+    localStorage.removeItem('gw3d-visual-style');
+  });
+  await page.goto(`${baseUrl}/?testArena=true&testMode=true&renderer=webgl2&surface=${encodeURIComponent(SURFACE)}`, {
+    waitUntil: 'domcontentloaded',
+    timeout: 30000,
+  });
+  await page.waitForSelector('canvas', { timeout: 30000 });
+  await waitForPage(page, () => Boolean(window.__TEST_API?.getGameState), 30000);
+  await sleep(900);
+  await page.keyboard.press('Escape');
+  await waitForPage(page, () => !document.querySelector('#pause-menu.hidden'), 10000);
+  await page.addStyleTag({
+    content: '#test-arena-hud, #debug-overlay, #profiling-overlay, .debug-overlay, .profiling-overlay { display: none !important; }',
+  });
+  const commands = await page.evaluate(() => Array.from(document.querySelectorAll('#pause-menu .pause-btn'))
+    .map((button) => ({
+      action: button.getAttribute('data-action'),
+      text: button.textContent?.replace(/\s+/g, ' ').trim() ?? '',
+    })));
+  const screenshotPath = resolve(screenshotDir, 'pause-mobile-modern.png');
+  await page.screenshot({ path: screenshotPath });
+  await page.close();
+  return {
+    screenshot: relative(ROOT, screenshotPath),
+    commands,
+    checks: {
+      quickStyleCommandPresent: commands.some((command) =>
+        command.action === 'visual-mode'
+        && /STYLE:/i.test(command.text)),
+      noPauseMapStylesGalleryCommand: !commands.some((command) =>
+        command.action === 'open-styles-gallery'
+        || /visual styles/i.test(command.text)
+        || /map styles/i.test(command.text)),
+      settingsCommandPresent: commands.some((command) => command.action === 'settings'),
     },
   };
 }
@@ -356,6 +436,8 @@ async function readSettingsMetrics(page) {
         text: button.textContent?.replace(/\s+/g, ' ').trim() ?? '',
       }));
     const styleItems = Array.from(document.querySelectorAll('#visual-style-list .style-item'));
+    const sectionHeadings = Array.from(document.querySelectorAll('#settings-menu .section-heading'))
+      .map((heading) => heading.textContent?.replace(/\s+/g, ' ').trim() ?? '');
     return {
       styleList: list && item ? {
         clientHeight: list.clientHeight,
@@ -365,6 +447,7 @@ async function readSettingsMetrics(page) {
         itemCount: styleItems.length,
         independentlyScrollable: list.scrollHeight > list.clientHeight,
       } : null,
+      sectionHeadings,
       pauseCommands: commands,
       graphicsControls: {
         qualityPreset: Boolean(document.querySelector('#quality-preset')),
@@ -505,11 +588,11 @@ async function runSettingsLiveProbe(browser, baseUrl, errors) {
   await desktopPage.screenshot({ path: mobileSettingsScreenshot });
   await desktopPage.close();
 
-  const noPauseVisualStylesCommand = (commands) => !commands.some((command) =>
-    command.action === 'visual-mode'
-    || command.action === 'open-styles-gallery'
-    || /visual styles/i.test(command.text));
   const state = Object.fromEntries(liveSequence.map((entry) => [entry.label, entry]));
+  const hasMapStylesHeading = (metrics) => metrics.sectionHeadings
+    ?.some((heading) => /^MAP STYLES$/i.test(heading)) === true;
+  const hasOldVisualStyleHeading = (metrics) => metrics.sectionHeadings
+    ?.some((heading) => /^VISUAL STYLE(S)?$/i.test(heading)) === true;
   return {
     screenshots: {
       desktopSettings: relative(ROOT, desktopSettingsScreenshot),
@@ -521,13 +604,15 @@ async function runSettingsLiveProbe(browser, baseUrl, errors) {
     liveSequence,
     checks: {
       desktopStyleListScrollable: desktopMetricsBefore.styleList?.independentlyScrollable === true,
+      desktopMapStylesHeading: hasMapStylesHeading(desktopMetricsBefore),
+      desktopNoOldVisualStyleHeading: !hasOldVisualStyleHeading(desktopMetricsBefore),
       desktopControlsAvailable: Object.values(desktopMetricsBefore.graphicsControls).every((value) =>
         typeof value === 'number' ? value > 0 : value === true),
       mobileStyleListAboutTwoAndHalfItems: (mobileMetrics.styleList?.visibleItems ?? 0) >= 2.3
         && (mobileMetrics.styleList?.visibleItems ?? 0) <= 2.7,
       mobileStyleListScrollable: mobileMetrics.styleList?.independentlyScrollable === true,
-      pauseCommandRemovedDesktop: noPauseVisualStylesCommand(desktopMetricsBefore.pauseCommands),
-      pauseCommandRemovedMobile: noPauseVisualStylesCommand(mobileMetrics.pauseCommands),
+      mobileMapStylesHeading: hasMapStylesHeading(mobileMetrics),
+      mobileNoOldVisualStyleHeading: !hasOldVisualStyleHeading(mobileMetrics),
       bloomToggleLive: state['bloom-off']?.bloomStrength === 0,
       bloomStrengthLive: Math.abs((state['bloom-strength-16']?.bloomStrength ?? -1) - 1.6) < 0.08,
       particleCountLive: (state['particle-count-100']?.particleBudget?.maxParticlesPerFrame ?? 999) <= 6
@@ -592,12 +677,14 @@ async function main() {
   const errors = [];
   const results = [];
   let settingsLiveProbe = null;
+  let mobilePauseProbe = null;
   let fatalError = null;
   const baseUrl = `http://127.0.0.1:${DEV_PORT}`;
   try {
     const ready = await waitForHttp(baseUrl);
     if (!ready) throw new Error(`Vite did not become ready at ${baseUrl}\n${logs.join('\n')}`);
     settingsLiveProbe = await runSettingsLiveProbe(browser, baseUrl, errors);
+    mobilePauseProbe = await captureMobilePause(browser, baseUrl, errors);
     for (const mode of modes) {
       results.push(await captureMode(browser, baseUrl, mode, errors));
     }
@@ -625,9 +712,11 @@ async function main() {
         settingsLiveProbe.screenshots.desktopSettings,
         settingsLiveProbe.screenshots.mobileSettings,
       ] : []),
+      ...(mobilePauseProbe ? [mobilePauseProbe.screenshot] : []),
     ],
     results,
     settingsLiveProbe,
+    mobilePauseProbe,
     summary: {
       uniqueSurfaceColors: uniqueSurfaceColors.size,
       uniqueGridColors: uniqueGridColors.size,
@@ -646,6 +735,8 @@ async function main() {
     && results.every((result) => Object.values(result.checks).every(Boolean))
     && settingsLiveProbe
     && Object.values(settingsLiveProbe.checks).every(Boolean)
+    && mobilePauseProbe
+    && Object.values(mobilePauseProbe.checks).every(Boolean)
     && uniqueSurfaceColors.size >= 3
     && uniqueGridColors.size >= 3
     && uniqueGameplayScreenshots.size === modes.length
@@ -667,6 +758,9 @@ async function main() {
       `- desktop Settings graphics: ${settingsLiveProbe.screenshots.desktopSettings}`,
       `- mobile Settings graphics: ${settingsLiveProbe.screenshots.mobileSettings}`,
     ] : []),
+    ...(mobilePauseProbe ? [
+      `- mobile Pause: ${mobilePauseProbe.screenshot}`,
+    ] : []),
     '',
     '## Summary',
     `- unique surface colors: ${report.summary.uniqueSurfaceColors}`,
@@ -675,6 +769,7 @@ async function main() {
     `- unique pause screenshots: ${report.summary.uniquePauseScreenshots}`,
     `- critical errors: ${report.summary.criticalErrors}`,
     `- Settings live checks: ${JSON.stringify(report.settingsLiveProbe?.checks ?? null)}`,
+    `- Mobile pause checks: ${JSON.stringify(report.mobilePauseProbe?.checks ?? null)}`,
     '',
   ].join('\n'));
 

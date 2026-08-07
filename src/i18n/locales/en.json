@@ -131,7 +131,7 @@
       "loadCustom": "LOAD CUSTOM",
       "weaponMastery": "WEAPON MASTERY",
       "weaponDatabase": "WEAPON DATABASE",
-      "visualStyles": "VISUAL STYLES"
+      "visualStyles": "MAP STYLES"
     },
     "headings": {
       "adventureLevels": "ADVENTURE LEVELS",
@@ -176,7 +176,7 @@
     "stylePixelated": "STYLE: PIXELATED",
     "styleModern": "STYLE: MODERN",
     "styleDesktopDefender": "STYLE: DESKTOP DEF.",
-    "visualStyles": "VISUAL STYLES",
+    "visualStyles": "MAP STYLES",
     "performanceGraphs": "PERFORMANCE GRAPHS",
     "music": "MUSIC: {{name}}",
     "exitToMenu": "EXIT TO MENU",
@@ -230,7 +230,7 @@
       "maxAt30fps": "Max @ 30fps (instanced)"
     },
     "graphics": {
-      "visualStyle": "VISUAL STYLE",
+      "visualStyle": "MAP STYLES",
       "qualityPreset": "QUALITY PRESET",
       "visualEffects": "VISUAL EFFECTS",
       "limits": "LIMITS",

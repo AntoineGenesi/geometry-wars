@@ -131,7 +131,7 @@
       "loadCustom": "ЗАГРУЗИТЬ",
       "weaponMastery": "МАСТЕРСТВО ОРУЖИЯ",
       "weaponDatabase": "БАЗА ОРУЖИЯ",
-      "visualStyles": "ВИЗУАЛЬНЫЕ СТИЛИ"
+      "visualStyles": "СТИЛИ КАРТЫ"
     },
     "headings": {
       "adventureLevels": "УРОВНИ ПРИКЛЮЧЕНИЯ",
@@ -176,7 +176,7 @@
     "stylePixelated": "СТИЛЬ: ПИКСЕЛЬНЫЙ",
     "styleModern": "СТИЛЬ: СОВРЕМЕННЫЙ",
     "styleDesktopDefender": "СТИЛЬ: DESKTOP DEF.",
-    "visualStyles": "ВИЗУАЛЬНЫЕ СТИЛИ",
+    "visualStyles": "СТИЛИ КАРТЫ",
     "performanceGraphs": "ГРАФИКИ ПРОИЗВОДИТЕЛЬНОСТИ",
     "music": "МУЗЫКА: {{name}}",
     "exitToMenu": "ВЫХОД В МЕНЮ",
@@ -230,7 +230,7 @@
       "maxAt30fps": "Макс. при 30fps (instanced)"
     },
     "graphics": {
-      "visualStyle": "ВИЗУАЛЬНЫЙ СТИЛЬ",
+      "visualStyle": "СТИЛИ КАРТЫ",
       "qualityPreset": "ПРЕСЕТ КАЧЕСТВА",
       "visualEffects": "ВИЗУАЛЬНЫЕ ЭФФЕКТЫ",
       "limits": "ОГРАНИЧЕНИЯ",

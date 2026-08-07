@@ -131,7 +131,7 @@
       "loadCustom": "BENUTZERDEFINIERT LADEN",
       "weaponMastery": "WAFFENMEISTERSCHAFT",
       "weaponDatabase": "WAFFENDATENBANK",
-      "visualStyles": "VISUELLE STILE"
+      "visualStyles": "KARTENSTILE"
     },
     "headings": {
       "adventureLevels": "ABENTEUERSTUFEN",
@@ -176,7 +176,7 @@
     "stylePixelated": "STIL: PIXELIG",
     "styleModern": "STIL: MODERN",
     "styleDesktopDefender": "STIL: DESKTOP DEF.",
-    "visualStyles": "VISUELLE STILE",
+    "visualStyles": "KARTENSTILE",
     "performanceGraphs": "LEISTUNGSGRAPHEN",
     "music": "MUSIK: {{name}}",
     "exitToMenu": "BEENDEN ZUM MENÜ",
@@ -229,7 +229,7 @@
       "maxAt30fps": "Max. bei 30fps (instanziert)"
     },
     "graphics": {
-      "visualStyle": "VISUELLER STIL",
+      "visualStyle": "KARTENSTILE",
       "qualityPreset": "QUALITÄTSVOREINSTELLUNG",
       "visualEffects": "VISUELLE EFFEKTE",
       "limits": "LIMITS",

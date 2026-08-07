@@ -14,6 +14,8 @@ import { MatchUpgradeTracker } from '../systems/MatchUpgradeTracker';
 import { GameSettingsPanel } from './GameSettingsPanel';
 import type { GameSettings } from '../../server/shared/GameSettings';
 import {
+  getNextVisualMode,
+  getVisualModeDefinition,
   type VisualMode,
 } from './VisualStyleSettings';
 
@@ -172,6 +174,10 @@ export class PauseMenu {
             <button class="pause-btn settings-btn" data-action="settings">
               <span class="btn-icon">⚙</span>
               <span>${t('pauseMenu.settings')}</span>
+            </button>
+            <button class="pause-btn visual-mode-btn" data-action="visual-mode">
+              <span class="btn-icon">◧</span>
+              <span class="visual-mode-label">${getVisualModeDefinition(this.visualMode).label}</span>
             </button>
             <button class="pause-btn perf-graphs-btn" data-action="perf-graphs">
               <span class="btn-icon">📊</span>
@@ -1020,6 +1026,14 @@ export class PauseMenu {
       this.showPerformanceGraphsModal();
     });
 
+    const visualModeBtn = this.container.querySelector('[data-action="visual-mode"]');
+    visualModeBtn?.addEventListener('click', () => {
+      const nextMode = getNextVisualMode(this.visualMode);
+      this.visualMode = nextMode;
+      this.updateVisualModeLabel();
+      this.onVisualModeChangeCallback?.(nextMode);
+    });
+
     const musicBtn = this.container.querySelector('[data-action="music"]');
     musicBtn?.addEventListener('click', () => {
       if (this.bgMusic) {
@@ -1207,7 +1221,7 @@ export class PauseMenu {
 
   private updateVisualModeLabel(): void {
     const label = this.container.querySelector('.visual-mode-label');
-    if (label) label.textContent = this.visualMode;
+    if (label) label.textContent = getVisualModeDefinition(this.visualMode).label;
   }
 
   /**

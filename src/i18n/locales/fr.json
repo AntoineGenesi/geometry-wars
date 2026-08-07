@@ -131,7 +131,7 @@
       "loadCustom": "CHARGER PERSONNALISÉ",
       "weaponMastery": "MAÎTRISE DES ARMES",
       "weaponDatabase": "BASE DE DONNÉES DES ARMES",
-      "visualStyles": "STYLES VISUELS"
+      "visualStyles": "STYLES DE CARTE"
     },
     "headings": {
       "adventureLevels": "NIVEAUX D'AVENTURE",
@@ -176,7 +176,7 @@
     "stylePixelated": "STYLE : PIXÉLISÉ",
     "styleModern": "STYLE : MODERNE",
     "styleDesktopDefender": "STYLE : DESKTOP DEF.",
-    "visualStyles": "STYLES VISUELS",
+    "visualStyles": "STYLES DE CARTE",
     "performanceGraphs": "GRAPHIQUES DE PERFORMANCES",
     "music": "MUSIQUE : {{name}}",
     "exitToMenu": "QUITTER VERS LE MENU",
@@ -230,7 +230,7 @@
       "maxAt30fps": "Max. à 30fps (instancié)"
     },
     "graphics": {
-      "visualStyle": "STYLE VISUEL",
+      "visualStyle": "STYLES DE CARTE",
       "qualityPreset": "PRÉRÉGLAGE DE QUALITÉ",
       "visualEffects": "EFFETS VISUELS",
       "limits": "LIMITES",
