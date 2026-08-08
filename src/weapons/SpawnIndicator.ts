@@ -14,6 +14,22 @@ const _indicatorLocalUp = new THREE.Vector3();
  * above the pickup in screen space regardless of surface orientation.
  */
 export function createSpawnIndicatorSprite(tint: THREE.Color = new THREE.Color(0xffffff)): THREE.Sprite {
+  if (typeof document === 'undefined') {
+    const mat = new THREE.SpriteMaterial({
+      map: new THREE.Texture(),
+      transparent: true,
+      opacity: 0.8,
+      depthWrite: false,
+      blending: THREE.NormalBlending,
+      toneMapped: true,
+    });
+    const sprite = new THREE.Sprite(mat);
+    sprite.name = 'spawn-indicator';
+    sprite.scale.set(0.7, 0.9, 1.0);
+    sprite.position.set(0, 0, 1.0);
+    return sprite;
+  }
+
   const canvas = document.createElement('canvas');
   canvas.width = 64;
   canvas.height = 80;

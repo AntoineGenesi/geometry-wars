@@ -7,6 +7,7 @@ import { OrbitBehavior } from '../agents/behaviors';
 import type { MeshSurface } from '../surfaces/MeshSurface';
 import { createSpawnIndicatorSprite, updateSpawnIndicator } from '../weapons/SpawnIndicator';
 import { applyPickupSurfacePose } from '../pickups/PickupSurfaceVisual';
+import { createCompanionIconSprite } from '../pickups/PickupIconSprite';
 
 // ---------------------------------------------------------------------------
 // Companion Types
@@ -83,6 +84,7 @@ const _tempAimDir = new THREE.Vector3();
 const _tempToEnemy = new THREE.Vector3();
 const _tempCompPos = new THREE.Vector3();
 const _tempOrientMat = new THREE.Matrix4();
+const _tempOrbitTangent = new THREE.Vector3();
 // Orbit: guaranteed-perpendicular bitangent = normal × tangent
 const _tempOrbitBitangent = new THREE.Vector3();
 // Orient: right-handed Z axis = tangent × normal (makes det=+1, prevents flat appearance)
@@ -107,6 +109,8 @@ class Companion {
   orbitAngle: number;
   orbitRadius: number = ORBIT_RADIUS;
   orbitSpeed: number;
+  private orbitPhase: number;
+  private orbitElapsed = 0;
 
   // Surface position (UV for surface.getTransform)
   surfaceU = 0;
@@ -138,6 +142,7 @@ class Companion {
     this.type = type;
     this.color = COMPANION_COLORS[type];
     this.orbitAngle = orbitPhase;
+    this.orbitPhase = orbitPhase;
 
     // Vary orbit speeds slightly by type for visual interest
     switch (type) {
@@ -193,24 +198,30 @@ class Companion {
       bitangent: THREE.Vector3;
     },
   ): void {
-    // Delegate orbit positioning to SurfaceAgent + OrbitBehavior
+    // Keep the behavior angle synchronized for legacy debug reads, but place
+    // the visible companion directly in the player's tangent plane. Snapping the
+    // helper to the mesh surface made it read like a ground pickup instead of a
+    // stable orbiting drone on curved/segmented surfaces.
     const orbitBehavior = this.agent.getBehavior() as OrbitBehavior;
     const playerTransform = getTransform(playerU, playerV);
     orbitBehavior.center.copy(playerWorldPos);
-    // FIX: Compute guaranteed-perpendicular bitangent = tangent × normal.
-    // The surface's tangentV can be parallel to tangentU on certain cube face strips
-    // (e.g. top face strip 1 where faceRight=(0,0,-1) equals the world-axis override
-    // tangentV=(0,0,-1)), collapsing the orbit to 1D "up/down" oscillation.
-    // Using tangent × normal maintains right-handed frame consistency with the mesh orientation
-    // computed below (line 224: tangent × normal for Z axis).
-    _tempOrbitBitangent.crossVectors(playerTransform.tangent, playerTransform.normal);
-    orbitBehavior.setFrame(playerTransform.tangent, _tempOrbitBitangent);
-    this.agent.update(dt);
-    this.orbitAngle = orbitBehavior.angle; // sync for any code reading orbitAngle
+    _tempOrbitTangent.copy(playerTransform.tangent)
+      .addScaledVector(playerTransform.normal, -playerTransform.tangent.dot(playerTransform.normal));
+    if (_tempOrbitTangent.lengthSq() <= 1e-8) _tempOrbitTangent.set(1, 0, 0);
+    _tempOrbitTangent.normalize();
+    _tempOrbitBitangent.crossVectors(playerTransform.normal, _tempOrbitTangent);
+    if (_tempOrbitBitangent.lengthSq() <= 1e-8) _tempOrbitBitangent.set(0, 0, 1);
+    _tempOrbitBitangent.normalize();
+    orbitBehavior.setFrame(_tempOrbitTangent, _tempOrbitBitangent);
+    this.orbitElapsed += THREE.MathUtils.clamp(dt, 0, 1 / 30);
+    this.orbitAngle = this.orbitPhase + this.orbitElapsed * this.orbitSpeed;
+    orbitBehavior.angle = this.orbitAngle;
 
-    // Position mesh slightly above surface
-    this.mesh.position.copy(this.agent.position);
-    this.mesh.position.addScaledVector(surfaceNormal, 0.2);
+    this.mesh.position
+      .copy(playerWorldPos)
+      .addScaledVector(_tempOrbitTangent, Math.cos(this.orbitAngle) * this.orbitRadius)
+      .addScaledVector(_tempOrbitBitangent, Math.sin(this.orbitAngle) * this.orbitRadius)
+      .addScaledVector(surfaceNormal, 0.35);
 
     // Keep approximate UV for bullet spawning (companion is near player)
     this.surfaceU = playerU;
@@ -395,6 +406,15 @@ class Companion {
     this.agent.setMeshSurface(ms);
   }
 
+  setOrbitPhase(phase: number): void {
+    this.orbitPhase = phase;
+    this.orbitAngle = this.orbitPhase + this.orbitElapsed * this.orbitSpeed;
+    const orbitBehavior = this.agent.getBehavior();
+    if (orbitBehavior instanceof OrbitBehavior) {
+      orbitBehavior.angle = this.orbitAngle;
+    }
+  }
+
   dispose(): void {
     this.mesh.traverse((child) => {
       if (child instanceof THREE.Mesh) {
@@ -453,7 +473,7 @@ export class CompanionManager {
     let idx = 0;
     for (const c of this.companions) {
       if (c.type === type) {
-        c.orbitAngle = (idx / totalAfterAdd) * Math.PI * 2;
+        c.setOrbitPhase((idx / totalAfterAdd) * Math.PI * 2);
         idx++;
       }
     }
@@ -706,16 +726,24 @@ export class CompanionPickup {
 
     const threeColor = new THREE.Color(color);
 
-    // Outer wireframe octahedron
-    const outerGeom = new THREE.OctahedronGeometry(0.3);
+    // Orbit cage: a miniature drone silhouette, distinct from weapon diamonds.
+    const outerGeom = new THREE.TorusGeometry(0.27, 0.018, 8, 28);
     const outerMat = new THREE.MeshBasicMaterial({
       color: threeColor,
-      wireframe: true,
       transparent: true,
-      opacity: 0.7,
+      opacity: 0.72,
     });
-    outerMat.userData.baseOpacity = 0.7;
-    group.add(new THREE.Mesh(outerGeom, outerMat));
+    outerMat.userData.baseOpacity = 0.72;
+    const ringA = new THREE.Mesh(outerGeom, outerMat);
+    ringA.name = 'drone-pickup-ring';
+    ringA.rotation.x = Math.PI / 2;
+    group.add(ringA);
+
+    const ringB = new THREE.Mesh(outerGeom, outerMat.clone());
+    (ringB.material as THREE.Material).userData.baseOpacity = 0.55;
+    ringB.name = 'drone-pickup-cross-ring';
+    ringB.rotation.set(Math.PI / 2, Math.PI / 2, 0);
+    group.add(ringB);
 
     // Inner solid diamond
     const innerGeom = new THREE.OctahedronGeometry(0.12);
@@ -731,6 +759,17 @@ export class CompanionPickup {
     innerMesh.name = 'core';
     group.add(innerMesh);
 
+    const wingGeom = new THREE.BoxGeometry(0.28, 0.035, 0.035);
+    const wingMat = new THREE.MeshBasicMaterial({
+      color: threeColor,
+      transparent: true,
+      opacity: 0.85,
+    });
+    wingMat.userData.baseOpacity = 0.85;
+    const wingMesh = new THREE.Mesh(wingGeom, wingMat);
+    wingMesh.name = 'drone-pickup-body';
+    group.add(wingMesh);
+
     // 3D glow sphere (replaces flat sprite — visible from all angles)
     const glowGeom = new THREE.SphereGeometry(0.45, 12, 8);
     const glowMat = new THREE.MeshBasicMaterial({
@@ -745,6 +784,8 @@ export class CompanionPickup {
     const glowSphere = new THREE.Mesh(glowGeom, glowMat);
     glowSphere.name = 'pickupGlow';
     group.add(glowSphere);
+
+    group.add(createCompanionIconSprite(this.companionType, threeColor));
 
     // Spawn indicator: flashing arrow for first 30s
     group.add(createSpawnIndicatorSprite(threeColor));
@@ -1005,6 +1046,7 @@ function createCompanionMesh(color: number): {
 
 // Pre-allocated temps for RemoteCompanionRenderer.update() (zero allocation)
 const _rcrBitangent = new THREE.Vector3();
+const _rcrTangent = new THREE.Vector3();
 const _rcrOrientZ = new THREE.Vector3();
 const _rcrOrientMat = new THREE.Matrix4();
 const _rcrSpinX = new THREE.Vector3(1, 0, 0);
@@ -1017,6 +1059,7 @@ interface RemoteCompanionEntry {
   ring1: THREE.Mesh;
   ring2: THREE.Mesh;
   orbitAngle: number;
+  orbitPhase: number;
   orbitSpeed: number;
   type: CompanionType;
 }
@@ -1029,6 +1072,7 @@ interface RemoteCompanionEntry {
 export class RemoteCompanionRenderer {
   readonly root: THREE.Group;
   private companions: RemoteCompanionEntry[] = [];
+  private orbitClock = 0;
 
   constructor() {
     this.root = new THREE.Group();
@@ -1053,9 +1097,18 @@ export class RemoteCompanionRenderer {
       disposeCompanionMesh(entry.mesh);
     }
 
-    // Add missing companions
-    for (let i = this.companions.length; i < desired.length; i++) {
+    for (let i = 0; i < desired.length; i++) {
       const type = desired[i];
+      const existing = this.companions[i];
+      if (existing && existing.type === type) {
+        existing.orbitPhase = (i / Math.max(1, desired.length)) * Math.PI * 2;
+        continue;
+      }
+      if (existing) {
+        this.root.remove(existing.mesh);
+        disposeCompanionMesh(existing.mesh);
+        this.companions.splice(i, 1);
+      }
       const color = COMPANION_COLORS[type];
       const { group, corePart, ring1, ring2 } = createCompanionMesh(color);
       // Phase offset per companion so they spread around the player
@@ -1063,7 +1116,7 @@ export class RemoteCompanionRenderer {
       const orbitSpeed = type === CompanionType.Guardian ? ORBIT_SPEED_BASE
         : type === CompanionType.Hunter ? ORBIT_SPEED_BASE * 0.8
         : ORBIT_SPEED_BASE * 1.2;
-      this.companions.push({ mesh: group, corePart, ring1, ring2, orbitAngle: orbitPhase, orbitSpeed, type });
+      this.companions.splice(i, 0, { mesh: group, corePart, ring1, ring2, orbitAngle: orbitPhase, orbitPhase, orbitSpeed, type });
       this.root.add(group);
     }
   }
@@ -1075,25 +1128,39 @@ export class RemoteCompanionRenderer {
    * @param surfaceNormal - Surface normal at the player (from server nx/ny/nz)
    * @param tangent - Surface tangent at the player (from server tx/ty/tz)
    */
-  update(dt: number, playerWorldPos: THREE.Vector3, surfaceNormal: THREE.Vector3, tangent: THREE.Vector3): void {
+  update(
+    dt: number,
+    playerWorldPos: THREE.Vector3,
+    surfaceNormal: THREE.Vector3,
+    tangent: THREE.Vector3,
+    absoluteTimeSeconds?: number,
+  ): void {
     if (this.companions.length === 0) return;
 
-    // Compute bitangent = normal × tangent (guaranteed perpendicular, right-handed)
-    _rcrBitangent.crossVectors(surfaceNormal, tangent).normalize();
+    _rcrTangent.copy(tangent).addScaledVector(surfaceNormal, -tangent.dot(surfaceNormal));
+    if (_rcrTangent.lengthSq() <= 1e-8) _rcrTangent.set(1, 0, 0);
+    _rcrTangent.normalize();
+    _rcrBitangent.crossVectors(surfaceNormal, _rcrTangent);
+    if (_rcrBitangent.lengthSq() <= 1e-8) _rcrBitangent.set(0, 0, 1);
+    _rcrBitangent.normalize();
 
     // Orientation matrix: align companion to surface (same math as Companion.update)
-    _rcrOrientZ.crossVectors(tangent, surfaceNormal);
-    _rcrOrientMat.makeBasis(tangent, surfaceNormal, _rcrOrientZ);
+    _rcrOrientZ.crossVectors(_rcrTangent, surfaceNormal).normalize();
+    _rcrOrientMat.makeBasis(_rcrTangent, surfaceNormal, _rcrOrientZ);
+
+    this.orbitClock = typeof absoluteTimeSeconds === 'number' && Number.isFinite(absoluteTimeSeconds)
+      ? absoluteTimeSeconds
+      : this.orbitClock + THREE.MathUtils.clamp(dt, 0, 1 / 30);
 
     for (const entry of this.companions) {
-      entry.orbitAngle += entry.orbitSpeed * dt;
+      entry.orbitAngle = entry.orbitPhase + this.orbitClock * entry.orbitSpeed;
 
       // Orbit position in tangent plane
       entry.mesh.position
         .copy(playerWorldPos)
-        .addScaledVector(tangent, Math.cos(entry.orbitAngle) * ORBIT_RADIUS)
+        .addScaledVector(_rcrTangent, Math.cos(entry.orbitAngle) * ORBIT_RADIUS)
         .addScaledVector(_rcrBitangent, Math.sin(entry.orbitAngle) * ORBIT_RADIUS)
-        .addScaledVector(surfaceNormal, 0.2); // slightly above surface
+        .addScaledVector(surfaceNormal, 0.35); // hovering drone, same readable offset as SP
 
       // Orient to surface
       entry.mesh.quaternion.setFromRotationMatrix(_rcrOrientMat);
@@ -1107,6 +1174,7 @@ export class RemoteCompanionRenderer {
 
   dispose(): void {
     for (const entry of this.companions) {
+      this.root.remove(entry.mesh);
       disposeCompanionMesh(entry.mesh);
     }
     this.companions = [];

@@ -88,6 +88,11 @@ import {
   applyPickupSurfacePose,
   resolveAndApplyPickupVisibility,
 } from './pickups/PickupSurfaceVisual';
+import {
+  createHealthIconSprite,
+  createShieldIconSprite,
+  createSuperPickupIconSprite,
+} from './pickups/PickupIconSprite';
 import { BulletInstanceManager, BulletVisualType } from './rendering/BulletInstanceManager';
 import { SharedGeometries } from './rendering/GeometryCache';
 import { LODManager, DEFAULT_LOD_CONFIG } from './rendering/LODManager';
@@ -1822,6 +1827,7 @@ async function main() {
     };
 
     const superMesh = makeProofGroup('SuperPickup_proof', 0xffd700, superPickupGeometry);
+    superMesh.add(createSuperPickupIconSprite('bomb_resupply', new THREE.Color(0xffd700)));
     networkSuperPickups.set('__pickup_proof_super', {
       mesh: superMesh,
       surfaceU: u,
@@ -1832,6 +1838,7 @@ async function main() {
     addRecord('mp-super', 'super', superMesh);
 
     const healthMesh = makeProofGroup('HealthPickup_proof', 0x00ff44, healthPickupGeometry);
+    healthMesh.add(createHealthIconSprite(new THREE.Color(0x00ff44)));
     networkHealthPickups.set('__pickup_proof_health', {
       mesh: healthMesh,
       surfaceU: u,
@@ -1841,6 +1848,7 @@ async function main() {
     addRecord('mp-heal', 'heal', healthMesh);
 
     const shieldMesh = makeProofGroup('ShieldPickup_proof', 0x4488ff, shieldPickupGeometry);
+    shieldMesh.add(createShieldIconSprite(new THREE.Color(0x4488ff)));
     networkShieldPickups.set('__pickup_proof_shield', {
       mesh: shieldMesh,
       surfaceU: u,
@@ -5531,6 +5539,8 @@ async function main() {
         glowSprite.scale.setScalar(2.0);
         group.add(glowSprite);
 
+        group.add(createSuperPickupIconSprite(netPickup.pickupType, color));
+
         scene.add(group);
         networkSuperPickups.set(netPickup.id, {
           mesh: group,
@@ -5661,6 +5671,7 @@ async function main() {
         });
         mat.userData.baseOpacity = 0.85;
         const mesh = new THREE.Mesh(healthPickupGeometry, mat);
+        mesh.name = 'core';
         group.add(mesh);
 
         // Wireframe outer shell
@@ -5696,6 +5707,8 @@ async function main() {
         const glowSprite = new THREE.Sprite(glowMat);
         glowSprite.scale.setScalar(2.0);
         group.add(glowSprite);
+
+        group.add(createHealthIconSprite(color));
 
         scene.add(group);
         networkHealthPickups.set(netPickup.id, {
@@ -5746,9 +5759,12 @@ async function main() {
 
           const innerMat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.9 });
           innerMat.userData.baseOpacity = 0.9;
-          group.add(new THREE.Mesh(shieldPickupGeometry, innerMat));
+          const innerMesh = new THREE.Mesh(shieldPickupGeometry, innerMat);
+          innerMesh.name = 'core';
+          group.add(innerMesh);
 
           const outerMat = new THREE.MeshBasicMaterial({ color, wireframe: true, transparent: true, opacity: 0.4 });
+          outerMat.userData.baseOpacity = 0.4;
           const outerMesh = new THREE.Mesh(shieldPickupGeometry, outerMat);
           outerMesh.scale.setScalar(1.4);
           group.add(outerMesh);
@@ -5769,6 +5785,8 @@ async function main() {
           const glowSprite = new THREE.Sprite(glowMat);
           glowSprite.scale.setScalar(2.0);
           group.add(glowSprite);
+
+          group.add(createShieldIconSprite(color));
 
           scene.add(group);
           networkShieldPickups.set(netPickup.id, {
@@ -8657,7 +8675,7 @@ async function main() {
 
       const rcr = remoteCompanionRenderers.get(id);
       if (rcr) {
-        rcr.update(_cameraRenderDt, player.mesh.position, remoteNormal, remoteTangent);
+        rcr.update(_cameraRenderDt, player.mesh.position, remoteNormal, remoteTangent, game.clock.totalTime);
       }
 
       // Update remote buff particle aura.

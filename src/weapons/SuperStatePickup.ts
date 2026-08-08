@@ -3,6 +3,7 @@ import { SuperStateType } from './SuperState';
 import { SharedGeometries } from '../rendering/GeometryCache';
 import { createSpawnIndicatorSprite, updateSpawnIndicator } from './SpawnIndicator';
 import { applyPickupSurfacePose } from '../pickups/PickupSurfaceVisual';
+import { createSuperPickupIconSprite, disposePickupIconSprites } from '../pickups/PickupIconSprite';
 import { WEAPON_PICKUP_WORLD_RADIUS as PICKUP_WORLD_RADIUS } from '../shared/GameBalanceConstants';
 
 export interface SurfaceTransform {
@@ -46,6 +47,17 @@ export class SuperStatePickup {
     // Create a pattern of dots based on the super state type
     const patterns = this.getPatternForType();
     const color = this.getColorForType();
+    const colorObject = new THREE.Color(color);
+
+    const coreMaterial = new THREE.MeshBasicMaterial({
+      color,
+      transparent: true,
+      opacity: 0.95,
+    });
+    coreMaterial.userData.baseOpacity = 0.95;
+    const core = new THREE.Mesh(new THREE.SphereGeometry(0.08, 10, 8), coreMaterial);
+    core.name = 'core';
+    this.mesh.add(core);
 
     for (const offset of patterns) {
       // Shared geometry — all dots across all SuperStatePickups use the same sphere.
@@ -62,8 +74,10 @@ export class SuperStatePickup {
       this.mesh.add(dot);
     }
 
+    this.mesh.add(createSuperPickupIconSprite(this.type, colorObject));
+
     // Spawn indicator: flashing arrow for first 30s
-    this.mesh.add(createSpawnIndicatorSprite(new THREE.Color(color)));
+    this.mesh.add(createSpawnIndicatorSprite(colorObject));
   }
 
   private getPatternForType(): Array<{ x: number; y: number; z: number }> {
@@ -214,6 +228,9 @@ export class SuperStatePickup {
       dot.scale.set(scale, scale, scale);
     }
 
+    const core = this.mesh.getObjectByName('core');
+    if (core) core.scale.setScalar(1 + Math.sin(this.animationTime * 4) * 0.18);
+
     // Store cameraUp for deferred use in applySurfaceTransform()
     if (cameraUp) {
       this._storedCameraUp.copy(cameraUp);
@@ -274,6 +291,15 @@ export class SuperStatePickup {
 
   dispose(): void {
     this.active = false;
+
+    const core = this.mesh.getObjectByName('core') as THREE.Mesh | undefined;
+    if (core) {
+      core.geometry.dispose();
+      if (core.material instanceof THREE.Material) core.material.dispose();
+      this.mesh.remove(core);
+    }
+
+    disposePickupIconSprites(this.mesh);
 
     // Clean up all dots. Do NOT dispose geometry — it's shared via GeometryCache.
     for (const dot of this.dots) {

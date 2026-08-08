@@ -8,6 +8,15 @@ import {
   getRandomCompanionType,
   RemoteCompanionRenderer,
 } from '../entities/Companion';
+import { SuperStatePickup } from '../weapons/SuperStatePickup';
+import { SuperStateType } from '../weapons/SuperState';
+import { WeaponPickup } from '../weapons/WeaponPickup';
+import { WeaponType } from '../weapons/WeaponTypes';
+import { BuffPickup, BuffType } from '../weapons/BuffPickup';
+import { BuffPickupNew } from '../buffs/BuffPickupNew';
+import { StackBuffType } from '../buffs/BuffManager';
+import { HealPickup } from '../pickups/HealPickup';
+import { ShieldPickup } from '../pickups/ShieldPickup';
 
 // ---------------------------------------------------------------------------
 // Mock SoundEngine to prevent audio errors in test
@@ -66,6 +75,23 @@ function makeMockBulletPool() {
     clear: vi.fn(),
     activeCount: 0,
   } as any;
+}
+
+function expectPickupIconDisposed(pickup: { mesh: THREE.Object3D; dispose: () => void }): void {
+  const icon = pickup.mesh.getObjectByName('pickup-icon');
+  expect(icon).toBeInstanceOf(THREE.Sprite);
+
+  const sprite = icon as THREE.Sprite;
+  expect(sprite.material.map).toBeTruthy();
+  const map = sprite.material.map as THREE.Texture;
+  const mapDispose = vi.spyOn(map, 'dispose');
+  const materialDispose = vi.spyOn(sprite.material, 'dispose');
+
+  pickup.dispose();
+
+  expect(mapDispose).toHaveBeenCalledTimes(1);
+  expect(materialDispose).toHaveBeenCalledTimes(1);
+  expect(sprite.parent).toBeNull();
 }
 
 // ---------------------------------------------------------------------------
@@ -385,6 +411,41 @@ describe('CompanionPickup', () => {
     const pickup = new CompanionPickup(CompanionType.Guardian, 0.5, 0.5);
     expect(() => pickup.dispose()).not.toThrow();
   });
+
+  it('uses a drone body plus category icon so it is not confused with weapon diamonds', () => {
+    const pickup = new CompanionPickup(CompanionType.Guardian, 0.5, 0.5);
+    expect(pickup.mesh.getObjectByName('core')).toBeTruthy();
+    expect(pickup.mesh.getObjectByName('pickup-icon')).toBeTruthy();
+    expect(pickup.mesh.getObjectByName('drone-pickup-ring')).toBeTruthy();
+    expect(pickup.mesh.getObjectByName('drone-pickup-body')).toBeTruthy();
+    pickup.dispose();
+  });
+});
+
+describe('Pickup class visual language', () => {
+  it('gives each pickup class a core and category icon before collection', () => {
+    const pickups = [
+      new SuperStatePickup(SuperStateType.QuadFire, 0.5, 0.5),
+      new WeaponPickup(WeaponType.Spread, 0.5, 0.5),
+      new BuffPickup(BuffType.RapidFire, 0.5, 0.5),
+      new BuffPickupNew(StackBuffType.HotHands, 0.5, 0.5),
+      new CompanionPickup(CompanionType.Guardian, 0.5, 0.5),
+      new HealPickup(0.5, 0.5),
+      new ShieldPickup(0.5, 0.5),
+    ];
+
+    for (const pickup of pickups) {
+      expect(pickup.mesh.getObjectByName('core')).toBeTruthy();
+      expect(pickup.mesh.getObjectByName('pickup-icon')).toBeTruthy();
+      pickup.dispose();
+    }
+  });
+
+  it('disposes category icon sprite texture and material for new pickup icon classes', () => {
+    expectPickupIconDisposed(new SuperStatePickup(SuperStateType.QuadFire, 0.5, 0.5));
+    expectPickupIconDisposed(new HealPickup(0.5, 0.5));
+    expectPickupIconDisposed(new ShieldPickup(0.5, 0.5));
+  });
 });
 
 // CompanionHUD tests require DOM (document) - skipped in Node test environment.
@@ -676,6 +737,50 @@ describe('RemoteCompanionRenderer (s44r2-04 — other players drones visible in 
 
     // Position should change as it orbits
     expect(pos1.distanceTo(pos2)).toBeGreaterThan(0.01);
+    renderer.dispose();
+  });
+
+  it('uses deterministic absolute-time orbit positions instead of dt partition speed pulses', () => {
+    const rendererA = new RemoteCompanionRenderer();
+    const rendererB = new RemoteCompanionRenderer();
+    rendererA.setCompanionCounts(2, 1, 1);
+    rendererB.setCompanionCounts(2, 1, 1);
+
+    const playerPos = new THREE.Vector3(2, 3, 4);
+    const normal = new THREE.Vector3(0, 1, 0);
+    const tangent = new THREE.Vector3(1, 0.2, 0);
+
+    rendererA.update(1 / 60, playerPos, normal, tangent, 4.25);
+    for (const dt of [1 / 20, 1 / 120, 1 / 15, 1 / 60]) {
+      rendererB.update(dt, playerPos, normal, tangent, 4.25);
+    }
+
+    expect(rendererA.root.children.length).toBe(rendererB.root.children.length);
+    for (let i = 0; i < rendererA.root.children.length; i++) {
+      expect(rendererA.root.children[i].position.distanceTo(rendererB.root.children[i].position)).toBeLessThan(0.00001);
+    }
+    rendererA.dispose();
+    rendererB.dispose();
+  });
+
+  it('does not teleport companions when the same server counts repeat', () => {
+    const renderer = new RemoteCompanionRenderer();
+    renderer.setCompanionCounts(1, 1, 0);
+
+    const playerPos = new THREE.Vector3(0, 0, 0);
+    const normal = new THREE.Vector3(0, 1, 0);
+    const tangent = new THREE.Vector3(1, 0, 0);
+
+    renderer.update(1 / 60, playerPos, normal, tangent, 2.0);
+    const before = renderer.root.children.map((child) => child.position.clone());
+    renderer.setCompanionCounts(1, 1, 0);
+    renderer.update(1 / 60, playerPos, normal, tangent, 2.0);
+    const after = renderer.root.children.map((child) => child.position.clone());
+
+    expect(after).toHaveLength(before.length);
+    for (let i = 0; i < before.length; i++) {
+      expect(before[i].distanceTo(after[i])).toBeLessThan(0.00001);
+    }
     renderer.dispose();
   });
 

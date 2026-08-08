@@ -7,6 +7,7 @@ import { StackBuffType, BuffCategory } from '../buffs/BuffManager';
  *
  * Weapon pickups: white icon on subtle diamond background (category = diamond = weapon)
  * Buff pickups:   colored icon on subtle circle background (category = circle = buff)
+ * Utility pickups: health/shield/companion/super each get a category glyph.
  *
  * Sprites use NormalBlending to prevent whiteout/overbloom when bloom is active.
  * They face the camera (THREE.Sprite) so they're readable from any angle.
@@ -21,6 +22,8 @@ const HALF = ICON_SIZE / 2;
 
 /** Create an icon sprite for a weapon pickup. White icon, uses weapon color for glow bg. */
 export function createWeaponIconSprite(type: WeaponType, color: THREE.Color): THREE.Sprite {
+  if (typeof document === 'undefined') return createBlankIconSprite(0.9);
+
   const canvas = document.createElement('canvas');
   canvas.width = ICON_SIZE;
   canvas.height = ICON_SIZE;
@@ -76,6 +79,96 @@ export function createBuffIconSprite(
   color: THREE.Color,
   category: BuffCategory,
 ): THREE.Sprite {
+  return createIconSprite(color, 0.9, (ctx, r, g, b) => {
+    drawCircleBackground(ctx, r, g, b, 32, 0.2);
+    drawRadialGlow(ctx, r, g, b, 0.4);
+    ctx.strokeStyle = `rgb(${r},${g},${b})`;
+    ctx.fillStyle = `rgb(${r},${g},${b})`;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    drawBuffIcon(ctx, type, category);
+  });
+}
+
+export function createLegacyBuffIconSprite(type: string, color: THREE.Color): THREE.Sprite {
+  return createIconSprite(color, 0.9, (ctx, r, g, b) => {
+    drawCircleBackground(ctx, r, g, b, 32, 0.2);
+    drawRadialGlow(ctx, r, g, b, 0.35);
+    ctx.strokeStyle = '#ffffff';
+    ctx.fillStyle = '#ffffff';
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    drawLegacyBuffIcon(ctx, type);
+  });
+}
+
+export function createSuperPickupIconSprite(type: string, color: THREE.Color): THREE.Sprite {
+  return createIconSprite(color, 0.95, (ctx, r, g, b) => {
+    drawHexBackground(ctx, r, g, b, 34, 0.22);
+    drawRadialGlow(ctx, r, g, b, 0.45);
+    ctx.strokeStyle = '#ffffff';
+    ctx.fillStyle = '#ffffff';
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    drawSuperIcon(ctx, type);
+  });
+}
+
+export function createCompanionIconSprite(type: string, color: THREE.Color): THREE.Sprite {
+  return createIconSprite(color, 0.95, (ctx, r, g, b) => {
+    drawCircleBackground(ctx, r, g, b, 34, 0.18);
+    drawRadialGlow(ctx, r, g, b, 0.4);
+    ctx.strokeStyle = '#ffffff';
+    ctx.fillStyle = '#ffffff';
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    drawCompanionIcon(ctx, type);
+  });
+}
+
+export function createHealthIconSprite(color: THREE.Color): THREE.Sprite {
+  return createIconSprite(color, 0.95, (ctx, r, g, b) => {
+    drawCircleBackground(ctx, r, g, b, 34, 0.22);
+    drawRadialGlow(ctx, r, g, b, 0.45);
+    ctx.fillStyle = '#ffffff';
+    drawHealthIcon(ctx);
+  });
+}
+
+export function createShieldIconSprite(color: THREE.Color): THREE.Sprite {
+  return createIconSprite(color, 0.95, (ctx, r, g, b) => {
+    drawShieldBackground(ctx, r, g, b);
+    drawRadialGlow(ctx, r, g, b, 0.42);
+    ctx.strokeStyle = '#ffffff';
+    ctx.fillStyle = '#ffffff';
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    drawShieldIcon(ctx);
+  });
+}
+
+export function disposePickupIconSprites(root: THREE.Object3D): void {
+  const sprites: THREE.Sprite[] = [];
+  root.traverse((child) => {
+    if (child instanceof THREE.Sprite && child.name === 'pickup-icon') {
+      sprites.push(child);
+    }
+  });
+
+  for (const sprite of sprites) {
+    sprite.material.map?.dispose();
+    sprite.material.dispose();
+    sprite.parent?.remove(sprite);
+  }
+}
+
+function createIconSprite(
+  color: THREE.Color,
+  opacity: number,
+  draw: (ctx: CanvasRenderingContext2D, r: number, g: number, b: number) => void,
+): THREE.Sprite {
+  if (typeof document === 'undefined') return createBlankIconSprite(opacity);
+
   const canvas = document.createElement('canvas');
   canvas.width = ICON_SIZE;
   canvas.height = ICON_SIZE;
@@ -85,42 +178,106 @@ export function createBuffIconSprite(
   const g = Math.round(color.g * 255);
   const b = Math.round(color.b * 255);
 
-  // Subtle circle background (= buff category hint — distinct from weapon diamond)
-  ctx.beginPath();
-  ctx.arc(HALF, HALF, 32, 0, Math.PI * 2);
-  ctx.fillStyle = `rgba(${r},${g},${b},0.2)`;
-  ctx.fill();
-
-  // Outer glow ring
-  const glow = ctx.createRadialGradient(HALF, HALF, 8, HALF, HALF, 44);
-  glow.addColorStop(0, `rgba(${r},${g},${b},0.4)`);
-  glow.addColorStop(1, `rgba(${r},${g},${b},0)`);
-  ctx.fillStyle = glow;
-  ctx.fillRect(0, 0, ICON_SIZE, ICON_SIZE);
-
-  // Colored icon (matches buff color for identity reinforcement)
-  ctx.strokeStyle = `rgb(${r},${g},${b})`;
-  ctx.fillStyle = `rgb(${r},${g},${b})`;
-  ctx.lineCap = 'round';
-  ctx.lineJoin = 'round';
-
-  drawBuffIcon(ctx, type, category);
+  draw(ctx, r, g, b);
 
   const texture = new THREE.CanvasTexture(canvas);
   const mat = new THREE.SpriteMaterial({
     map: texture,
     transparent: true,
-    opacity: 0.9,
+    opacity,
     depthWrite: false,
     blending: THREE.NormalBlending,
     toneMapped: true,
   });
-  mat.userData.baseOpacity = 0.9;
+  mat.userData.baseOpacity = opacity;
 
   const sprite = new THREE.Sprite(mat);
   sprite.name = 'pickup-icon';
   sprite.scale.setScalar(0.5);
   return sprite;
+}
+
+function createBlankIconSprite(opacity: number): THREE.Sprite {
+  const mat = new THREE.SpriteMaterial({
+    map: new THREE.Texture(),
+    transparent: true,
+    opacity,
+    depthWrite: false,
+    blending: THREE.NormalBlending,
+    toneMapped: true,
+  });
+  mat.userData.baseOpacity = opacity;
+  const sprite = new THREE.Sprite(mat);
+  sprite.name = 'pickup-icon';
+  sprite.scale.setScalar(0.5);
+  return sprite;
+}
+
+function drawRadialGlow(
+  ctx: CanvasRenderingContext2D,
+  r: number,
+  g: number,
+  b: number,
+  alpha: number,
+): void {
+  const glow = ctx.createRadialGradient(HALF, HALF, 8, HALF, HALF, 44);
+  glow.addColorStop(0, `rgba(${r},${g},${b},${alpha})`);
+  glow.addColorStop(1, `rgba(${r},${g},${b},0)`);
+  ctx.fillStyle = glow;
+  ctx.fillRect(0, 0, ICON_SIZE, ICON_SIZE);
+}
+
+function drawCircleBackground(
+  ctx: CanvasRenderingContext2D,
+  r: number,
+  g: number,
+  b: number,
+  radius: number,
+  alpha: number,
+): void {
+  ctx.beginPath();
+  ctx.arc(HALF, HALF, radius, 0, Math.PI * 2);
+  ctx.fillStyle = `rgba(${r},${g},${b},${alpha})`;
+  ctx.fill();
+}
+
+function drawHexBackground(
+  ctx: CanvasRenderingContext2D,
+  r: number,
+  g: number,
+  b: number,
+  radius: number,
+  alpha: number,
+): void {
+  ctx.beginPath();
+  for (let i = 0; i < 6; i++) {
+    const angle = Math.PI / 6 + (i / 6) * Math.PI * 2;
+    const x = HALF + Math.cos(angle) * radius;
+    const y = HALF + Math.sin(angle) * radius;
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.closePath();
+  ctx.fillStyle = `rgba(${r},${g},${b},${alpha})`;
+  ctx.fill();
+}
+
+function drawShieldBackground(
+  ctx: CanvasRenderingContext2D,
+  r: number,
+  g: number,
+  b: number,
+): void {
+  ctx.beginPath();
+  ctx.moveTo(HALF, HALF - 36);
+  ctx.lineTo(HALF + 28, HALF - 18);
+  ctx.lineTo(HALF + 24, HALF + 12);
+  ctx.quadraticCurveTo(HALF + 12, HALF + 32, HALF, HALF + 38);
+  ctx.quadraticCurveTo(HALF - 12, HALF + 32, HALF - 24, HALF + 12);
+  ctx.lineTo(HALF - 28, HALF - 18);
+  ctx.closePath();
+  ctx.fillStyle = `rgba(${r},${g},${b},0.22)`;
+  ctx.fill();
 }
 
 // ---------------------------------------------------------------------------
@@ -553,4 +710,170 @@ function drawBuffIcon(
       ctx.stroke();
     }
   }
+}
+
+function drawLegacyBuffIcon(ctx: CanvasRenderingContext2D, type: string): void {
+  const cx = HALF;
+  const cy = HALF;
+  switch (type) {
+    case 'extended_range': {
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(cx - 28, cy);
+      ctx.lineTo(cx + 24, cy);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(cx + 24, cy);
+      ctx.lineTo(cx + 12, cy - 10);
+      ctx.moveTo(cx + 24, cy);
+      ctx.lineTo(cx + 12, cy + 10);
+      ctx.stroke();
+      break;
+    }
+    case 'rapid_fire': {
+      ctx.lineWidth = 2.5;
+      for (let i = -1; i <= 1; i++) {
+        const y = cy + i * 12;
+        ctx.beginPath();
+        ctx.moveTo(cx - 24, y);
+        ctx.lineTo(cx + 18, y);
+        ctx.stroke();
+      }
+      break;
+    }
+    case 'duration_plus': {
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.arc(cx, cy, 24, -Math.PI / 2, Math.PI * 1.2);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(cx + 5, cy - 26);
+      ctx.lineTo(cx, cy - 14);
+      ctx.lineTo(cx - 9, cy - 24);
+      ctx.stroke();
+      break;
+    }
+    default: {
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(cx, cy, 22, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+  }
+}
+
+function drawSuperIcon(ctx: CanvasRenderingContext2D, type: string): void {
+  const cx = HALF;
+  const cy = HALF;
+  const normalized = type.toLowerCase();
+  if (normalized.includes('bomb')) {
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.arc(cx, cy + 3, 18, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(cx + 8, cy - 12);
+    ctx.quadraticCurveTo(cx + 18, cy - 26, cx + 30, cy - 20);
+    ctx.stroke();
+    ctx.beginPath();
+    for (let i = 0; i < 8; i++) {
+      const angle = (i / 8) * Math.PI * 2;
+      const inner = 3;
+      const outer = i % 2 === 0 ? 10 : 7;
+      const x = cx + 31 + Math.cos(angle) * (i === 0 ? inner : outer);
+      const y = cy - 23 + Math.sin(angle) * (i === 0 ? inner : outer);
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+    ctx.fill();
+    return;
+  }
+  if (normalized.includes('multiplier')) {
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(cx - 20, cy - 20);
+    ctx.lineTo(cx + 20, cy + 20);
+    ctx.moveTo(cx + 20, cy - 20);
+    ctx.lineTo(cx - 20, cy + 20);
+    ctx.stroke();
+    return;
+  }
+
+  ctx.beginPath();
+  for (let i = 0; i < 10; i++) {
+    const angle = (i / 10) * Math.PI * 2 - Math.PI / 2;
+    const radius = i % 2 === 0 ? 30 : 13;
+    const x = cx + Math.cos(angle) * radius;
+    const y = cy + Math.sin(angle) * radius;
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.closePath();
+  ctx.fill();
+}
+
+function drawCompanionIcon(ctx: CanvasRenderingContext2D, type: string): void {
+  const cx = HALF;
+  const cy = HALF;
+  ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  ctx.ellipse(cx, cy, 28, 12, Math.PI / 5, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.ellipse(cx, cy, 28, 12, -Math.PI / 5, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(cx, cy, 8, 0, Math.PI * 2);
+  ctx.fill();
+
+  if (type === 'hunter') {
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy - 30);
+    ctx.lineTo(cx + 9, cy - 14);
+    ctx.lineTo(cx - 9, cy - 14);
+    ctx.closePath();
+    ctx.fill();
+  } else if (type === 'protector') {
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(cx, cy, 30, 0, Math.PI * 2);
+    ctx.stroke();
+  } else {
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(cx - 30, cy);
+    ctx.lineTo(cx - 18, cy);
+    ctx.moveTo(cx + 18, cy);
+    ctx.lineTo(cx + 30, cy);
+    ctx.stroke();
+  }
+}
+
+function drawHealthIcon(ctx: CanvasRenderingContext2D): void {
+  const cx = HALF;
+  const cy = HALF;
+  ctx.fillRect(cx - 7, cy - 28, 14, 56);
+  ctx.fillRect(cx - 28, cy - 7, 56, 14);
+}
+
+function drawShieldIcon(ctx: CanvasRenderingContext2D): void {
+  const cx = HALF;
+  const cy = HALF;
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(cx, cy - 30);
+  ctx.lineTo(cx + 22, cy - 16);
+  ctx.lineTo(cx + 19, cy + 8);
+  ctx.quadraticCurveTo(cx + 10, cy + 24, cx, cy + 30);
+  ctx.quadraticCurveTo(cx - 10, cy + 24, cx - 19, cy + 8);
+  ctx.lineTo(cx - 22, cy - 16);
+  ctx.closePath();
+  ctx.stroke();
+  ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  ctx.moveTo(cx, cy - 16);
+  ctx.lineTo(cx, cy + 18);
+  ctx.stroke();
 }
