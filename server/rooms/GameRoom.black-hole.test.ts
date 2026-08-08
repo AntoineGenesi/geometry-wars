@@ -262,6 +262,8 @@ describe('GameRoom authoritative Black Hole vortex', () => {
   it('routes black_hole away from normal bullets and spawns one travelling canonical bolt', () => {
     const scenario = makeRoom();
     rooms.push(scenario.room);
+    const startLocation = scenario.internals.surfaceManager.getWalkerLocation(scenario.player.id)!;
+    const aim = serverWalkerAimVector(startLocation, scenario.player.aimAngle);
 
     scenario.internals.tryShoot(scenario.player);
 
@@ -273,10 +275,19 @@ describe('GameRoom authoritative Black Hole vortex', () => {
     expect(bolt.ownerId).toBe(scenario.player.id);
     expect(bolt.maxAge).toBe(1.2);
     expect(bolt.pullRadius).toBeGreaterThan(1);
+    expect(boltDirection(bolt).dot(aim)).toBeGreaterThan(0.98);
     expect(bolt.walkerBaryU + bolt.walkerBaryV + bolt.walkerBaryW).toBeCloseTo(1, 5);
 
     scenario.internals.updateBlackHoleBolts(1 / 60);
     expect([bolt.wx, bolt.wy, bolt.wz]).not.toEqual(start);
+    const travel = new THREE.Vector3(
+      bolt.wx - startLocation.wx,
+      bolt.wy - startLocation.wy,
+      bolt.wz - startLocation.wz,
+    );
+    expect(travel.length()).toBeGreaterThan(0.02);
+    expect(travel.length()).toBeLessThan(0.12);
+    expect(travel.normalize().dot(aim)).toBeGreaterThan(0.9);
     expect(scenario.room.state.blackHoleFields).toHaveLength(0);
   });
 

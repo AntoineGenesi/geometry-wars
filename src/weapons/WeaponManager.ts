@@ -1088,6 +1088,8 @@ export class WeaponManager {
       }
 
       if (proj.type === WeaponType.BlackHole) {
+        this.checkProjectileCollisions(proj, i);
+        if (this.projectiles[i] !== proj) continue;
         this.applyBlackHoleBoltPull(proj, dt);
       }
 
