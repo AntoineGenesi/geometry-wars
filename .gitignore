@@ -12,6 +12,7 @@ test-screenshots/
 test-results/
 /tmp/
 .claude/worktrees/
+worktrees/
 
 # Telemetry session files — not committed (use logs/ for local analysis only)
 # Commit only aggregate reports in reports/
