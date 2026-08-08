@@ -73,11 +73,12 @@ const NVM_PATH = process.env.NVM_BIN
   || dirname(process.execPath)
   || '/home/antoine/.nvm/versions/node/v20.19.5/bin';
 
-// All surfaces available in SurfaceFactory
+// All player-selectable built-in surfaces. Keep this in sync with
+// SurfaceFactory.getAvailableTypes(), QuickStartConfig, and StartMenu.
 const ALL_SURFACE_LIST = [
   'sphere', 'cube', 'pill', 'torus', 'peanut', 'capsule',
-  'mobius', 'sphere-tunnel', 'cube-ring', 'cube-tunnel', 'mobius-bevel',
-  'pipe', 'icosahedron',
+  'mobius', 'sphere-tunnel', 'cube-ring', 'cube-tunnel', 'pipe',
+  'icosahedron',
 ];
 
 // Core surfaces that get full scenario treatment
@@ -625,6 +626,14 @@ function telemetryMatchesRequestedMode(telemetry, requestedMode) {
     && telemetry.pvpEnabled !== true;
 }
 
+function telemetrySurfaceType(telemetry) {
+  const surface = telemetry?.surface;
+  if (!surface) return '';
+  if (typeof surface === 'string') return surface;
+  if (typeof surface.type === 'string') return surface.type;
+  return '';
+}
+
 function getCriticalErrors(errors) {
   return errors.filter((e) =>
     !e.includes('AudioContext') &&
@@ -729,7 +738,7 @@ async function runGameplayLoop(hostPage, joinPage, durationSecs) {
 // Connection + game start (shared setup for all checks)
 // ---------------------------------------------------------------------------
 
-async function setupMPGame(hostPage, joinPage) {
+async function setupMPGame(hostPage, joinPage, surface) {
   const results = [];
   const record = (name, status, note) => {
     results.push({ name, status, note });
@@ -805,6 +814,20 @@ async function setupMPGame(hostPage, joinPage) {
     const joinMode = `${joinTel?.gameMode ?? 'unknown'} / pvpMode=${joinTel?.pvpMode ?? ''} / pvpEnabled=${joinTel?.pvpEnabled ?? false}`;
     record('mp_mode_selected', modeSelected ? 'PASS' : 'FAIL',
       `Requested ${MODE_ARG}; host=${hostMode}, join=${joinMode}`);
+  }
+
+  {
+    const surfaceSelected = await waitForCondition(async () => {
+      const hostTel = await getTelemetry(hostPage);
+      const joinTel = await getTelemetry(joinPage);
+      return telemetrySurfaceType(hostTel) === surface && telemetrySurfaceType(joinTel) === surface;
+    }, 10000, 1000);
+    const hostTel = await getTelemetry(hostPage);
+    const joinTel = await getTelemetry(joinPage);
+    const hostSurface = telemetrySurfaceType(hostTel) || 'unknown';
+    const joinSurface = telemetrySurfaceType(joinTel) || 'unknown';
+    record('mp_surface_selected', surfaceSelected ? 'PASS' : 'FAIL',
+      `Requested ${surface}; host=${hostSurface}, join=${joinSurface}`);
   }
 
   return { results, ok: gameStarted };
@@ -1520,7 +1543,7 @@ async function main() {
       await sleep(5000);
 
       // Setup connection + start game
-      const setup = await setupMPGame(hostPage, joinPage);
+      const setup = await setupMPGame(hostPage, joinPage, surface);
       let checks = setup.results;
       let scenarios = [];
 
