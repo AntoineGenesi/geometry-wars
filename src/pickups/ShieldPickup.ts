@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { applyPickupSurfacePose } from './PickupSurfaceVisual';
+import { createShieldIconSprite } from './PickupIconSprite';
 import { WEAPON_PICKUP_WORLD_RADIUS as PICKUP_WORLD_RADIUS } from '../shared/GameBalanceConstants';
 
 const SHIELD_PICKUP_LIFETIME = 12; // seconds — slightly longer than heal
@@ -55,7 +56,9 @@ export class ShieldPickup {
       opacity: 0.9,
     });
     innerMat.userData.baseOpacity = 0.9;
-    group.add(new THREE.Mesh(innerGeom, innerMat));
+    const inner = new THREE.Mesh(innerGeom, innerMat);
+    inner.name = 'core';
+    group.add(inner);
 
     // Bright core
     const coreGeom = new THREE.SphereGeometry(0.04, 6, 6);
@@ -66,6 +69,7 @@ export class ShieldPickup {
     });
     coreMat.userData.baseOpacity = 1.0;
     group.add(new THREE.Mesh(coreGeom, coreMat));
+    group.add(createShieldIconSprite(color));
 
     return group;
   }

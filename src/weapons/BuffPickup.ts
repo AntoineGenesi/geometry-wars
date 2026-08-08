@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { createSpawnIndicatorSprite, updateSpawnIndicator } from './SpawnIndicator';
 import { applyPickupSurfacePose } from '../pickups/PickupSurfaceVisual';
+import { createLegacyBuffIconSprite } from '../pickups/PickupIconSprite';
 import { WEAPON_PICKUP_WORLD_RADIUS as PICKUP_WORLD_RADIUS } from '../shared/GameBalanceConstants';
 
 /**
@@ -129,6 +130,8 @@ export class BuffPickup {
     // Arrow indicator based on buff type
     const indicator = this.createBuffIndicator(color);
     if (indicator) group.add(indicator);
+
+    group.add(createLegacyBuffIconSprite(this.buffType, color));
 
     // Spawn indicator: flashing arrow for first 30s
     group.add(createSpawnIndicatorSprite(color));

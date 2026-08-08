@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { applyPickupSurfacePose } from './PickupSurfaceVisual';
+import { createHealthIconSprite } from './PickupIconSprite';
 import { WEAPON_PICKUP_WORLD_RADIUS as PICKUP_WORLD_RADIUS } from '../shared/GameBalanceConstants';
 
 const HEAL_PICKUP_LIFETIME = 10; // seconds
@@ -55,7 +56,9 @@ export class HealPickup {
       opacity: 0.9,
     });
     innerMat.userData.baseOpacity = 0.9;
-    group.add(new THREE.Mesh(innerGeom, innerMat));
+    const inner = new THREE.Mesh(innerGeom, innerMat);
+    inner.name = 'core';
+    group.add(inner);
 
     // Cross/plus indicator (two thin boxes — health cross symbol)
     const crossH = new THREE.BoxGeometry(0.12, 0.03, 0.03);
@@ -64,6 +67,7 @@ export class HealPickup {
     crossMat.userData.baseOpacity = 0.9;
     group.add(new THREE.Mesh(crossH, crossMat));
     group.add(new THREE.Mesh(crossV, crossMat.clone()));
+    group.add(createHealthIconSprite(color));
 
     return group;
   }

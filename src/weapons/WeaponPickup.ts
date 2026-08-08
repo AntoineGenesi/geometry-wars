@@ -109,7 +109,11 @@ export class WeaponPickup {
   /**
    * Create glow texture
    */
-  private createGlowTexture(color: THREE.Color): THREE.CanvasTexture {
+  private createGlowTexture(color: THREE.Color): THREE.Texture {
+    if (typeof document === 'undefined') {
+      return new THREE.Texture();
+    }
+
     const size = 64;
     const canvas = document.createElement('canvas');
     canvas.width = size;

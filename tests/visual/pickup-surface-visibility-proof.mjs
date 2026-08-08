@@ -212,13 +212,7 @@ async function collectIsolatedSample(page, mode, scenarioName, pickup) {
   await writeCanvasPng(page, screenshot);
   const expectedShape = sample && sample.body.meshCount > 0
     && sample.body.size.every((axis) => Number.isFinite(axis) && axis > 0.005);
-  const iconCoreContract = sample && (
-    pickup.type === 'weapon' || pickup.type === 'stack-buff'
-      ? sample.body.hasCore && sample.body.hasIcon
-      : pickup.type === 'buff' || pickup.type === 'companion'
-        ? sample.body.hasCore
-        : sample.body.meshCount >= 2
-  );
+  const iconCoreContract = sample && sample.body.hasCore && sample.body.hasIcon;
   const expectedCentroid = sample ? {
     x: (sample.projected.x + 1) * pixels.canvas.width / 2,
     y: (1 - sample.projected.y) * pixels.canvas.height / 2,
@@ -261,6 +255,7 @@ async function collectIsolatedSample(page, mode, scenarioName, pickup) {
     isolation,
     sample,
     pixels,
+    iconCoreContract,
     expectedCentroid,
     centroidError,
     projectedOriginInBodyBounds,
