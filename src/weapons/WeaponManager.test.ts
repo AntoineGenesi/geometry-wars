@@ -762,7 +762,11 @@ describe('WeaponManager', () => {
 
     it('fires a travelling bolt before creating a black hole field', () => {
       manager.fire(origin(), forward(), T);
-      expect(manager['projectiles'].filter(p => p.type === WeaponType.BlackHole)).toHaveLength(1);
+      const bolts = manager['projectiles'].filter(p => p.type === WeaponType.BlackHole);
+      expect(bolts).toHaveLength(1);
+      expect(bolts[0].speed).toBeCloseTo(WEAPON_CONFIGS[WeaponType.BlackHole].projectileSpeed, 5);
+      expect(bolts[0].speed).toBeLessThanOrEqual(6);
+      expect(bolts[0].maxAge).toBeCloseTo(1.2, 5);
       expect(manager['activeEffects'].filter(e => e.type === 'blackhole')).toHaveLength(0);
       expect(manager.projectileRoot.children.length).toBe(1);
     });
@@ -837,6 +841,37 @@ describe('WeaponManager', () => {
       const effects = manager['activeEffects'].filter(e => e.type === 'blackhole');
       expect(effects).toHaveLength(1);
       expect(effects[0].position.distanceTo(enemy.position)).toBeLessThan(0.4);
+    });
+
+    it('converts on first contact before travel pull can move the touched enemy away', () => {
+      const enemy: MockEnemy = { position: blackHolePathPoint(10), index: 0, alive: true };
+      let preFieldPulls = 0;
+      mock = createMockCallbacks([enemy]);
+      manager.setCallbacks({
+        ...mock.callbacks,
+        onBlackHolePull: (index, strength, center, dt, _spiralRatio, targetId) => {
+          mock.pulls.push({ index, strength, center: center.clone(), dt, targetId });
+          if (manager['activeEffects'].filter(e => e.type === 'blackhole').length === 0) {
+            preFieldPulls++;
+            enemy.position.add(new THREE.Vector3(0, 2, 0));
+          }
+        },
+      });
+
+      manager.fire(origin(), forward(), T);
+      const [bolt] = manager['projectiles'].filter(p => p.type === WeaponType.BlackHole);
+      const expectedFirstFramePosition = sphereProject(
+        bolt.position.clone().addScaledVector(bolt.direction, bolt.speed * 0.05),
+        origin().length(),
+      );
+      enemy.position = expectedFirstFramePosition.clone();
+      manager.update(0.05);
+
+      expect(preFieldPulls).toBe(0);
+      expect(manager['projectiles'].filter(p => p.type === WeaponType.BlackHole)).toHaveLength(0);
+      const effects = manager['activeEffects'].filter(e => e.type === 'blackhole');
+      expect(effects).toHaveLength(1);
+      expect(effects[0].position.distanceTo(expectedFirstFramePosition)).toBeLessThan(0.4);
     });
 
     it('pulls near-line enemies during travel without counting them as direct hits', () => {
