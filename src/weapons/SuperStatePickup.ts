@@ -3,7 +3,7 @@ import { SuperStateType } from './SuperState';
 import { SharedGeometries } from '../rendering/GeometryCache';
 import { createSpawnIndicatorSprite, updateSpawnIndicator } from './SpawnIndicator';
 import { applyPickupSurfacePose } from '../pickups/PickupSurfaceVisual';
-import { createSuperPickupIconSprite } from '../pickups/PickupIconSprite';
+import { createSuperPickupIconSprite, disposePickupIconSprites } from '../pickups/PickupIconSprite';
 import { WEAPON_PICKUP_WORLD_RADIUS as PICKUP_WORLD_RADIUS } from '../shared/GameBalanceConstants';
 
 export interface SurfaceTransform {
@@ -291,6 +291,15 @@ export class SuperStatePickup {
 
   dispose(): void {
     this.active = false;
+
+    const core = this.mesh.getObjectByName('core') as THREE.Mesh | undefined;
+    if (core) {
+      core.geometry.dispose();
+      if (core.material instanceof THREE.Material) core.material.dispose();
+      this.mesh.remove(core);
+    }
+
+    disposePickupIconSprites(this.mesh);
 
     // Clean up all dots. Do NOT dispose geometry — it's shared via GeometryCache.
     for (const dot of this.dots) {

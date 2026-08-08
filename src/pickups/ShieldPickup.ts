@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { applyPickupSurfacePose } from './PickupSurfaceVisual';
-import { createShieldIconSprite } from './PickupIconSprite';
+import { createShieldIconSprite, disposePickupIconSprites } from './PickupIconSprite';
 import { WEAPON_PICKUP_WORLD_RADIUS as PICKUP_WORLD_RADIUS } from '../shared/GameBalanceConstants';
 
 const SHIELD_PICKUP_LIFETIME = 12; // seconds — slightly longer than heal
@@ -119,6 +119,7 @@ export class ShieldPickup {
   }
 
   dispose(): void {
+    disposePickupIconSprites(this.mesh);
     this.mesh.traverse((child) => {
       if (child instanceof THREE.Mesh) {
         child.geometry?.dispose();

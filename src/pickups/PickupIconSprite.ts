@@ -147,6 +147,21 @@ export function createShieldIconSprite(color: THREE.Color): THREE.Sprite {
   });
 }
 
+export function disposePickupIconSprites(root: THREE.Object3D): void {
+  const sprites: THREE.Sprite[] = [];
+  root.traverse((child) => {
+    if (child instanceof THREE.Sprite && child.name === 'pickup-icon') {
+      sprites.push(child);
+    }
+  });
+
+  for (const sprite of sprites) {
+    sprite.material.map?.dispose();
+    sprite.material.dispose();
+    sprite.parent?.remove(sprite);
+  }
+}
+
 function createIconSprite(
   color: THREE.Color,
   opacity: number,

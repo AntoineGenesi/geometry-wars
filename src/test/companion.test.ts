@@ -77,6 +77,23 @@ function makeMockBulletPool() {
   } as any;
 }
 
+function expectPickupIconDisposed(pickup: { mesh: THREE.Object3D; dispose: () => void }): void {
+  const icon = pickup.mesh.getObjectByName('pickup-icon');
+  expect(icon).toBeInstanceOf(THREE.Sprite);
+
+  const sprite = icon as THREE.Sprite;
+  expect(sprite.material.map).toBeTruthy();
+  const map = sprite.material.map as THREE.Texture;
+  const mapDispose = vi.spyOn(map, 'dispose');
+  const materialDispose = vi.spyOn(sprite.material, 'dispose');
+
+  pickup.dispose();
+
+  expect(mapDispose).toHaveBeenCalledTimes(1);
+  expect(materialDispose).toHaveBeenCalledTimes(1);
+  expect(sprite.parent).toBeNull();
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -422,6 +439,12 @@ describe('Pickup class visual language', () => {
       expect(pickup.mesh.getObjectByName('pickup-icon')).toBeTruthy();
       pickup.dispose();
     }
+  });
+
+  it('disposes category icon sprite texture and material for new pickup icon classes', () => {
+    expectPickupIconDisposed(new SuperStatePickup(SuperStateType.QuadFire, 0.5, 0.5));
+    expectPickupIconDisposed(new HealPickup(0.5, 0.5));
+    expectPickupIconDisposed(new ShieldPickup(0.5, 0.5));
   });
 });
 
