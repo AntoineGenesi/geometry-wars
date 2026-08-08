@@ -27,6 +27,13 @@ function getArg(name, fallback = '') {
   return index >= 0 ? args[index + 1] : fallback;
 }
 
+function getNumberArg(name, fallback) {
+  const raw = getArg(name, '');
+  if (raw === '') return fallback;
+  const value = Number(raw);
+  return Number.isFinite(value) ? value : fallback;
+}
+
 function commandPath(command) {
   try {
     return execFileSync('bash', ['-lc', `command -v ${command}`], { encoding: 'utf8' }).trim() || null;
@@ -197,6 +204,26 @@ function compactTimeline(samples) {
   }));
 }
 
+function contactDamageEvents(timeline) {
+  const events = [];
+  let previousKey = '';
+  for (const sample of timeline) {
+    if (sample.playerHealth == null || sample.playerLives == null) continue;
+    const key = `${sample.playerHealth}:${sample.playerLives}:${sample.playerAlive}`;
+    if (key === previousKey) continue;
+    previousKey = key;
+    events.push({
+      label: sample.label,
+      time: sample.time,
+      health: sample.playerHealth,
+      lives: sample.playerLives,
+      alive: sample.playerAlive,
+      enemyDistanceToPlayer: sample.enemyDistanceToPlayer,
+    });
+  }
+  return events;
+}
+
 async function main() {
   mkdirSync(resolve(ROOT, 'reports'), { recursive: true });
   mkdirSync(dirname(screenshotPath), { recursive: true });
@@ -276,8 +303,21 @@ async function main() {
     await page.evaluate(() => window.__gameDebug?.resumeChevronAimProofGame?.());
 
     const setupOptions = KIND === 'contact'
-      ? { kind: 'contact', playerU: 0.18, playerV: 0.29, contactDistance: 0.35, enemyType: 'grunt' }
-      : { kind: 'pathing', playerU: 0, playerV: 0.08, enemyU: 0.5, enemyV: 0.08, enemyType: 'grunt' };
+      ? {
+          kind: 'contact',
+          playerU: getNumberArg('player-u', 0.18),
+          playerV: getNumberArg('player-v', 0.29),
+          contactDistance: getNumberArg('contact-distance', 0.35),
+          enemyType: getArg('enemy-type', 'grunt'),
+        }
+      : {
+          kind: 'pathing',
+          playerU: getNumberArg('player-u', 0),
+          playerV: getNumberArg('player-v', 0.08),
+          enemyU: getNumberArg('enemy-u', 0.5),
+          enemyV: getNumberArg('enemy-v', 0.08),
+          enemyType: getArg('enemy-type', 'grunt'),
+        };
     const setupRequested = await page.evaluate((options) =>
       window.__gameDebug?.setupSurfaceContactPathingProof?.(options) || false,
     setupOptions);
@@ -292,9 +332,9 @@ async function main() {
     const setup = setupProof.surfaceContactPathingProofSetup;
     const samples = [];
     samples.push({ label: 'setup', proof: setupProof });
-    const sampleCount = KIND === 'contact' ? 8 : 18;
+    const sampleCount = KIND === 'contact' ? 42 : 18;
     for (let i = 0; i < sampleCount; i++) {
-      await sleep(KIND === 'contact' ? 180 : 220);
+      await sleep(KIND === 'contact' ? 240 : 220);
       samples.push({
         label: `sample-${i}`,
         proof: await page.evaluate(() => window.__gameDebug?.getChevronAimProofState?.() ?? null),
@@ -307,16 +347,25 @@ async function main() {
     const last = [...summarized].reverse().find((sample) => sample.enemy?.distanceToPlayer != null);
     const maxRenderDelta = Math.max(...summarized.map((sample) => sample.enemy?.renderDelta ?? 0));
     const localFinal = last?.player ?? null;
+    const actualMode = setup?.mode ?? setupProof?.gameMode ?? null;
+    const modeMatches = MODE === actualMode || (MODE === 'pvpve' && setupProof?.pvpMode === 'pvpve');
     const pathDistanceChange = first && last
       ? first.enemy.distanceToPlayer - last.enemy.distanceToPlayer
       : null;
     const contactDistance = first?.enemy?.distanceToPlayer ?? last?.enemy?.distanceToPlayer ?? null;
+    const timeline = compactTimeline(summarized);
+    const damageEvents = contactDamageEvents(timeline);
+    const contactSamples = timeline.filter((sample) => (sample.enemyDistanceToPlayer ?? Infinity) < 0.45);
+    const sustainedDamageObserved = damageEvents.some((event) => event.health <= 75 && event.lives === 3)
+      && damageEvents.some((event) => event.health <= 50 || event.lives < 3);
     const contactPass = KIND === 'contact'
-      && localFinal?.health === 75
-      && localFinal?.lives === 3
-      && localFinal?.alive === true
+      && modeMatches
+      && sustainedDamageObserved
+      && damageEvents.length >= 2
+      && contactSamples.length >= 8
       && (contactDistance ?? Infinity) < 0.45;
     const pathingPass = KIND === 'pathing'
+      && modeMatches
       && Number.isFinite(pathDistanceChange)
       && pathDistanceChange > 0.15
       && maxRenderDelta < 0.75;
@@ -333,17 +382,20 @@ async function main() {
       kind: KIND,
       devPort: DEV_PORT,
       serverPort: SERVER_PORT,
+      actualMode,
+      modeMatches,
       setup,
       pathDistanceChange,
       startDistance: first?.enemy?.distanceToPlayer ?? null,
       finalDistance: last?.enemy?.distanceToPlayer ?? null,
       finalPlayer: localFinal,
       maxRenderDelta,
+      contactDamageEvents: KIND === 'contact' ? damageEvents : undefined,
       sampleSummary: {
         count: summarized.length,
         first: first ?? null,
         last: last ?? null,
-        timeline: compactTimeline(summarized),
+        timeline,
       },
       screenshot: relative(ROOT, screenshotPath),
       pageErrors: criticalErrors(page.__errors),
@@ -376,7 +428,10 @@ async function main() {
       `- pathDistanceChange: ${report.pathDistanceChange ?? 'n/a'}`,
       `- finalPlayerHealth: ${report.finalPlayer?.health ?? 'n/a'}`,
       `- finalPlayerLives: ${report.finalPlayer?.lives ?? 'n/a'}`,
+      `- actualMode: ${report.actualMode ?? 'n/a'}`,
+      `- modeMatches: ${report.modeMatches ?? 'n/a'}`,
       `- maxRenderDelta: ${report.maxRenderDelta ?? 'n/a'}`,
+      `- contactDamageEvents: ${report.contactDamageEvents ? JSON.stringify(report.contactDamageEvents) : 'n/a'}`,
       `- screenshot: ${report.screenshot ?? 'n/a'}`,
       `- json: ${relative(ROOT, reportJsonPath)}`,
       '',

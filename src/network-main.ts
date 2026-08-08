@@ -9833,13 +9833,30 @@ async function main() {
         const requestedSurface: GameSurface = (proofSurfaces as readonly string[]).includes(surfaceType)
           ? surfaceType as GameSurface
           : 'sphere';
-        const requestedMode = ['waves', 'king'].includes(mode) ? mode as 'waves' | 'king' : 'waves';
-        network.startGame(`${requestedSurface}:${requestedMode}:medium`, {
+        const requestedMode = ['waves', 'king', 'pvpve'].includes(mode)
+          ? mode as 'waves' | 'king' | 'pvpve'
+          : 'waves';
+        const proofSettings: GameSettings = {
           ...currentGameSettings,
           surface: requestedSurface,
           mode: requestedMode,
+          pvpEnabled: requestedMode === 'pvpve',
           infiniteLives: false,
-        });
+        };
+        const choice = `${requestedSurface}:${requestedMode}:medium`;
+        if (requestedMode === 'pvpve') {
+          network.startGameWithOptions({
+            pvpMode: 'pvpve',
+            winCondition: lobbyWinCondition,
+            killTarget: lobbyKillTarget,
+            timeLimit: lobbyTimeLimit,
+            livesCount: lobbyLivesCount,
+            choice,
+            settings: proofSettings,
+          });
+        } else {
+          network.startGame(choice, proofSettings);
+        }
         return true;
       },
       setupSurfaceContactPathingProof: (options = {}) => {
