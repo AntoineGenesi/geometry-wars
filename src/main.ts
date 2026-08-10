@@ -113,7 +113,7 @@ import { applyVisualPresetToLiveGame, getAdjustedBloomStrength } from './ui/Visu
 import { UIHelpers } from './ui/UIHelpers';
 import { CollisionSystem } from './core/CollisionSystem';
 import { PickupSpawner } from './core/PickupSpawner';
-import { CameraController } from './core/CameraController';
+import { CameraController, MOBILE_CAMERA_FOLLOW_LERP_FACTOR } from './core/CameraController';
 import { EnemyDeathCallbacks } from './entities/enemies/EnemyDeathCallbacks';
 import { GameContext } from './core/GameContext';
 import { GameLoop } from './core/GameLoop';
@@ -1682,6 +1682,7 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
   // Start zoomed in closer on mobile for better visibility of the player (3x more zoomed than desktop)
   if (mobile) {
     cameraController.setCameraDistance(5);
+    cameraController.setFollowLerpFactor(MOBILE_CAMERA_FOLLOW_LERP_FACTOR);
   }
 
   // -- Wire up enemy death callbacks (now in EnemyDeathCallbacks module) --
