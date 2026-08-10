@@ -31,10 +31,14 @@ const mockCamera = {
 };
 
 vi.mock('three', () => ({
-  Vector3: vi.fn().mockImplementation(makeVec3),
-  Quaternion: vi.fn().mockImplementation(() => ({
+  Vector3: vi.fn().mockImplementation(function () {
+    return makeVec3();
+  }),
+  Quaternion: vi.fn().mockImplementation(function () {
+    return {
     setFromAxisAngle: vi.fn().mockReturnThis(),
-  })),
+    };
+  }),
 }));
 
 // ---------------------------------------------------------------------------

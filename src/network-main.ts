@@ -80,7 +80,7 @@ import { BuffParticleAura } from './buffs/BuffParticleAura';
 import { ShockArcRenderer } from './buffs/ShockArcRenderer';
 import { BuffPickupNew } from './buffs/BuffPickupNew';
 import { CompanionManager, CompanionPickup, CompanionHUD, CompanionType, getRandomCompanionType, RemoteCompanionRenderer } from './entities/Companion';
-import { CameraController } from './core/CameraController';
+import { CameraController, MOBILE_CAMERA_FOLLOW_LERP_FACTOR } from './core/CameraController';
 import { EnemyInstanceManager } from './rendering/EnemyInstanceManager';
 import { SurfaceVisibilityResolver } from './rendering/SurfaceVisibilityResolver';
 import { applyNonInstancedEnemyVisibility } from './rendering/EnemyMaterialVisibility';
@@ -88,6 +88,7 @@ import {
   applyPickupSurfacePose,
   resolveAndApplyPickupVisibility,
 } from './pickups/PickupSurfaceVisual';
+import { resolveEnemyRenderTargetFrame } from './network/EnemyFrameSync';
 import {
   createHealthIconSprite,
   createShieldIconSprite,
@@ -842,6 +843,7 @@ async function main() {
   // Start zoomed in closer on mobile for better visibility of the player (3× closer than desktop, matching SP parity)
   if (mobile) {
     cameraController.setCameraDistance(5);
+    cameraController.setFollowLerpFactor(MOBILE_CAMERA_FOLLOW_LERP_FACTOR);
   }
 
   // -- ShockwaveEffect (shared with single-player via SharedGameSetup) --
@@ -4829,17 +4831,14 @@ async function main() {
         };
         enemyTargetMeshLocation.set(netEnemy.id, targetLocation);
       }
-      targetLocation.position.set(netEnemy.wx, netEnemy.wy, netEnemy.wz);
-      const frame = surface?.getPoint(netEnemy.surfaceU, netEnemy.surfaceV);
-      if (frame) {
-        targetLocation.normal.copy(frame.normal);
-        targetLocation.tangent.copy(frame.tangentU);
-        targetLocation.bitangent.copy(frame.tangentV);
-      } else {
-        targetLocation.normal.set(0, 1, 0);
-        targetLocation.tangent.set(1, 0, 0);
-        targetLocation.bitangent.set(0, 0, 1);
-      }
+      const resolvedFrame = resolveEnemyRenderTargetFrame(
+        netEnemy,
+        surface?.getPoint(netEnemy.surfaceU, netEnemy.surfaceV) ?? null,
+      );
+      targetLocation.position.copy(resolvedFrame.position);
+      targetLocation.normal.copy(resolvedFrame.normal);
+      targetLocation.tangent.copy(resolvedFrame.tangent);
+      targetLocation.bitangent.copy(resolvedFrame.bitangent);
       enemy.surfacePosition.u = netEnemy.surfaceU;
       enemy.surfacePosition.v = netEnemy.surfaceV;
 

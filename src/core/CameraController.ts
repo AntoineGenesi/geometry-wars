@@ -1,6 +1,9 @@
 import * as THREE from 'three';
 import { MeshWalker } from '../movement/MeshWalker';
 
+export const DEFAULT_CAMERA_FOLLOW_LERP_FACTOR = 0.12;
+export const MOBILE_CAMERA_FOLLOW_LERP_FACTOR = 0.20;
+
 /**
  * CameraController
  *
@@ -24,7 +27,9 @@ export class CameraController {
   private readonly ORBIT_PITCH_MAX = Math.PI * 0.4; // don't go past 72 degrees
   // Restored from bffc333 (last user-confirmed working version):
   // Both position and up-vector lerp at the same factor for smooth, consistent camera follow.
-  private readonly CAMERA_LERP_FACTOR = 0.12;
+  private followLerpFactor = DEFAULT_CAMERA_FOLLOW_LERP_FACTOR;
+  private readonly CAMERA_LERP_FACTOR_MIN = 0.01;
+  private readonly CAMERA_LERP_FACTOR_MAX = 0.6;
 
   // Pre-allocated temps for camera math (zero per-frame GC)
   private readonly _camOffset = new THREE.Vector3();
@@ -195,7 +200,7 @@ export class CameraController {
     // at the same wall-clock speed regardless of display refresh rate.
     // In onRender (MP) the actual frame dt varies; in fixedUpdate (SP) dt=1/60
     // so the formula collapses to the original CAMERA_LERP_FACTOR unchanged.
-    const posLerp = 1 - Math.pow(1 - this.CAMERA_LERP_FACTOR, dt * 60);
+    const posLerp = this.getFrameFollowLerp(dt);
     this.camera.position.lerp(this._targetCamPos, posLerp);
 
     // Pole inversion protection for UV-based frames (multiplayer camera).
@@ -284,7 +289,7 @@ export class CameraController {
     // converges at the same wall-clock rate regardless of tick frequency.
     // SP calls this from fixedUpdate (dt=1/60) so the formula gives 0.12
     // unchanged; MP calls it from onRender where dt may vary.
-    const posLerp = 1 - Math.pow(1 - this.CAMERA_LERP_FACTOR, dt * 60);
+    const posLerp = this.getFrameFollowLerp(dt);
     this.camera.position.lerp(this._targetCamPos, posLerp);
 
     // Sign-flip protection: if the new camera up flipped >90° from the previous target,
@@ -391,6 +396,25 @@ export class CameraController {
   /** Set camera distance (clamped to allowed range) */
   setCameraDistance(distance: number): void {
     this.cameraDistance = Math.max(this.CAMERA_DIST_MIN, Math.min(this.CAMERA_DIST_MAX, distance));
+  }
+
+  /** Get the per-60 Hz-frame follow lerp used for camera position/up convergence. */
+  getFollowLerpFactor(): number {
+    return this.followLerpFactor;
+  }
+
+  /** Set camera follow responsiveness without changing zoom/orbit behaviour. */
+  setFollowLerpFactor(factor: number): void {
+    if (!Number.isFinite(factor)) return;
+    this.followLerpFactor = Math.max(
+      this.CAMERA_LERP_FACTOR_MIN,
+      Math.min(this.CAMERA_LERP_FACTOR_MAX, factor),
+    );
+  }
+
+  private getFrameFollowLerp(dt: number): number {
+    const frameScale = Math.max(0, dt) * 60;
+    return 1 - Math.pow(1 - this.followLerpFactor, frameScale);
   }
 
   /** Adjust camera distance by a delta (clamped). Positive = zoom out, negative = zoom in. */
