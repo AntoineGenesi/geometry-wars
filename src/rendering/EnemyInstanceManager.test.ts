@@ -580,7 +580,7 @@ describe('EnemyInstanceManager', () => {
       expect(lodMediumBatch.count).toBeGreaterThan(0);
     });
 
-    it('moves LOW LOD enemies to shared billboard batch', () => {
+    it('moves LOW LOD enemies to shared volumetric batch', () => {
       const grunt = new TestGrunt();
       manager.register(grunt);
       grunt.mesh!.position.set(1, 0, 0);
@@ -754,6 +754,59 @@ describe('EnemyInstanceManager', () => {
 
       expect(mediumBatch.highWaterMark).toBe(slot);
       expect(mediumBatch.instancedMesh.count).toBeGreaterThan(slot);
+    });
+
+    it('repairs a visible HIGH enemy matrix with one collapsed depth axis', () => {
+      const grunt = new TestGrunt();
+      manager.register(grunt);
+      grunt.mesh!.position.set(2, 3, 4);
+      grunt.mesh!.scale.setScalar(1);
+      grunt.mesh!.updateMatrixWorld(true);
+
+      const assignments = new Map<BaseEnemy, LODLevel>([[grunt, LODLevel.HIGH]]);
+      manager.updateInstancesWithLOD([grunt], assignments, camera);
+
+      const batch = (manager as any).batches.get('Grunt');
+      const index = batch.enemyToIndex.get(grunt);
+      const collapsed = new THREE.Matrix4().compose(
+        new THREE.Vector3(2, 3, 4),
+        new THREE.Quaternion(),
+        new THREE.Vector3(1, 0.000001, 1),
+      );
+      batch.instancedMesh.setMatrixAt(index, collapsed);
+
+      manager.ensureMinimumVisibility();
+
+      const repaired = new THREE.Matrix4();
+      batch.instancedMesh.getMatrixAt(index, repaired);
+      const scale = new THREE.Vector3().setFromMatrixScale(repaired);
+      expect(Math.min(scale.x, scale.y, scale.z)).toBeGreaterThan(0.01);
+    });
+
+    it('repairs a visible LOW LOD matrix with one collapsed depth axis', () => {
+      const grunt = new TestGrunt();
+      manager.register(grunt);
+      grunt.mesh!.position.set(6, 0, 0);
+      grunt.mesh!.updateMatrixWorld(true);
+
+      const assignments = new Map<BaseEnemy, LODLevel>([[grunt, LODLevel.LOW]]);
+      manager.updateInstancesWithLOD([grunt], assignments, camera);
+
+      const lowBatch = getLODBatch('lodLowBatch');
+      const slot = lowBatch.enemyToIndex.get(grunt)!;
+      const collapsed = new THREE.Matrix4().compose(
+        new THREE.Vector3(6, 0, 0),
+        new THREE.Quaternion(),
+        new THREE.Vector3(0.5, 0.5, 0.000001),
+      );
+      lowBatch.instancedMesh.setMatrixAt(slot, collapsed);
+
+      manager.ensureMinimumVisibility();
+
+      const repaired = new THREE.Matrix4();
+      lowBatch.instancedMesh.getMatrixAt(slot, repaired);
+      const scale = new THREE.Vector3().setFromMatrixScale(repaired);
+      expect(Math.min(scale.x, scale.y, scale.z)).toBeGreaterThan(0.01);
     });
 
     it('handles mixed LOD levels across multiple enemies', () => {

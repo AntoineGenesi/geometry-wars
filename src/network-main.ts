@@ -88,6 +88,7 @@ import {
   applyPickupSurfacePose,
   resolveAndApplyPickupVisibility,
 } from './pickups/PickupSurfaceVisual';
+import { resolveEnemyRenderTargetFrame } from './network/EnemyFrameSync';
 import {
   createHealthIconSprite,
   createShieldIconSprite,
@@ -4829,17 +4830,14 @@ async function main() {
         };
         enemyTargetMeshLocation.set(netEnemy.id, targetLocation);
       }
-      targetLocation.position.set(netEnemy.wx, netEnemy.wy, netEnemy.wz);
-      const frame = surface?.getPoint(netEnemy.surfaceU, netEnemy.surfaceV);
-      if (frame) {
-        targetLocation.normal.copy(frame.normal);
-        targetLocation.tangent.copy(frame.tangentU);
-        targetLocation.bitangent.copy(frame.tangentV);
-      } else {
-        targetLocation.normal.set(0, 1, 0);
-        targetLocation.tangent.set(1, 0, 0);
-        targetLocation.bitangent.set(0, 0, 1);
-      }
+      const resolvedFrame = resolveEnemyRenderTargetFrame(
+        netEnemy,
+        surface?.getPoint(netEnemy.surfaceU, netEnemy.surfaceV) ?? null,
+      );
+      targetLocation.position.copy(resolvedFrame.position);
+      targetLocation.normal.copy(resolvedFrame.normal);
+      targetLocation.tangent.copy(resolvedFrame.tangent);
+      targetLocation.bitangent.copy(resolvedFrame.bitangent);
       enemy.surfacePosition.u = netEnemy.surfaceU;
       enemy.surfacePosition.v = netEnemy.surfaceV;
 

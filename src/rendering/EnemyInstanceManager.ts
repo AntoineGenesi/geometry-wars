@@ -764,7 +764,7 @@ export class EnemyInstanceManager {
           }
         }
 
-        // --- Matrix scale check (s44r29-05) ---
+        // --- Matrix scale check (s44r29-05, 2026-08-11 depth guard) ---
         // Skip enemies that are intentionally in a LOD batch (their HIGH slot
         // is zero-scaled by design — they render from the LOD batch instead).
         if (this.enemyLODPlacement.has(enemy)) continue;
@@ -774,8 +774,9 @@ export class EnemyInstanceManager {
         batch.instancedMesh.getMatrixAt(index, _tempMatrix);
         _tempScale.setFromMatrixScale(_tempMatrix);
         const maxScale = Math.max(_tempScale.x, _tempScale.y, _tempScale.z);
-        if (maxScale < MIN_SCALE) {
-          // Enemy should be visible but has zero-scale matrix — restore from mesh
+        const minScale = Math.min(_tempScale.x, _tempScale.y, _tempScale.z);
+        if (maxScale < MIN_SCALE || minScale < MIN_SCALE) {
+          // Enemy should be visible but has zero/collapsed-axis matrix — restore from mesh.
           enemy.mesh.updateWorldMatrix(false, false);
           batch.instancedMesh.setMatrixAt(index, enemy.mesh.matrixWorld);
           batch.instancedMesh.instanceMatrix.needsUpdate = true;
@@ -810,20 +811,22 @@ export class EnemyInstanceManager {
           }
         }
 
-        // --- Matrix scale check (s44r29-05) ---
+        // --- Matrix scale check (s44r29-05, 2026-08-11 depth guard) ---
         if (!enemy.active || !enemy.alive || enemy.isMaterializing || !enemy.mesh) continue;
 
         lodBatch.instancedMesh.getMatrixAt(slotIndex, _tempMatrix);
         _tempScale.setFromMatrixScale(_tempMatrix);
         const maxScale = Math.max(_tempScale.x, _tempScale.y, _tempScale.z);
-        if (maxScale < MIN_SCALE) {
-          // LOD slot has zero-scale but enemy is alive — restore placement.
+        const minScale = Math.min(_tempScale.x, _tempScale.y, _tempScale.z);
+        if (maxScale < MIN_SCALE || minScale < MIN_SCALE) {
+          // LOD slot has zero/collapsed-axis scale but enemy is alive — restore placement.
           // This catches enemies that were zero-scaled by hideAllLODInstances()
-          // but not re-placed by placeLODInstance() due to timing gaps.
+          // but not re-placed by placeLODInstance() due to timing gaps, plus
+          // one-axis flattening that makes volumetric enemies read as 2D.
           enemy.mesh.updateWorldMatrix(false, false);
           _tempPosition.setFromMatrixPosition(enemy.mesh.matrixWorld);
           const lodLevel = this.enemyLODPlacement.get(enemy);
-          const s = enemy.radius * (lodLevel === LODLevel.LOW ? 2 : 1.5);
+          const s = enemy.radius * (lodLevel === LODLevel.LOW ? 1.65 : 1.5);
           _lodScale.set(s, s, s);
           _tempMatrix.compose(_tempPosition, _tempQuaternion.identity(), _lodScale);
           lodBatch.instancedMesh.setMatrixAt(slotIndex, _tempMatrix);
