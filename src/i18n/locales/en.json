@@ -562,6 +562,8 @@
       "returnToMainMenu": "RETURN TO MAIN MENU"
     },
     "death": {
+      "youLostLife": "You lost a life!",
+      "playerLostLife": "{{name}} lost a life!",
       "spectating": "YOU DIED - SPECTATING",
       "respawning": "RESPAWNING"
     },
@@ -569,12 +571,15 @@
       "title": "MENU",
       "hostPauseWarning": "Game continues - only the host can pause the server",
       "allPlayers": "ALL PLAYERS",
+      "resumeGame": "RESUME GAME",
       "tapResume": "Tap ⏸ to resume",
       "escResume": "Press ESC to resume",
       "pressEscapePauseAll": "Press Escape to pause the game for everyone"
     },
     "status": {
       "pausedBy": "PAUSED by {{name}}",
+      "resume": "RESUME",
+      "restartingRound": "Restarting round...",
       "playing": "PLAYING",
       "wave": "Wave {{wave}}",
       "connectedHostStart": "Connected! You are the HOST — press START GAME.",

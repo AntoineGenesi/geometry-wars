@@ -562,6 +562,8 @@
       "returnToMainMenu": "VOLVER AL MENÚ PRINCIPAL"
     },
     "death": {
+      "youLostLife": "¡Has perdido una vida!",
+      "playerLostLife": "¡{{name}} ha perdido una vida!",
       "spectating": "HAS MUERTO - ESPECTADOR",
       "respawning": "REAPARECIENDO"
     },
@@ -569,12 +571,15 @@
       "title": "MENÚ",
       "hostPauseWarning": "La partida continúa - solo el anfitrión puede pausar el servidor",
       "allPlayers": "TODOS LOS JUGADORES",
+      "resumeGame": "REANUDAR PARTIDA",
       "tapResume": "Toca ⏸ para reanudar",
       "escResume": "Pulsa ESC para reanudar",
       "pressEscapePauseAll": "Pulsa Escape para pausar la partida para todos"
     },
     "status": {
       "pausedBy": "EN PAUSA por {{name}}",
+      "resume": "REANUDAR",
+      "restartingRound": "Reiniciando ronda...",
       "playing": "JUGANDO",
       "wave": "Oleada {{wave}}",
       "connectedHostStart": "¡Conectado! Eres el ANFITRIÓN — pulsa INICIAR PARTIDA.",

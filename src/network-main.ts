@@ -2187,7 +2187,9 @@ async function main() {
     const hearts = remainingLives > 0
       ? '\u2665'.repeat(Math.min(remainingLives, 5))
       : '\u2665 x0';
-    const who = isLocal ? 'You lost a life!' : `${playerName} lost a life!`;
+    const who = isLocal
+      ? t('network.death.youLostLife')
+      : t('network.death.playerLostLife', { name: playerName });
     lifeLostEl.innerHTML = `${who}<br>${hearts}`;
     lifeLostEl.style.color = isLocal ? '#ff4444' : '#ffaa44';
     lifeLostEl.style.textShadow = isLocal ? '0 0 12px #ff4444' : '0 0 12px #ffaa44';
@@ -2229,7 +2231,7 @@ async function main() {
 
   // Resume button (shown when host pauses timer at game start)
   const resumeTimerBtn = document.createElement('button');
-  resumeTimerBtn.textContent = '▶ RESUME';
+  resumeTimerBtn.textContent = `▶ ${t('network.status.resume')}`;
   resumeTimerBtn.style.cssText =
     'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);' +
     'padding:12px 24px;font:bold 18px monospace;cursor:pointer;' +
@@ -3322,7 +3324,7 @@ async function main() {
     return btn;
   }
 
-  const localMenuResumeBtn = makeMenuBtn('▶  RESUME GAME', '#004400', '#00cc00');
+  const localMenuResumeBtn = makeMenuBtn(`▶  ${t('network.localMenu.resumeGame')}`, '#004400', '#00cc00');
   localMenuResumeBtn.onclick = () => { hideLocalMenu(); };
   localMenuEl.appendChild(localMenuResumeBtn);
 
@@ -6849,7 +6851,7 @@ async function main() {
       },
       onRoundRestarting: (data: { countdown: number; message: string }) => {
         // Show countdown notification to all players (s44j-settings-16d)
-        showRoundRestartingNotification(data.message ?? 'Restarting round...', data.countdown);
+        showRoundRestartingNotification(data.message ?? t('network.status.restartingRound'), data.countdown);
         // Force-close any open menus so the countdown is visible and input is not blocked.
         // Non-host: local menu may be open (game still running); close it now.
         if (localMenuOpen) {

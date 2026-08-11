@@ -562,6 +562,8 @@
       "returnToMainMenu": "ZURÜCK ZUM HAUPTMENÜ"
     },
     "death": {
+      "youLostLife": "Du hast ein Leben verloren!",
+      "playerLostLife": "{{name}} hat ein Leben verloren!",
       "spectating": "DU BIST GESTORBEN - ZUSCHAUER",
       "respawning": "RESPAWN"
     },
@@ -569,12 +571,15 @@
       "title": "MENÜ",
       "hostPauseWarning": "Das Spiel läuft weiter - nur der Host kann den Server pausieren",
       "allPlayers": "ALLE SPIELER",
+      "resumeGame": "SPIEL FORTSETZEN",
       "tapResume": "Zum Fortsetzen ⏸ antippen",
       "escResume": "ESC drücken zum Fortsetzen",
       "pressEscapePauseAll": "Escape drücken, um das Spiel für alle zu pausieren"
     },
     "status": {
       "pausedBy": "PAUSIERT von {{name}}",
+      "resume": "FORTSETZEN",
+      "restartingRound": "Runde wird neu gestartet...",
       "playing": "LÄUFT",
       "wave": "Welle {{wave}}",
       "connectedHostStart": "Verbunden! Du bist der HOST — drücke SPIEL STARTEN.",

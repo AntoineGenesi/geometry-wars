@@ -562,6 +562,8 @@
       "returnToMainMenu": "RETOUR AU MENU PRINCIPAL"
     },
     "death": {
+      "youLostLife": "Vous avez perdu une vie !",
+      "playerLostLife": "{{name}} a perdu une vie !",
       "spectating": "VOUS ÊTES MORT - SPECTATEUR",
       "respawning": "RÉAPPARITION"
     },
@@ -569,12 +571,15 @@
       "title": "MENU LOCAL",
       "hostPauseWarning": "La partie continue - seul l’hôte peut mettre le serveur en pause",
       "allPlayers": "TOUS LES JOUEURS",
+      "resumeGame": "REPRENDRE LA PARTIE",
       "tapResume": "Touchez ⏸ pour reprendre",
       "escResume": "Appuyez sur ESC pour reprendre",
       "pressEscapePauseAll": "Appuyez sur Échap pour mettre la partie en pause pour tout le monde"
     },
     "status": {
       "pausedBy": "EN PAUSE par {{name}}",
+      "resume": "REPRENDRE",
+      "restartingRound": "Redémarrage du round...",
       "playing": "EN JEU",
       "wave": "Vague {{wave}}",
       "connectedHostStart": "Connecté ! Vous êtes l’HÔTE — lancez la partie.",

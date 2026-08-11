@@ -149,6 +149,14 @@ describe('i18n module', () => {
     expect(t('levelComplete.nextStarAt', { score: 5000 })).toBe('Next star at 5000');
   });
 
+  it('interpolates network life-loss notifications', async () => {
+    const { initI18n, t } = await import('./index');
+    await initI18n();
+
+    expect(t('network.death.youLostLife')).toBe('You lost a life!');
+    expect(t('network.death.playerLostLife', { name: 'Ada' })).toBe('Ada lost a life!');
+  });
+
   it('falls back to English when an unsupported language is set', async () => {
     const { initI18n, t, changeLanguage } = await import('./index');
     await initI18n();

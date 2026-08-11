@@ -562,6 +562,8 @@
       "returnToMainMenu": "В ГЛАВНОЕ МЕНЮ"
     },
     "death": {
+      "youLostLife": "Вы потеряли жизнь!",
+      "playerLostLife": "{{name}} потерял(а) жизнь!",
       "spectating": "ВЫ ПОГИБЛИ - НАБЛЮДЕНИЕ",
       "respawning": "ВОЗРОЖДЕНИЕ"
     },
@@ -569,12 +571,15 @@
       "title": "МЕНЮ",
       "hostPauseWarning": "Игра продолжается - только хост может поставить сервер на паузу",
       "allPlayers": "ВСЕ ИГРОКИ",
+      "resumeGame": "ПРОДОЛЖИТЬ ИГРУ",
       "tapResume": "Нажмите ⏸, чтобы продолжить",
       "escResume": "Нажмите ESC, чтобы продолжить",
       "pressEscapePauseAll": "Нажмите Escape, чтобы поставить игру на паузу для всех"
     },
     "status": {
       "pausedBy": "ПАУЗА от {{name}}",
+      "resume": "ВОЗОБНОВИТЬ",
+      "restartingRound": "Перезапуск раунда...",
       "playing": "ИГРА ИДЕТ",
       "wave": "Волна {{wave}}",
       "connectedHostStart": "Подключено! Вы ХОСТ — нажмите НАЧАТЬ ИГРУ.",

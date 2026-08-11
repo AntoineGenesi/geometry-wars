@@ -562,6 +562,8 @@
       "returnToMainMenu": "العودة إلى القائمة الرئيسية"
     },
     "death": {
+      "youLostLife": "فقدت حياة!",
+      "playerLostLife": "فقد {{name}} حياة!",
       "spectating": "متّ - مشاهدة",
       "respawning": "إعادة الظهور"
     },
@@ -569,12 +571,15 @@
       "title": "القائمة",
       "hostPauseWarning": "تستمر اللعبة - المضيف فقط يمكنه إيقاف الخادم مؤقتًا",
       "allPlayers": "كل اللاعبين",
+      "resumeGame": "استئناف اللعبة",
       "tapResume": "اضغط ⏸ للاستئناف",
       "escResume": "اضغط ESC للاستئناف",
       "pressEscapePauseAll": "اضغط Escape لإيقاف اللعبة مؤقتًا للجميع"
     },
     "status": {
       "pausedBy": "متوقف مؤقتًا بواسطة {{name}}",
+      "resume": "استئناف",
+      "restartingRound": "جارٍ إعادة الجولة...",
       "playing": "قيد اللعب",
       "wave": "الموجة {{wave}}",
       "connectedHostStart": "تم الاتصال! أنت المضيف — اضغط بدء اللعبة.",
