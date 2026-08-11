@@ -21,6 +21,7 @@ interface PvPvEPlayer {
   id: string;
   name: string;
   alive: boolean;
+  lives: number;
   health: number;
   maxHealth: number;
   surfaceU: number;
@@ -57,6 +58,7 @@ function makePlayer(id: string, u = 0.5, v = 0.5): PvPvEPlayer {
     id,
     name: `Player${id}`,
     alive: true,
+    lives: 3,
     health: PLAYER_PVP_MAX_HEALTH,
     maxHealth: PLAYER_PVP_MAX_HEALTH,
     surfaceU: u,
@@ -125,12 +127,18 @@ function applyPlayerBulletToPlayer(
 }
 
 /**
- * Apply enemy touch damage to a player.
- * Enemy damage is NEVER gated by friendlyFire — always applies in PvPvE.
+ * Apply enemy touch to a player.
+ * Enemy contact is NEVER gated by friendlyFire and is lethal in PvPvE.
  */
-function applyEnemyToPlayer(enemy: Enemy, player: PvPvEPlayer, damage: number): void {
+function applyEnemyToPlayer(enemy: Enemy, player: PvPvEPlayer): void {
   if (!enemy.alive || !player.alive) return;
-  player.health = Math.max(0, player.health - damage);
+  enemy.alive = false;
+  player.lives = Math.max(0, player.lives - 1);
+  player.health = player.maxHealth;
+  if (player.lives <= 0) {
+    player.alive = false;
+    player.health = 0;
+  }
 }
 
 /**
@@ -266,13 +274,16 @@ describe('PvPvE — friendly fire gate', () => {
 // ---------------------------------------------------------------------------
 
 describe('PvPvE — enemy damage to players (unaffected by friendlyFire)', () => {
-  it('enemies always damage players regardless of friendlyFire', () => {
+  it('enemies always spend a life regardless of friendlyFire', () => {
     const player = makePlayer('p1', 0.3, 0.3);
     const enemy = makeEnemy('e1', 'grunt', 0.3, 0.3);
 
-    applyEnemyToPlayer(enemy, player, 1);
+    applyEnemyToPlayer(enemy, player);
 
-    expect(player.health).toBe(PLAYER_PVP_MAX_HEALTH - 1);
+    expect(player.lives).toBe(2);
+    expect(player.health).toBe(PLAYER_PVP_MAX_HEALTH);
+    expect(player.alive).toBe(true);
+    expect(enemy.alive).toBe(false);
   });
 
   it('dead enemies cannot damage players', () => {
@@ -280,35 +291,36 @@ describe('PvPvE — enemy damage to players (unaffected by friendlyFire)', () =>
     const enemy = makeEnemy('e1', 'grunt', 0.5, 0.5);
     enemy.alive = false;
 
-    applyEnemyToPlayer(enemy, player, 1);
+    applyEnemyToPlayer(enemy, player);
 
     expect(player.health).toBe(PLAYER_PVP_MAX_HEALTH);
+    expect(player.lives).toBe(3);
   });
 
-  it('multiple enemies can damage multiple players', () => {
+  it('multiple enemies can spend lives from multiple players', () => {
     const p1 = makePlayer('p1', 0.3, 0.3);
     const p2 = makePlayer('p2', 0.7, 0.7);
     const e1 = makeEnemy('e1', 'grunt', 0.3, 0.3);
     const e2 = makeEnemy('e2', 'grunt', 0.7, 0.7);
 
-    applyEnemyToPlayer(e1, p1, 1);
-    applyEnemyToPlayer(e2, p2, 1);
+    applyEnemyToPlayer(e1, p1);
+    applyEnemyToPlayer(e2, p2);
 
-    expect(p1.health).toBe(PLAYER_PVP_MAX_HEALTH - 1);
-    expect(p2.health).toBe(PLAYER_PVP_MAX_HEALTH - 1);
+    expect(p1.lives).toBe(2);
+    expect(p2.lives).toBe(2);
+    expect(e1.alive).toBe(false);
+    expect(e2.alive).toBe(false);
   });
 
-  it('s44r18-05 regression: enemy touch reduces player.health (not just player.lives)', () => {
-    // Bug: GameRoom.checkCollisions() only decremented player.lives on enemy collision,
-    // so health bar always stayed at 100% in PvPvE — enemies appeared to deal no damage.
-    // Fix: pvpEnabled path now reduces player.health by ENEMY_PVP_BODY_DAMAGE (25 HP).
+  it('enemy touch is lethal, while player-vs-player bullets remain health based', () => {
     const player = makePlayer('p1', 0.3, 0.3);
     const enemy = makeEnemy('e1', 'grunt', 0.3, 0.3);
 
-    applyEnemyToPlayer(enemy, player, 25); // mirrors ENEMY_PVP_BODY_DAMAGE constant
+    applyEnemyToPlayer(enemy, player);
 
-    expect(player.health).toBe(PLAYER_PVP_MAX_HEALTH - 25);
-    expect(player.health).toBeLessThan(PLAYER_PVP_MAX_HEALTH); // health bar must decrease
+    expect(player.lives).toBe(2);
+    expect(player.health).toBe(PLAYER_PVP_MAX_HEALTH);
+    expect(enemy.alive).toBe(false);
   });
 });
 
@@ -450,25 +462,28 @@ describe('PvPvE — validateSettings friendlyFire defaults', () => {
 // ---------------------------------------------------------------------------
 
 describe('PvPvE — full match flow simulation', () => {
-  it('enemies damage both players; players cannot damage each other when friendlyFire=false', () => {
+  it('enemy contact spends a life; players cannot damage each other when friendlyFire=false', () => {
     const p1 = makePlayer('p1', 0.3, 0.3);
     const p2 = makePlayer('p2', 0.7, 0.7);
-    const enemy = makeEnemy('e1', 'grunt', 0.3, 0.3);
+    const contactEnemy = makeEnemy('e1', 'grunt', 0.3, 0.3);
+    const targetEnemy = makeEnemy('e2', 'grunt', 0.3, 0.3);
     const inv = new Map<string, number>();
 
-    // Enemy damages p1 (always applies)
-    applyEnemyToPlayer(enemy, p1, 1);
-    expect(p1.health).toBe(PLAYER_PVP_MAX_HEALTH - 1);
+    // Enemy contact is lethal/consuming and always applies.
+    applyEnemyToPlayer(contactEnemy, p1);
+    expect(p1.lives).toBe(2);
+    expect(p1.health).toBe(PLAYER_PVP_MAX_HEALTH);
+    expect(contactEnemy.alive).toBe(false);
 
     // p1 tries to shoot p2 — blocked by friendlyFire=false
     const friendlyBullet = makeBullet('p1', 0.7, 0.7, 20);
     applyPlayerBulletToPlayer(friendlyBullet, [p1, p2], inv, true, 'pvpve', false);
     expect(p2.health).toBe(PLAYER_PVP_MAX_HEALTH); // no friendly fire damage
 
-    // p2 kills the enemy
+    // p2 kills a separate enemy via bullet damage.
     const attackBullet = makeBullet('p2', 0.3, 0.3, ENEMY_HEALTH.grunt);
-    applyBulletToEnemy(attackBullet, enemy, p2);
-    expect(enemy.alive).toBe(false);
+    applyBulletToEnemy(attackBullet, targetEnemy, p2);
+    expect(targetEnemy.alive).toBe(false);
     expect(p2.playerKills).toBe(1);
 
     // Leaderboard state: p1 = 0 kills, p2 = 1 enemy kill
@@ -476,15 +491,17 @@ describe('PvPvE — full match flow simulation', () => {
     expect(p2.kills + p2.playerKills).toBe(1);
   });
 
-  it('both enemies and players take damage when friendlyFire=true', () => {
+  it('enemy contact is lethal and player-vs-player bullets stay health based when friendlyFire=true', () => {
     const p1 = makePlayer('p1', 0.3, 0.3);
     const p2 = makePlayer('p2', 0.7, 0.7);
     const enemy = makeEnemy('e1', 'grunt', 0.3, 0.3);
     const inv = new Map<string, number>();
 
-    // Enemy damages p1
-    applyEnemyToPlayer(enemy, p1, 1);
-    expect(p1.health).toBe(PLAYER_PVP_MAX_HEALTH - 1);
+    // Enemy contact spends a life and consumes the enemy.
+    applyEnemyToPlayer(enemy, p1);
+    expect(p1.lives).toBe(2);
+    expect(p1.health).toBe(PLAYER_PVP_MAX_HEALTH);
+    expect(enemy.alive).toBe(false);
 
     // p1 shoots p2 — friendlyFire=true allows it
     const pvpBullet = makeBullet('p1', 0.7, 0.7, 20);

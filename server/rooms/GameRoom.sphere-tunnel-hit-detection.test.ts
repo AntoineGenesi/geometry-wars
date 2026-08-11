@@ -159,51 +159,72 @@ function makeSphereTunnelContactScenario(mode: 'king' | 'waves' | 'pvpve') {
   const playerLocation = playerWalker.getLocation();
   internals.applyWalkerStateToPlayer(player, playerLocation);
 
-  const enemyWalker = new ServerMeshWalker(
-    internals.surfaceManager.getMeshSurface()!,
-    new THREE.Vector3(playerLocation.wx, playerLocation.wy, playerLocation.wz),
-    1,
-  );
-  enemyWalker.teleportToLocation(playerLocation);
-  enemyWalker.moveInWorldDirection(
-    playerLocation.tangentX,
-    playerLocation.tangentY,
-    playerLocation.tangentZ,
-    0.35,
-  );
+  function addOverlappingEnemy(id: string) {
+    const enemyWalker = new ServerMeshWalker(
+      internals.surfaceManager.getMeshSurface()!,
+      new THREE.Vector3(playerLocation.wx, playerLocation.wy, playerLocation.wz),
+      1,
+    );
+    enemyWalker.teleportToLocation(playerLocation);
+    enemyWalker.moveInWorldDirection(
+      playerLocation.tangentX,
+      playerLocation.tangentY,
+      playerLocation.tangentZ,
+      0.35,
+    );
 
-  const enemy = new EnemyState();
-  enemy.id = 'enemy-1';
-  enemy.type = 'grunt';
-  enemy.health = 1;
-  enemy.maxHealth = 1;
-  internals.enemyWalkers.set(enemy.id, enemyWalker);
-  internals.applyWalkerStateToEnemy(enemy, enemyWalker.getLocation());
-  internals.enemyAI.set(enemy.id, {});
-  room.state.enemies.push(enemy);
+    const enemy = new EnemyState();
+    enemy.id = id;
+    enemy.type = 'grunt';
+    enemy.health = 1;
+    enemy.maxHealth = 1;
+    internals.enemyWalkers.set(enemy.id, enemyWalker);
+    internals.applyWalkerStateToEnemy(enemy, enemyWalker.getLocation());
+    internals.enemyAI.set(enemy.id, {});
+    room.state.enemies.push(enemy);
+    return enemy;
+  }
 
-  return { room, internals, player, enemy };
+  const enemy = addOverlappingEnemy('enemy-1');
+
+  return { room, internals, player, enemy, addOverlappingEnemy };
 }
 
-describe('sphere-tunnel MP nearby-enemy contact health/life semantics', () => {
+describe('sphere-tunnel MP nearby-enemy contact death/removal semantics', () => {
   it.each(['king', 'waves', 'pvpve'] as const)(
-    'uses health damage without spending a life on a nonlethal nearby enemy touch in %s mode',
+    'spends a life and removes the contacting enemy on first nearby enemy touch in %s mode',
     (mode) => {
-      const { internals, player } = makeSphereTunnelContactScenario(mode);
+      const { room, internals, player, enemy } = makeSphereTunnelContactScenario(mode);
+      const hitSamples: Array<{ health: number; lives: number; lifeLost: boolean }> = [];
+      (internals as unknown as { broadcast: (type: string, data: Record<string, unknown>) => void }).broadcast = (
+        type,
+        data,
+      ) => {
+        if (type !== 'player_hit') return;
+        hitSamples.push({
+          health: data.healthRemaining as number,
+          lives: data.livesRemaining as number,
+          lifeLost: data.lifeLost as boolean,
+        });
+      };
 
       internals.checkCollisions();
 
-      expect(player.health).toBe(75);
-      expect(player.lives).toBe(3);
+      expect(hitSamples).toEqual([{ health: 100, lives: 2, lifeLost: true }]);
+      expect(player.health).toBe(100);
+      expect(player.lives).toBe(2);
       expect(player.alive).toBe(true);
       expect(internals.playerInvincibility.get(player.id)).toBeGreaterThan(0);
+      expect(room.state.enemies.some((remaining) => remaining.id === enemy.id)).toBe(false);
+      expect(internals.enemyWalkers.has(enemy.id)).toBe(false);
+      expect(internals.enemyAI.has(enemy.id)).toBe(false);
     },
   );
 
   it.each(['pvpve', 'waves'] as const)(
-    'applies sustained overlap damage on the shared hurt cadence until a life is lost in %s',
+    'does not keep applying old sustained health-drain cadence after contact in %s',
     (mode) => {
-      const { internals, player } = makeSphereTunnelContactScenario(mode);
+      const { room, internals, player } = makeSphereTunnelContactScenario(mode);
 
       const hitSamples: Array<{ health: number; lives: number; lifeLost: boolean }> = [];
       (internals as unknown as { broadcast: (type: string, data: Record<string, unknown>) => void }).broadcast = (
@@ -224,17 +245,39 @@ describe('sphere-tunnel MP nearby-enemy contact health/life semantics', () => {
         internals.drainInvincibility(3.1);
       }
 
-      expect(hitSamples).toEqual([
-        { health: 75, lives: 3, lifeLost: false },
-        { health: 50, lives: 3, lifeLost: false },
-        { health: 25, lives: 3, lifeLost: false },
-        { health: 100, lives: 2, lifeLost: true },
-      ]);
+      expect(hitSamples).toEqual([{ health: 100, lives: 2, lifeLost: true }]);
       expect(player.health).toBe(100);
       expect(player.lives).toBe(2);
       expect(player.alive).toBe(true);
+      expect(room.state.enemies.length).toBe(0);
     },
   );
+
+  it('multiple overlapping enemies produce immediate death/removal instead of hovering without damage', () => {
+    const { room, internals, player, addOverlappingEnemy } = makeSphereTunnelContactScenario('pvpve');
+    addOverlappingEnemy('enemy-2');
+    addOverlappingEnemy('enemy-3');
+
+    const hitSamples: Array<{ lives: number; lifeLost: boolean }> = [];
+    (internals as unknown as { broadcast: (type: string, data: Record<string, unknown>) => void }).broadcast = (
+      type,
+      data,
+    ) => {
+      if (type !== 'player_hit') return;
+      hitSamples.push({
+        lives: data.livesRemaining as number,
+        lifeLost: data.lifeLost as boolean,
+      });
+    };
+
+    internals.checkCollisions();
+
+    expect(hitSamples).toEqual([{ lives: 2, lifeLost: true }]);
+    expect(player.health).toBe(100);
+    expect(player.lives).toBe(2);
+    expect(player.alive).toBe(true);
+    expect(room.state.enemies.length).toBe(2);
+  });
 });
 
 describe('sphere-tunnel MP spawn warning/materialization alignment', () => {

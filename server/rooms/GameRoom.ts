@@ -149,8 +149,6 @@ const BOOST_COOLDOWN = 5.0;       // seconds between boosts
 const BOOST_SPEED_MULTIPLIER = 3.0; // speed multiplier during boost
 const ENEMY_WALKER_SPEED_SCALE = 30;
 const ENEMY_DAMAGE_AGGRO_SECONDS = 4;
-const ENEMY_BODY_DAMAGE = 25;
-const ENEMY_BODY_HURT_INVINCIBILITY_SECONDS = PLAYER_PVP_INVINCIBILITY_DURATION;
 
 // Wave scheduling constants (mirrors WaveScheduler in src/core/)
 const WAVE_FIRST_AT = 3.0;       // first wave at 3s (reduced from 6s to speed up MP start, s44-05)
@@ -6461,7 +6459,7 @@ export class GameRoom extends Room<GameState> {
 
     // Bullet-enemy collisions
     const bulletsToRemove: number[] = [];
-    const enemiesToRemove: number[] = [];
+    const enemiesToRemove = new Set<number>();
     // S43-02: Track consumed bullets to prevent one bullet hitting multiple enemies.
     // Without this, a bullet near two enemies applies damage to both AND pushes the
     // same index twice into bulletsToRemove, causing an unrelated bullet to be removed.
@@ -6528,7 +6526,7 @@ export class GameRoom extends Room<GameState> {
           );
 
           if (enemy.health <= 0) {
-            enemiesToRemove.push(eIndex);
+            enemiesToRemove.add(eIndex);
 
             if (owner) {
               this.creditPlayerEnemyKill(owner, this.getEnemyScore(enemy.type), bulletWeaponType);
@@ -6744,7 +6742,7 @@ export class GameRoom extends Room<GameState> {
       // enemy collision per tick is processed; the rest are skipped.
       let wasHit = false;
 
-      this.state.enemies.forEach((enemy) => {
+      this.state.enemies.forEach((enemy, enemyIndex) => {
         if (!this.isTargetableEnemy(enemy)) return;
         if (wasHit) return; // Only one hit per player per tick
         if (hitEnemyIds.has(enemy.id)) return; // Each enemy hits at most one player per tick
@@ -6771,72 +6769,21 @@ export class GameRoom extends Room<GameState> {
           // Player hit!
           wasHit = true;
           hitEnemyIds.add(enemy.id); // Mark enemy as spent for this tick
+          enemiesToRemove.add(enemyIndex);
 
-          // Enemy body collision reduces the health bar in ALL modes (s44r18-09).
-          // A life is spent only when the body-damage health bar is depleted;
-          // otherwise a short hurt window prevents one overlap from draining
-          // multiple hits across consecutive server ticks.
-          let bodyDamage = 0;
-          let lifeLost = false;
-          {
-            if (player.shieldCount > 0) {
-              // Shield absorbed — player survives, no life loss
-              player.shieldCount--;
-              this.broadcast('player_shield_absorbed', { playerId: player.id });
-              wasHit = false; // Don't proceed to life loss below
-            } else {
-              const prevHealth = player.health;
-              player.health = Math.max(0, player.health - ENEMY_BODY_DAMAGE);
-              bodyDamage = prevHealth - player.health;
-              this._checkHalfHealthPortalTrigger(player);
-              // Spawn health pickup near hurt player if below threshold
-              if (
-                player.health > 0 &&
-                player.health / player.maxHealth < HEALTH_PICKUP_THRESHOLD
-              ) {
-                const lastSpawn = this.lastHealthPickupSpawnTime.get(player.id) ?? -Infinity;
-                if (this.state.gameTime - lastSpawn >= this.healthPickupFrequency) {
-                  this.spawnHealthPickup(player.surfaceU, player.surfaceV);
-                  this.lastHealthPickupSpawnTime.set(player.id, this.state.gameTime);
-                }
-              }
-              if (player.health <= 0) {
-                // Reset health for the next life — actual life loss handled below
-                player.health = player.maxHealth;
-                lifeLost = true;
-              }
-            }
-          }
-
-          // If a shield absorbed the hit, skip all life-loss logic
-          if (!wasHit) return;
-
-          if (!lifeLost) {
-            this.playerInvincibility.set(player.id, ENEMY_BODY_HURT_INVINCIBILITY_SECONDS);
-            player.invincibilityTimer = ENEMY_BODY_HURT_INVINCIBILITY_SECONDS;
-            this.broadcast('player_hit', {
-              victimId: player.id,
-              victimName: player.name,
-              enemyType: enemy.type,
-              livesRemaining: player.lives,
-              healthRemaining: player.health,
-              damage: bodyDamage,
-              lifeLost: false,
-              timestamp: Date.now(),
-            });
-            this.logGameplayEvent({
-              _type: 'player_hit',
-              playerId: player.id,
-              playerName: player.name,
-              livesRemaining: this.state.infiniteLives ? -1 : player.lives,
-              healthRemaining: player.health,
-              damage: bodyDamage,
-              score: player.score,
-              kills: player.playerKills,
-              enemyType: enemy.type,
-            });
+          if (player.shieldCount > 0) {
+            player.shieldCount--;
+            this.broadcast('player_shield_absorbed', { playerId: player.id });
             return;
           }
+
+          // Enemy body contact is lethal in MP. Preserve the normal life-loss
+          // and respawn side effects below by driving the existing death branch.
+          const bodyDamage = Math.max(0, player.health);
+          player.health = 0;
+          this._checkHalfHealthPortalTrigger(player);
+          // Reset health for the next life — actual life loss handled below.
+          player.health = player.maxHealth;
 
           // Infinite lives: skip lives decrement but still apply death penalties
           if (!this.state.infiniteLives) {
@@ -7083,8 +7030,8 @@ export class GameRoom extends Room<GameState> {
     for (let i = bulletsToRemove.length - 1; i >= 0; i--) {
       this.state.bullets.splice(bulletsToRemove[i], 1);
     }
-    for (let i = enemiesToRemove.length - 1; i >= 0; i--) {
-      this.removeKilledEnemyAt(enemiesToRemove[i]);
+    for (const enemyIndex of Array.from(enemiesToRemove).sort((a, b) => b - a)) {
+      this.removeKilledEnemyAt(enemyIndex);
     }
     for (let i = geomsToRemove.length - 1; i >= 0; i--) {
       this.state.geoms.splice(geomsToRemove[i], 1);
