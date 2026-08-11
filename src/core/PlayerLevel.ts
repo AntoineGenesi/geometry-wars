@@ -6,10 +6,6 @@ import {
   LEVEL_MOVE_SPEED_MULTIPLIERS,
 } from '../shared/GameBalanceConstants';
 
-// Pre-allocated for zero-allocation orientation in update()
-// RingGeometry lies in XY plane with +Z as its face normal.
-const _ringZAxis = new THREE.Vector3(0, 0, 1);
-
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -27,7 +23,7 @@ export interface LevelPerk {
   bulletSpeedMultiplier: number;
   /** Extra bombs granted on level-up */
   bonusBombs: number;
-  /** Aura ring radius (0 = no ring) */
+  /** Legacy aura ring radius. Level progression is now shown by HUD/toast, not a world ring. */
   auraRadius: number;
   /** Aura color */
   auraColor: number;
@@ -83,17 +79,10 @@ export class PlayerLevel {
   private kills = 0;
   private currentLevel = 0;
 
-  /** Visual aura ring mesh */
+  /** Compatibility mesh for existing scene add/remove paths. Kept permanently hidden. */
   readonly auraRing: THREE.Mesh;
   private readonly auraMaterial: THREE.MeshBasicMaterial;
   private readonly auraGeometry: THREE.RingGeometry;
-  private pulseTime = 0;
-
-  /**
-   * When true, aura opacity is clamped to ≤0.10 for multiplayer where the ring
-   * should be near-invisible (just a subtle indicator, not a distracting glow).
-   */
-  private _isMultiplayerMode = false;
 
   /** Callback when player levels up */
   onLevelUp: ((level: number, perk: LevelPerk) => void) | null = null;
@@ -116,16 +105,15 @@ export class PlayerLevel {
     });
     this.auraRing = new THREE.Mesh(this.auraGeometry, this.auraMaterial);
     this.auraRing.renderOrder = 100;
+    this.auraRing.visible = false;
   }
 
   /**
-   * Switch the aura ring into multiplayer mode.
-   * In MP: opacity is capped to ≤0.10 so the ring is near-invisible (subtle indicator only).
-   * The ring also hugs the surface more tightly (smaller normal offset).
-   * SP mode (default): full opacity range + normal 0.06 offset.
+   * Retain the old SP/MP API. Level progression no longer has a world-space
+   * ring in either mode.
    */
-  setMultiplayerMode(isMP: boolean): void {
-    this._isMultiplayerMode = isMP;
+  setMultiplayerMode(_isMP: boolean): void {
+    // No-op: the compatibility mesh remains hidden in both modes.
   }
 
   /**
@@ -201,44 +189,12 @@ export class PlayerLevel {
   }
 
   /**
-   * Update aura ring position and pulse animation. Call each frame.
+   * Keep the legacy aura mesh hidden. Level progression is communicated by the
+   * HUD level label and level-up toast, not by a large world-space ring.
    */
-  update(dt: number, position: THREE.Vector3, normal: THREE.Vector3): void {
-    this.pulseTime += dt;
-
-    if (this.currentLevel === 0) {
-      this.auraRing.visible = false;
-      return;
-    }
-
-    this.auraRing.visible = true;
-    const perk = LEVELS[this.currentLevel];
-
-    // Surface projection offset:
-    //   MP: 0.01 — ring hugs the surface (near-zero lift = "projected onto" the surface).
-    //   SP: 0.06 — slight lift to avoid z-fighting on opaque surfaces.
-    const normalOffset = this._isMultiplayerMode ? 0.01 : 0.06;
-
-    // Position on surface
-    this.auraRing.position.copy(position).addScaledVector(normal, normalOffset);
-    // Orient ring to lie flat on the surface (face perpendicular to surface normal).
-    // setFromUnitVectors is robust for all normal directions, including (0,1,0)
-    // which breaks lookAt() (degenerate when look-direction == world-up).
-    // This fixes the ring appearing incorrect at the top of the torus tube in LAN mode.
-    this.auraRing.quaternion.setFromUnitVectors(_ringZAxis, normal);
-
-    // Pulse animation
-    const pulse = 1.0 + Math.sin(this.pulseTime * 1.8) * 0.05;
-    this.auraRing.scale.setScalar(perk.auraRadius * pulse);
-
-    // Breathing opacity:
-    //   SP: 0.12 ± 0.05 → range [0.07, 0.17]  (visible glow)
-    //   MP: 0.05 ± 0.03 → range [0.02, 0.08]  (near-invisible, always ≤ 0.10)
-    if (this._isMultiplayerMode) {
-      this.auraMaterial.opacity = 0.05 + Math.sin(this.pulseTime * 1.2) * 0.03;
-    } else {
-      this.auraMaterial.opacity = 0.12 + Math.sin(this.pulseTime * 1.2) * 0.05;
-    }
+  update(_dt: number, _position: THREE.Vector3, _normal: THREE.Vector3): void {
+    this.auraRing.visible = false;
+    this.auraMaterial.opacity = 0;
   }
 
   /**
