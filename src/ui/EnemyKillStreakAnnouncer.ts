@@ -130,6 +130,47 @@ export class EnemyKillStreakAnnouncer {
       #enemy-kill-streak-announcer.eksa-active .eksa-name {
         animation: eksa-pop-in 0.35s cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
       }
+
+      @media (pointer: coarse), (max-width: 640px) {
+        #enemy-kill-streak-announcer {
+          top: auto;
+          bottom: max(14px, env(safe-area-inset-bottom));
+          left: 50%;
+          width: min(58vw, 240px);
+          transform: translateX(-50%);
+          opacity: 0.78;
+          text-align: center;
+        }
+
+        #enemy-kill-streak-announcer .eksa-braille,
+        #enemy-kill-streak-announcer .eksa-ascii {
+          display: none;
+        }
+
+        #enemy-kill-streak-announcer .eksa-name {
+          font-size: 13px;
+          font-weight: 800;
+          line-height: 1.15;
+          letter-spacing: 1px;
+          text-shadow: none !important;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+
+        #enemy-kill-streak-announcer .eksa-count {
+          margin-top: 2px;
+          font-size: 9px;
+          font-weight: 600;
+          letter-spacing: 1px;
+          color: rgba(255, 255, 255, 0.62);
+          text-shadow: none;
+        }
+
+        #enemy-kill-streak-announcer.eksa-active .eksa-name {
+          animation: none;
+        }
+      }
     `;
     document.head.appendChild(this.styleEl);
 

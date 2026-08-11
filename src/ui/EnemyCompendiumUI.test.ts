@@ -125,6 +125,19 @@ describe('Enemy compendium UI', () => {
     toast.dispose();
   });
 
+  it('keeps enemy discovery toasts compact in the left corner on mobile', () => {
+    const { head } = installFakeDocument();
+    new EnemyDiscoveryToast();
+    const style = walk(head).find((el) => el.id === 'enemy-discovery-toast-styles');
+    const css = style?.textContent ?? '';
+
+    expect(css).toContain('@media (max-width: 520px)');
+    expect(css).toContain('top: max(10px, env(safe-area-inset-top))');
+    expect(css).toContain('left: max(10px, env(safe-area-inset-left))');
+    expect(css).toContain('width: min(230px, calc(100vw - 20px))');
+    expect(css).toContain('font-size: 12px');
+  });
+
   it('keeps Enemy Types entry points in StartMenu and PauseMenu markup', () => {
     const root = process.cwd();
     const startMenu = fs.readFileSync(path.join(root, 'src/ui/StartMenu.ts'), 'utf8');

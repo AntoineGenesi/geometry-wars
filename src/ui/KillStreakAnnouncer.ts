@@ -104,6 +104,12 @@ export class KillStreakAnnouncer {
       #kill-streak-announcer.ksa-active .ksa-label {
         animation: ksa-pop-in 0.35s cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
       }
+
+      @media (pointer: coarse), (max-width: 640px) {
+        #kill-streak-announcer {
+          display: none !important;
+        }
+      }
     `;
     document.head.appendChild(this.styleEl);
 

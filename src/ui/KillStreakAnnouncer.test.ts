@@ -151,6 +151,8 @@ function makeSoundStub() {
   const calls: Array<{ type: string; options: unknown }> = [];
   return {
     play(type: string, options: unknown = {}) { calls.push({ type, options }); return true; },
+    getAudioContext() { return null; },
+    getCompressor() { return null; },
     calls,
   };
 }
@@ -257,5 +259,15 @@ describe('KillStreakAnnouncer', () => {
 
     // After dispose, parentElement should be null (element removed)
     expect(container.parentElement).toBeNull();
+  });
+
+  it('hides the large PvP kill streak overlay on mobile viewports', () => {
+    const sound = makeSoundStub();
+    new KillStreakAnnouncer(sound);
+    const styleText = headChildren.map((el) => el.textContent).join('\n');
+
+    expect(styleText).toContain('@media (pointer: coarse), (max-width: 640px)');
+    expect(styleText).toContain('#kill-streak-announcer');
+    expect(styleText).toContain('display: none !important');
   });
 });

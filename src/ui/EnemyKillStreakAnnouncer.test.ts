@@ -252,6 +252,18 @@ describe('EnemyKillStreakAnnouncer', () => {
     expect(sound.play).toHaveBeenCalledWith('multiplierUp', expect.objectContaining({ volume: 0.7 }));
   });
 
+  it('uses a small subdued bottom banner for enemy kill streaks on mobile', () => {
+    const styleEl = headChildren.find(el => el.id === 'enemy-kill-streak-announcer-style');
+    const css = styleEl?.textContent ?? '';
+
+    expect(css).toContain('@media (pointer: coarse), (max-width: 640px)');
+    expect(css).toContain('bottom: max(14px, env(safe-area-inset-bottom))');
+    expect(css).toContain('font-size: 13px');
+    expect(css).toContain('font-size: 9px');
+    expect(css).toContain('#enemy-kill-streak-announcer .eksa-braille');
+    expect(css).toContain('display: none');
+  });
+
   // ── resetStreak after 50 kills → next kill triggers streak=1 ─────────────
 
   it('next kill after resetStreak() triggers streak=1 announcement', () => {

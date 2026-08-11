@@ -13,6 +13,7 @@ export class UpgradeNotification {
   private fadeTimeout: number | null = null;
 
   constructor() {
+    this.ensureStyles();
     this.container = document.createElement('div');
     this.container.id = 'upgrade-notification';
     this.container.style.cssText = `
@@ -41,21 +42,8 @@ export class UpgradeNotification {
     const colorHex = '#' + config.color.toString(16).padStart(6, '0');
 
     this.container.innerHTML = `
-      <div style="
-        font-size: 16px;
-        font-weight: bold;
-        color: ${colorHex};
-        text-shadow: 0 0 10px ${colorHex};
-        letter-spacing: 3px;
-        text-transform: uppercase;
-      ">⚡ ${config.name} UPGRADE UNLOCKED</div>
-      <div style="
-        font-size: 13px;
-        color: #88ff88;
-        text-shadow: 0 0 6px #44ff44;
-        margin-top: 4px;
-        letter-spacing: 1px;
-      ">${upgradeNode.description}</div>
+      <div class="upgrade-notification-title" style="color: ${colorHex}; text-shadow: 0 0 10px ${colorHex};">⚡ ${config.name} UPGRADE UNLOCKED</div>
+      <div class="upgrade-notification-body">${upgradeNode.description}</div>
     `;
 
     this._show(3000);
@@ -66,19 +54,8 @@ export class UpgradeNotification {
    */
   showMasteryPointEarned(): void {
     this.container.innerHTML = `
-      <div style="
-        font-size: 18px;
-        font-weight: bold;
-        color: #ffd700;
-        text-shadow: 0 0 12px #ffd700, 0 0 24px #ff8800;
-        letter-spacing: 4px;
-      ">MASTERY POINT EARNED</div>
-      <div style="
-        font-size: 12px;
-        color: #ffcc44;
-        margin-top: 4px;
-        letter-spacing: 2px;
-      ">Open Pause Menu → Weapon Mastery to spend</div>
+      <div class="upgrade-notification-title mastery-point">MASTERY POINT EARNED</div>
+      <div class="upgrade-notification-body mastery-point-help">Open Pause Menu → Weapon Mastery to spend</div>
     `;
 
     this._show(2000);
@@ -88,6 +65,71 @@ export class UpgradeNotification {
     if (this.hideTimeout !== null) clearTimeout(this.hideTimeout);
     if (this.fadeTimeout !== null) clearTimeout(this.fadeTimeout);
     this.container.remove();
+  }
+
+  private ensureStyles(): void {
+    if (document.getElementById('upgrade-notification-style')) return;
+    const styleEl = document.createElement('style');
+    styleEl.id = 'upgrade-notification-style';
+    styleEl.textContent = `
+      #upgrade-notification .upgrade-notification-title {
+        font-size: 16px;
+        font-weight: bold;
+        letter-spacing: 3px;
+        text-transform: uppercase;
+      }
+
+      #upgrade-notification .upgrade-notification-body {
+        margin-top: 4px;
+        color: #88ff88;
+        font-size: 13px;
+        letter-spacing: 1px;
+        text-shadow: 0 0 6px #44ff44;
+      }
+
+      #upgrade-notification .mastery-point {
+        color: #ffd700;
+        font-size: 18px;
+        letter-spacing: 4px;
+        text-shadow: 0 0 12px #ffd700, 0 0 24px #ff8800;
+      }
+
+      #upgrade-notification .mastery-point-help {
+        color: #ffcc44;
+        font-size: 12px;
+        letter-spacing: 2px;
+        text-shadow: none;
+      }
+
+      @media (pointer: coarse), (max-width: 640px) {
+        #upgrade-notification {
+          top: max(10px, env(safe-area-inset-top)) !important;
+          bottom: auto !important;
+          left: max(10px, env(safe-area-inset-left)) !important;
+          width: min(230px, calc(100vw - 20px));
+          transform: none !important;
+          text-align: left !important;
+          opacity: 0.88;
+        }
+
+        #upgrade-notification .upgrade-notification-title {
+          font-size: 10px;
+          line-height: 1.15;
+          letter-spacing: 1px;
+          text-shadow: none !important;
+        }
+
+        #upgrade-notification .upgrade-notification-body {
+          margin-top: 2px;
+          font-size: 9px;
+          line-height: 1.2;
+          letter-spacing: 0;
+          color: rgba(210, 255, 210, 0.72);
+          text-shadow: none;
+        }
+      }
+    `;
+    document.head.appendChild(styleEl);
   }
 
   private _show(durationMs: number): void {

@@ -3,6 +3,7 @@ import { WeaponType } from '../weapons/WeaponTypes';
 
 class MockElement {
   id = '';
+  textContent = '';
   innerHTML = '';
   style: Record<string, string> = {};
   parentElement: MockElement | null = null;
@@ -25,14 +26,18 @@ class MockElement {
 describe('UpgradeNotification', () => {
   let UpgradeNotification: typeof import('./UpgradeNotification').UpgradeNotification;
   let body: MockElement;
+  let head: MockElement;
 
   beforeEach(async () => {
     vi.useFakeTimers();
     vi.resetModules();
     body = new MockElement();
+    head = new MockElement();
 
     vi.stubGlobal('document', {
       createElement: () => new MockElement(),
+      getElementById: (id: string) => [...head.children, ...body.children].find((el) => el.id === id) ?? null,
+      head,
       body,
     });
     vi.stubGlobal('window', {
@@ -58,6 +63,19 @@ describe('UpgradeNotification', () => {
     expect(container?.style.cssText).toContain('bottom: 11%');
     expect(container?.style.cssText).not.toContain('top: 12%');
     expect(container?.innerHTML).toContain('Dual bolts');
+    notification.dispose();
+  });
+
+  it('uses a compact top-left placement for mobile upgrade notices', () => {
+    const notification = new UpgradeNotification();
+    const style = head.children.find(child => child.id === 'upgrade-notification-style');
+    const css = style?.textContent ?? '';
+
+    expect(css).toContain('@media (pointer: coarse), (max-width: 640px)');
+    expect(css).toContain('top: max(10px, env(safe-area-inset-top)) !important');
+    expect(css).toContain('left: max(10px, env(safe-area-inset-left)) !important');
+    expect(css).toContain('font-size: 10px');
+    expect(css).toContain('font-size: 9px');
     notification.dispose();
   });
 });
