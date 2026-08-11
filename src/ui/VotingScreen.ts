@@ -189,7 +189,7 @@ export class VotingScreen {
     // Reset ready state for new voting round
     this.localIsReady = false;
     if (this.readyUpBtn) {
-      this.readyUpBtn.textContent = 'READY UP';
+      this.readyUpBtn.textContent = t('voting.readyUp');
       this.readyUpBtn.classList.remove('vs-ready-btn--active');
     }
 
@@ -230,7 +230,7 @@ export class VotingScreen {
       const isRestricted = isClaustrophobiaMode && !CLAUSTROPHOBIA_SURFACES.has(id);
       card.style.opacity = isRestricted ? '0.35' : '';
       card.style.pointerEvents = isRestricted ? 'none' : '';
-      (card as HTMLElement).title = isRestricted ? 'Not available in Claustrophobia mode' : '';
+      (card as HTMLElement).title = isRestricted ? t('voting.unavailableClaustrophobia') : '';
     });
     this.surfaceBadges.forEach((badge, id) => {
       badge.textContent = String(surfaceVotes.get(id) ?? 0);
@@ -273,7 +273,7 @@ export class VotingScreen {
         }
         // Update pause button label (host only)
         if (this.pauseCountdownBtn) {
-          this.pauseCountdownBtn.textContent = isPaused ? '▶ RESUME TIMER' : '⏸ PAUSE TIMER';
+          this.pauseCountdownBtn.textContent = isPaused ? `▶ ${t('voting.resumeTimer')}` : `⏸ ${t('voting.pauseTimer')}`;
         }
       }
     }
@@ -295,7 +295,7 @@ export class VotingScreen {
       let readyCount = 0;
       readyMap.forEach((val) => { if (val) readyCount++; });
       this.readyStatusEl.textContent = totalPlayers > 0
-        ? `${readyCount}/${totalPlayers} ready`
+        ? t('voting.readyCount', { ready: readyCount, total: totalPlayers })
         : '';
     }
 
@@ -397,7 +397,7 @@ export class VotingScreen {
           const restricted = isClaustr && !CLAUSTROPHOBIA_SURFACES.has(surfId);
           card.style.opacity = restricted ? '0.35' : '';
           card.style.pointerEvents = restricted ? 'none' : '';
-          (card as HTMLElement).title = restricted ? 'Not available in Claustrophobia mode' : '';
+          (card as HTMLElement).title = restricted ? t('voting.unavailableClaustrophobia') : '';
         });
         // Auto-switch size if it's no longer valid for the new mode
         const unavailableSizes = getUnavailableSizesForMode(id);
@@ -444,7 +444,7 @@ export class VotingScreen {
     cdArea.appendChild(cdEl);
     const cdPausedEl = document.createElement('div');
     cdPausedEl.className = 'vs-countdown-paused';
-    cdPausedEl.textContent = 'PAUSED';
+    cdPausedEl.textContent = t('voting.paused');
     cdPausedEl.style.display = 'none';
     cdArea.appendChild(cdPausedEl);
     wrap.appendChild(cdArea);
@@ -462,7 +462,7 @@ export class VotingScreen {
     voteDivArea.style.marginTop = '8px';
     voteDivArea.style.textAlign = 'center';
     const voteDivMsg = document.createElement('div');
-    voteDivMsg.textContent = 'Vote split — auto-selecting in:';
+    voteDivMsg.textContent = t('voting.voteSplitAutoSelecting');
     voteDivMsg.style.fontSize = '0.9em';
     voteDivMsg.style.marginBottom = '4px';
     voteDivArea.appendChild(voteDivMsg);
@@ -484,11 +484,11 @@ export class VotingScreen {
     // ---- Ready Up button ----
     const readyBtn = document.createElement('button');
     readyBtn.className = 'vs-ready-btn';
-    readyBtn.textContent = 'READY UP';
+    readyBtn.textContent = t('voting.readyUp');
     readyBtn.addEventListener('click', () => {
       if (!this.localIsReady) {
         this.localIsReady = true;
-        readyBtn.textContent = '✓ READY';
+        readyBtn.textContent = `✓ ${t('voting.ready')}`;
         readyBtn.classList.add('vs-ready-btn--active');
         this.callbacks.onReadyUp?.();
       }
@@ -499,7 +499,7 @@ export class VotingScreen {
     // ---- Weapon Mastery button ----
     const masteryBtn = document.createElement('button');
     masteryBtn.className = 'vs-mastery-btn';
-    masteryBtn.textContent = '✦ WEAPON MASTERY';
+    masteryBtn.textContent = `✦ ${t('voting.weaponMastery')}`;
     masteryBtn.addEventListener('click', () => {
       this.callbacks.onOpenMastery?.();
     });
@@ -531,7 +531,7 @@ export class VotingScreen {
     // GAME SETTINGS button (host only, s44j-settings-16c)
     const settingsBtn = document.createElement('button');
     settingsBtn.className = 'vs-settings-btn';
-    settingsBtn.textContent = '⚙ GAME SETTINGS';
+    settingsBtn.textContent = `⚙ ${t('voting.gameSettings')}`;
     settingsBtn.addEventListener('click', () => {
       this.callbacks.onOpenSettings?.();
     });
@@ -550,7 +550,7 @@ export class VotingScreen {
     // PAUSE/RESUME countdown button (host only)
     const pauseBtn = document.createElement('button');
     pauseBtn.className = 'vs-pause-countdown-btn';
-    pauseBtn.textContent = '⏸ PAUSE TIMER';
+    pauseBtn.textContent = `⏸ ${t('voting.pauseTimer')}`;
     pauseBtn.addEventListener('click', () => {
       const willPause = pauseBtn.textContent?.startsWith('⏸');
       this.callbacks.onHostPauseCountdown?.(!!willPause);
@@ -621,7 +621,7 @@ export class VotingScreen {
       const isUnavailable = unavailable.has(id);
       btn.classList.toggle('vs-mode-disabled', isUnavailable);
       btn.style.pointerEvents = isUnavailable ? 'none' : '';
-      (btn as HTMLElement).title = isUnavailable ? 'Not available on this map' : '';
+      (btn as HTMLElement).title = isUnavailable ? t('voting.unavailableOnMap') : '';
     });
   }
 
@@ -632,7 +632,7 @@ export class VotingScreen {
       const isUnavailable = unavailable.has(id);
       btn.classList.toggle('vs-mode-disabled', isUnavailable);
       btn.style.pointerEvents = isUnavailable ? 'none' : '';
-      (btn as HTMLElement).title = isUnavailable ? 'Not available in this mode' : '';
+      (btn as HTMLElement).title = isUnavailable ? t('voting.unavailableInMode') : '';
     });
   }
 
@@ -660,7 +660,7 @@ export class VotingScreen {
 
     const title = document.createElement('div');
     title.className = 'vs-wincond-title';
-    title.textContent = 'WIN CONDITION';
+    title.textContent = t('voting.winCondition.title');
     panel.appendChild(title);
 
     // Win condition type selector row
@@ -668,9 +668,9 @@ export class VotingScreen {
     typeRow.className = 'vs-wincond-type-row';
 
     const condTypes: Array<{ id: 'none' | 'time' | 'kills'; label: string }> = [
-      { id: 'none', label: 'NONE' },
-      { id: 'time', label: 'TIME LIMIT' },
-      { id: 'kills', label: 'KILL GOAL' },
+      { id: 'none', label: t('voting.winCondition.none') },
+      { id: 'time', label: t('voting.winCondition.timeLimit') },
+      { id: 'kills', label: t('voting.winCondition.killGoal') },
     ];
 
     const condBtns = new Map<string, HTMLElement>();
@@ -698,7 +698,7 @@ export class VotingScreen {
 
     const timeLabel = document.createElement('span');
     timeLabel.className = 'vs-wincond-input-label';
-    timeLabel.textContent = 'Duration:';
+    timeLabel.textContent = t('voting.winCondition.duration');
     timeInputRow.appendChild(timeLabel);
 
     const minInput = document.createElement('input');
@@ -706,20 +706,20 @@ export class VotingScreen {
     minInput.className = 'vs-wincond-num-input';
     minInput.min = '0'; minInput.max = '59'; minInput.step = '1';
     minInput.value = String(this.timeLimitMinutes);
-    minInput.title = 'Minutes';
+    minInput.title = t('voting.winCondition.minutes');
     const minLabel = document.createElement('span');
     minLabel.className = 'vs-wincond-unit';
-    minLabel.textContent = 'min';
+    minLabel.textContent = t('voting.winCondition.min');
 
     const secInput = document.createElement('input');
     secInput.type = 'number';
     secInput.className = 'vs-wincond-num-input';
     secInput.min = '0'; secInput.max = '59'; secInput.step = '1';
     secInput.value = String(this.timeLimitSeconds);
-    secInput.title = 'Seconds';
+    secInput.title = t('voting.winCondition.seconds');
     const secLabel = document.createElement('span');
     secLabel.className = 'vs-wincond-unit';
-    secLabel.textContent = 'sec';
+    secLabel.textContent = t('voting.winCondition.sec');
 
     const onTimeChange = () => {
       this.timeLimitMinutes = Math.max(0, Math.min(59, parseInt(minInput.value, 10) || 0));
@@ -744,7 +744,7 @@ export class VotingScreen {
 
     const killLabel = document.createElement('span');
     killLabel.className = 'vs-wincond-input-label';
-    killLabel.textContent = 'Kill goal:';
+    killLabel.textContent = t('voting.winCondition.killGoalLabel');
     killInputRow.appendChild(killLabel);
 
     const killInput = document.createElement('input');
@@ -759,7 +759,7 @@ export class VotingScreen {
     });
     const killsLabel = document.createElement('span');
     killsLabel.className = 'vs-wincond-unit';
-    killsLabel.textContent = 'kills';
+    killsLabel.textContent = t('voting.winCondition.kills');
 
     killInputRow.appendChild(killInput);
     killInputRow.appendChild(killsLabel);

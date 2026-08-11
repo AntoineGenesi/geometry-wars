@@ -11,7 +11,8 @@
     "controls": "УПРАВЛЕНИЕ",
     "score": "СЧЁТ",
     "available": "Доступно",
-    "notAvailable": "Недоступно"
+    "notAvailable": "Недоступно",
+    "close": "CLOSE"
   },
   "gameOver": {
     "title": "ИГРА ОКОНЧЕНА",
@@ -32,7 +33,28 @@
     "noteOptional": "(необязательно)",
     "notePlaceholder": "например: первая попытка, полное комбо...",
     "nameHint": "ENTER для заметки · ещё раз ENTER для отправки",
-    "autoSubmitting": "Автоотправка через {{count}}с…"
+    "autoSubmitting": "Автоотправка через {{count}}с…",
+    "pvp": {
+      "matchOver": "MATCH OVER",
+      "pvpResults": "PvP RESULTS",
+      "pvpveResults": "PvPvE RESULTS",
+      "player": "PLAYER",
+      "kills": "KILLS",
+      "deaths": "DEATHS",
+      "damage": "DAMAGE",
+      "damageDealt": "DAMAGE DEALT",
+      "backToLobby": "BACK TO LOBBY",
+      "continueToLobby": "CONTINUE TO LOBBY",
+      "readyHint": "Press ENTER or click to continue",
+      "totalKills": "TOTAL KILLS",
+      "pvp": "PVP",
+      "enemy": "ENEMY",
+      "points": "POINTS",
+      "rankedByKills": "Ranked by kills (primary) - points (tiebreaker)",
+      "mvp": "MVP",
+      "killsUnit": "{{count}} kills",
+      "damageUnit": "{{count}} dmg"
+    }
   },
   "levelComplete": {
     "title": "ЗАВЕРШЕНО",
@@ -97,6 +119,31 @@
       "medium": "СРЕДНИЙ",
       "large": "БОЛЬШОЙ",
       "epic": "ЭПИК"
+    },
+    "readyUp": "READY UP",
+    "ready": "READY",
+    "readyCount": "{{ready}}/{{total}} ready",
+    "resumeTimer": "RESUME TIMER",
+    "pauseTimer": "PAUSE TIMER",
+    "paused": "PAUSED",
+    "voteSplitAutoSelecting": "Vote split - auto-selecting in:",
+    "unavailableClaustrophobia": "Not available in Claustrophobia mode",
+    "unavailableOnMap": "Not available on this map",
+    "unavailableInMode": "Not available in this mode",
+    "weaponMastery": "WEAPON MASTERY",
+    "gameSettings": "GAME SETTINGS",
+    "winCondition": {
+      "title": "WIN CONDITION",
+      "none": "NONE",
+      "timeLimit": "TIME LIMIT",
+      "killGoal": "KILL GOAL",
+      "duration": "Duration:",
+      "minutes": "Minutes",
+      "seconds": "Seconds",
+      "min": "min",
+      "sec": "sec",
+      "killGoalLabel": "Kill goal:",
+      "kills": "kills"
     }
   },
   "menu": {
@@ -131,7 +178,8 @@
       "loadCustom": "ЗАГРУЗИТЬ",
       "weaponMastery": "МАСТЕРСТВО ОРУЖИЯ",
       "weaponDatabase": "БАЗА ОРУЖИЯ",
-      "visualStyles": "СТИЛИ КАРТЫ"
+      "visualStyles": "СТИЛИ КАРТЫ",
+      "enemyTypes": "ENEMY TYPES"
     },
     "headings": {
       "adventureLevels": "УРОВНИ ПРИКЛЮЧЕНИЯ",
@@ -156,6 +204,47 @@
       "idleShutdownHint": "Сервер закроется когда все игроки уйдут (0 = никогда)",
       "hostIpPlaceholder": "IP хоста (напр. 192.168.1.15)",
       "namePlaceholder": "Введите ваше имя..."
+    },
+    "lan": {
+      "staticHostingNotice": "LAN hosting requires the GitHub/self-hosted version. Static web builds can play the game, but cannot start the local LAN server.",
+      "staticScanNotice": "LAN scanning requires the GitHub/self-hosted version. Static web builds cannot discover local LAN servers.",
+      "troubleshooting": "Troubleshooting",
+      "troubleshootingTitle": "Windows LAN Troubleshooting",
+      "troubleshootingIntro": "If you can't connect to the host, try these steps:",
+      "troubleshootingAdmin": "Open Command Prompt as Administrator",
+      "troubleshootingAdminHint": "Search \"cmd\" in Start Menu -> right-click -> \"Run as administrator\"",
+      "troubleshootingRunCommand": "Run the following command:",
+      "troubleshootingRestart": "Restart your computer",
+      "troubleshootingTryAgain": "Try connecting again",
+      "warningLabel": "Warning:",
+      "troubleshootingWarning": "netsh winsock reset resets your Windows network stack. It can affect other network applications. Only run this if you are having connection issues.",
+      "troubleshootingIfNotWork": "If that doesn't work:",
+      "troubleshootingFirewall": "Check your firewall - allow Node.js through Windows Defender Firewall",
+      "troubleshootingSameWifi": "Ensure both devices are on the same Wi-Fi network",
+      "troubleshootingAskHostIp": "Ask the host for their local IP address (shown on the host screen)",
+      "gameMode": "GAME MODE",
+      "maxPlayers": "MAX PLAYERS",
+      "maxPlayersHint": "Host-configurable player cap (default 10)",
+      "serverRunning": "Server running!",
+      "copy": "COPY",
+      "copied": "COPIED",
+      "wsl2Detected": "WSL2 detected",
+      "wsl2UseWindowsLan": "- Use LAN (Windows) address from other devices.",
+      "wsl2PortForwarding": "Requires port forwarding: run Setup-WSL-LAN.bat as Administrator.",
+      "scanning": "SCANNING...",
+      "scanningLocalNetwork": "Scanning local network...",
+      "noGamesFound": "No games found on LAN",
+      "stop": "STOP",
+      "modes": {
+        "waves": "Waves",
+        "king": "King",
+        "sniper": "Sniper",
+        "rainbow": "Rainbow",
+        "claustrophobia": "Claustrophobia",
+        "pvp": "PvP",
+        "pvpve": "PvPvE"
+      },
+      "noGamesFoundHint": "Make sure a server is running and you are on the same network"
     }
   },
   "languages": {
@@ -194,7 +283,25 @@
       "activeBuffs": "АКТИВНЫЕ БАФФЫ",
       "noActiveBuffs": "Нет активных баффов",
       "currentScore": "СЧЁТ",
-      "performance": "ПРОИЗВОДИТЕЛЬНОСТЬ"
+      "performance": "ПРОИЗВОДИТЕЛЬНОСТЬ",
+      "lives": "LIVES",
+      "multiplayer": "MULTIPLAYER",
+      "gameMode": "GAME MODE",
+      "gameSettings": "GAME SETTINGS",
+      "pendingSettings": "New settings apply next wave",
+      "infinite": "INFINITE"
+    },
+    "enemyTypes": "ENEMY TYPES",
+    "weaponMastery": "WEAPON MASTERY",
+    "serverSettings": "SERVER SETTINGS",
+    "allowAllPlayersPause": "Allow all players to pause",
+    "joinCode": "Join Code: {{code}}",
+    "settingsActions": {
+      "back": "BACK",
+      "applyNextRound": "APPLY NEXT ROUND",
+      "applyNextRoundTitle": "Settings will take effect at the start of the next wave",
+      "restartRound": "RESTART ROUND",
+      "restartRoundTitle": "Restart round immediately - all players see a 5s countdown"
     }
   },
   "settings": {
@@ -227,7 +334,13 @@
       "runFullBenchmark": "ПОЛНЫЙ ТЕСТ ИГРЫ",
       "benchmarkTier": "Уровень теста: {{tier}}",
       "maxAt60fps": "Макс. при 60fps (instanced)",
-      "maxAt30fps": "Макс. при 30fps (instanced)"
+      "maxAt30fps": "Макс. при 30fps (instanced)",
+      "requestedRenderer": "Requested Renderer",
+      "webgpuStatus": "WebGPU Status",
+      "fullBenchmarkHint": "Tests real gameplay performance with moving enemies, bullets, and collisions. Creates a full game session and measures FPS across increasing entity counts.",
+      "privacyRestricted": "Chrome restricts GPU hardware details for privacy.",
+      "privacyAdapterShown": "WebGPU adapter info shown above provides hardware details.",
+      "privacyEnableWebgpu": "Enable WebGPU flags for better hardware detection."
     },
     "graphics": {
       "visualStyle": "СТИЛИ КАРТЫ",
@@ -243,7 +356,38 @@
       "maxEnemies": "Макс. враги",
       "resolutionScale": "Масштаб разрешения",
       "resetToDefault": "СБРОС",
-      "bloomHint": "Хорошие значения — Современный: 1.0 | Пиксельный: 0.4"
+      "bloomHint": "Хорошие значения — Современный: 1.0 | Пиксельный: 0.4",
+      "active": "ACTIVE",
+      "opaqueSurfaces": "Opaque Surfaces",
+      "gridLines": "Grid Lines",
+      "brightness": "Brightness",
+      "gridBrightnessHint": "0% = invisible, 100% = maximum.",
+      "density": "Density",
+      "gridDensity": {
+        "low": "Low",
+        "medium": "Medium",
+        "high": "High"
+      },
+      "gridDensityHint": "Grid line count applies on the next map load.",
+      "surfaceAppearance": "Surface Appearance",
+      "opacity": "Opacity",
+      "quick": "Quick",
+      "color": "Color",
+      "colorHint": "Color applies immediately. Light colors reflect enemy/bullet glow best.",
+      "opacityPresets": {
+        "Invisible": "Invisible",
+        "Ghost": "Ghost",
+        "Default": "Default",
+        "Semi": "Semi",
+        "Solid": "Solid"
+      },
+      "colorPresets": {
+        "DefaultSlateBlue": "Default (Slate Blue)",
+        "IceBlue": "Ice Blue",
+        "WarmWhite": "Warm White",
+        "SoftPurple": "Soft Purple",
+        "NeonTeal": "Neon Teal"
+      }
     },
     "performance": {
       "liveStats": "СТАТИСТИКА",
@@ -274,7 +418,13 @@
     "gameplay": {
       "difficulty": "СЛОЖНОСТЬ",
       "dynamicDifficulty": "Динамическая сложность",
-      "ddaHint": "Тонко подстраивает состав врагов. Отключается на уровне Кошмар."
+      "ddaHint": "Тонко подстраивает состав врагов. Отключается на уровне Кошмар.",
+      "hudVisibility": "HUD Visibility",
+      "minimap": "Minimap",
+      "perTypeKillStreaks": "Per-Type Kill Streaks",
+      "totalKills": "Total Kills",
+      "enemyStreakAnnouncements": "Enemy Streak Announcements",
+      "hudVisibilityHint": "These settings hide or show live HUD overlays in single-player and LAN where the widget exists. Mobile still keeps its existing uncluttered defaults."
     }
   },
   "hud": {
@@ -293,5 +443,111 @@
     "continueHint": "ENTER / ПРОБЕЛ / КЛИК",
     "newPassiveUnlocked": "Пассивный бонус получен!",
     "levelBadge": "Ур.{{level}}"
+  },
+  "gameSettingsPanel": {
+    "title": "GAME SETTINGS",
+    "resetToDefaults": "RESET TO DEFAULTS",
+    "sections": {
+      "gameMode": "GAME MODE",
+      "lives": "LIVES",
+      "difficulty": "DIFFICULTY",
+      "enemiesBullets": "ENEMIES & BULLETS",
+      "pickupsHealing": "PICKUPS & HEALING",
+      "timeLimit": "TIME LIMIT",
+      "healthBars": "HEALTH BARS",
+      "pvpSettings": "PvP SETTINGS"
+    },
+    "labels": {
+      "mode": "Mode",
+      "surface": "Surface",
+      "startingWeapon": "Starting Weapon",
+      "visualQuality": "Visual Quality",
+      "lives": "Lives",
+      "infiniteLives": "Infinite Lives",
+      "difficulty": "Difficulty",
+      "spawnRate": "Spawn Rate",
+      "bossFrequency": "Boss Frequency",
+      "maxPlayers": "Max Players",
+      "enemyCountCap": "Max Enemies",
+      "bulletCountCap": "Max Bullets",
+      "healingFrequency": "Healing Frequency (s)",
+      "healingAmount": "Healing Amount (HP)",
+      "weaponSpawnRate": "Weapon Pickup Rate",
+      "buffSpawnRate": "Buff Pickup Rate",
+      "timeLimit": "Time Limit",
+      "visibility": "Visibility",
+      "pvpDamage": "PvP Damage",
+      "friendlyFire": "Friendly Fire",
+      "pvpDamageMultiplier": "PvP Damage Multiplier",
+      "winCondition": "Win Condition",
+      "killLimit": "Kill Limit"
+    },
+    "values": {
+      "on": "ON",
+      "off": "OFF",
+      "unlimited": "Unlimited"
+    },
+    "units": {
+      "min": "min"
+    },
+    "difficulties": {
+      "hardcore": "Hardcore",
+      "hard": "Hard",
+      "normal": "Normal",
+      "easy": "Easy",
+      "casual": "Casual",
+      "medium": "Medium",
+      "insane": "Insane"
+    },
+    "speeds": {
+      "verySlow": "Very Slow",
+      "slow": "Slow",
+      "fast": "Fast",
+      "frenzy": "Frenzy"
+    },
+    "frequencies": {
+      "never": "Never",
+      "rare": "Rare",
+      "frequent": "Frequent",
+      "always": "Always"
+    }
+  },
+  "network": {
+    "namePrompt": {
+      "title": "ENTER YOUR NAME",
+      "hint": "Choose a name to join the game",
+      "placeholder": "Your name...",
+      "joinGame": "JOIN GAME"
+    },
+    "nameTaken": {
+      "title": "NAME ALREADY IN USE",
+      "hint": "\"{{name}}\" is already taken by a connected player. Choose a different name."
+    },
+    "connection": {
+      "connectingToServer": "Connecting to the server",
+      "notConnected": "Not connected to server!",
+      "starting": "Starting..."
+    },
+    "lobby": {
+      "gameSettings": "GAME SETTINGS",
+      "hostSettings": "HOST SETTINGS",
+      "startGame": "START GAME",
+      "onlyHostCanStart": "Only the host can start the game.",
+      "backToMenu": "BACK TO MENU",
+      "stopServer": "STOP SERVER"
+    },
+    "connectionLost": {
+      "title": "CONNECTION LOST",
+      "hint": "Press ESC or click below to return to main menu",
+      "returnToMainMenu": "RETURN TO MAIN MENU"
+    },
+    "death": {
+      "spectating": "YOU DIED - SPECTATING",
+      "respawning": "RESPAWNING"
+    },
+    "localMenu": {
+      "title": "MENU",
+      "hostPauseWarning": "Game continues - only the host can pause the server"
+    }
   }
 }

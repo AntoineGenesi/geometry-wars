@@ -1163,7 +1163,7 @@ export class GameOverScreen {
           <div class="pvp-bar-track">
             <div class="pvp-bar-fill" style="width:${pct}%;background:${colorCSS}"></div>
           </div>
-          <div class="pvp-bar-value">${p.kills.toFixed(2)} kills</div>
+          <div class="pvp-bar-value">${t('gameOver.pvp.killsUnit', { count: p.kills.toFixed(2) })}</div>
         </div>
       `;
     }).join('');
@@ -1177,29 +1177,29 @@ export class GameOverScreen {
           <div class="pvp-bar-track">
             <div class="pvp-bar-fill" style="width:${pct}%;background:${colorCSS};opacity:0.75"></div>
           </div>
-          <div class="pvp-bar-value">${Math.round(p.totalDamageDealt)} dmg</div>
+          <div class="pvp-bar-value">${t('gameOver.pvp.damageUnit', { count: Math.round(p.totalDamageDealt) })}</div>
         </div>
       `;
     }).join('');
 
     const mvpBadgeHTML = mvpId
-      ? `<div class="pvp-mvp-badge">★ MVP: ${this.escapeHTML(players.find(p => p.id === mvpId)?.name ?? '')} (${mvpCriteria === 'kd' ? 'K/D' : 'KILLS'})</div>`
+      ? `<div class="pvp-mvp-badge">★ ${t('gameOver.pvp.mvp')}: ${this.escapeHTML(players.find(p => p.id === mvpId)?.name ?? '')} (${mvpCriteria === 'kd' ? 'K/D' : t('gameOver.pvp.kills')})</div>`
       : '';
 
-    const btnLabel = isHost ? 'BACK TO LOBBY' : 'CONTINUE TO LOBBY';
+    const btnLabel = isHost ? t('gameOver.pvp.backToLobby') : t('gameOver.pvp.continueToLobby');
 
     return `
       <div class="content pvp-stats">
-        <h1 class="pvp-title">MATCH OVER</h1>
-        <div class="pvp-subtitle">PvP RESULTS</div>
+        <h1 class="pvp-title">${t('gameOver.pvp.matchOver')}</h1>
+        <div class="pvp-subtitle">${t('gameOver.pvp.pvpResults')}</div>
 
         <div class="pvp-stat-headers">
           <div></div>
-          <div>PLAYER</div>
-          <div>KILLS</div>
-          <div>DEATHS</div>
+          <div>${t('gameOver.pvp.player')}</div>
+          <div>${t('gameOver.pvp.kills')}</div>
+          <div>${t('gameOver.pvp.deaths')}</div>
           <div>K/D</div>
-          <div>DAMAGE</div>
+          <div>${t('gameOver.pvp.damage')}</div>
         </div>
 
         ${rowsHTML}
@@ -1207,17 +1207,17 @@ export class GameOverScreen {
         ${mvpBadgeHTML}
 
         <div class="pvp-bar-section">
-          <h3>KILLS</h3>
+          <h3>${t('gameOver.pvp.kills')}</h3>
           ${killBarsHTML}
         </div>
 
         <div class="pvp-bar-section" style="margin-top:10px">
-          <h3>DAMAGE DEALT</h3>
+          <h3>${t('gameOver.pvp.damageDealt')}</h3>
           ${damageBarsHTML}
         </div>
 
         <button class="pvp-continue-btn">${btnLabel}</button>
-        <div class="pvp-ready-hint">Press ENTER or click to continue</div>
+        <div class="pvp-ready-hint">${t('gameOver.pvp.readyHint')}</div>
       </div>
     `;
   }
@@ -1330,30 +1330,30 @@ export class GameOverScreen {
           <div class="pvp-bar-track">
             <div class="pvp-bar-fill" style="width:${pct}%;background:${colorCSS}"></div>
           </div>
-          <div class="pvp-bar-value">${total} kills</div>
+          <div class="pvp-bar-value">${t('gameOver.pvp.killsUnit', { count: total })}</div>
         </div>
       `;
     }).join('');
 
     const mvpBadgeHTML = mvpId
-      ? `<div class="pvp-mvp-badge">★ MVP: ${this.escapeHTML(sorted.find(p => p.id === mvpId)?.name ?? '')} (${mvpCriteria === 'kd' ? 'K/D' : 'KILLS'})</div>`
+      ? `<div class="pvp-mvp-badge">★ ${t('gameOver.pvp.mvp')}: ${this.escapeHTML(sorted.find(p => p.id === mvpId)?.name ?? '')} (${mvpCriteria === 'kd' ? 'K/D' : t('gameOver.pvp.kills')})</div>`
       : '';
 
-    const btnLabel = isHost ? 'BACK TO LOBBY' : 'CONTINUE TO LOBBY';
-    const weightsNote = 'Ranked by kills (primary) · points (tiebreaker)';
+    const btnLabel = isHost ? t('gameOver.pvp.backToLobby') : t('gameOver.pvp.continueToLobby');
+    const weightsNote = t('gameOver.pvp.rankedByKills');
 
     return `
       <div class="content pvpve-stats">
-        <h1 class="pvp-title">MATCH OVER</h1>
-        <div class="pvpve-subtitle">PvPvE RESULTS</div>
+        <h1 class="pvp-title">${t('gameOver.pvp.matchOver')}</h1>
+        <div class="pvpve-subtitle">${t('gameOver.pvp.pvpveResults')}</div>
 
         <div class="pvpve-stat-headers">
           <div></div>
-          <div>PLAYER</div>
-          <div>PVP</div>
-          <div>ENEMY</div>
+          <div>${t('gameOver.pvp.player')}</div>
+          <div>${t('gameOver.pvp.pvp')}</div>
+          <div>${t('gameOver.pvp.enemy')}</div>
           <div>K/D</div>
-          <div>POINTS</div>
+          <div>${t('gameOver.pvp.points')}</div>
         </div>
 
         ${rowsHTML}
@@ -1363,12 +1363,12 @@ export class GameOverScreen {
         ${mvpBadgeHTML}
 
         <div class="pvp-bar-section">
-          <h3>TOTAL KILLS</h3>
+          <h3>${t('gameOver.pvp.totalKills')}</h3>
           ${totalBarsHTML}
         </div>
 
         <button class="pvp-continue-btn">${btnLabel}</button>
-        <div class="pvp-ready-hint">Press ENTER or click to continue</div>
+        <div class="pvp-ready-hint">${t('gameOver.pvp.readyHint')}</div>
       </div>
     `;
   }

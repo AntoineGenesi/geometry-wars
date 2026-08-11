@@ -42,6 +42,10 @@ export const LAN_HOSTING_STATIC_BUILD_NOTICE =
 export const LAN_SCAN_STATIC_BUILD_NOTICE =
   'LAN scanning requires the GitHub/self-hosted version. Static web builds cannot discover local LAN servers.';
 
+function getLanModeName(mode: LanGameMode): string {
+  return t(`menu.lan.modes.${mode}`);
+}
+
 /**
  * Start menu UI for Geometry Wars.
  * Allows selecting game mode and surface type before starting.
@@ -241,7 +245,7 @@ export class StartMenu {
     const customMeshBtn = gridClass === 'lan-surface-grid' ? '' : `
       <button class="surface-btn custom-mesh-btn" data-grid-class="${gridClass}">
         <span class="icon">📁</span>
-        <span class="name">Load Custom</span>
+        <span class="name">${t('menu.buttons.loadCustom')}</span>
       </button>
     `;
 
@@ -275,7 +279,7 @@ export class StartMenu {
       <button class="lan-mode-btn${mode.type === this.lanSelectedGameMode ? ' selected' : ''}"
               data-lan-mode="${mode.type}">
         <span class="lan-mode-icon">${mode.icon}</span>
-        <span class="lan-mode-name">${mode.name}</span>
+        <span class="lan-mode-name">${getLanModeName(mode.type)}</span>
       </button>
     `).join('');
     return `<div class="lan-mode-grid">${buttons}</div>`;
@@ -395,10 +399,10 @@ export class StartMenu {
         </div>
 
         <div class="sub-panel lan-section hidden" id="lan-section">
-          <button class="lan-troubleshoot-btn" id="lan-troubleshoot-btn" title="LAN Troubleshooting">? Troubleshooting</button>
+          <button class="lan-troubleshoot-btn" id="lan-troubleshoot-btn" title="${t('menu.lan.troubleshooting')}">? ${t('menu.lan.troubleshooting')}</button>
           <div class="scrollable-content">
             <h3>${t('menu.headings.lanGame')}</h3>
-            <p class="lan-static-hosting-note">${LAN_HOSTING_STATIC_BUILD_NOTICE}</p>
+            <p class="lan-static-hosting-note">${t('menu.lan.staticHostingNotice')}</p>
             <div id="lan-host-panel">
               <button class="lan-btn lan-host" id="lan-host-btn">${t('menu.buttons.hostGame')}</button>
               <div id="lan-host-surface-pick" class="hidden">
@@ -406,10 +410,10 @@ export class StartMenu {
                 ${this.createSurfaceGridHTML('lan-surface-grid', this.lanSelectedSurface)}
                 <h3>${t('menu.headings.mapSize')}</h3>
                 ${this.createLanMapSizeSelectorHTML()}
-                <h3>GAME MODE</h3>
+                <h3>${t('menu.lan.gameMode')}</h3>
                 ${this.createLanGameModeSelectorHTML()}
                 <div class="lan-timeout-row">
-                  <label class="lan-timeout-label" for="lan-max-players-input">MAX PLAYERS</label>
+                  <label class="lan-timeout-label" for="lan-max-players-input">${t('menu.lan.maxPlayers')}</label>
                   <div class="lan-timeout-input-wrap">
                     <select id="lan-max-players-input" class="lan-select">
                       <option value="2">2</option>
@@ -424,7 +428,7 @@ export class StartMenu {
                       <option value="20">20</option>
                     </select>
                   </div>
-                  <span class="lan-timeout-hint">Host-configurable player cap (default 10)</span>
+                  <span class="lan-timeout-hint">${t('menu.lan.maxPlayersHint')}</span>
                 </div>
                 <div class="lan-timeout-row">
                   <label class="lan-timeout-label" for="lan-timeout-input">${t('menu.misc.idleShutdownDelay')}</label>
@@ -512,36 +516,35 @@ export class StartMenu {
         <!-- LAN Troubleshooting Modal -->
         <div class="lan-troubleshoot-modal-backdrop hidden" id="lan-troubleshoot-backdrop">
           <div class="lan-troubleshoot-modal" role="dialog" aria-modal="true" aria-labelledby="lan-troubleshoot-title">
-            <button class="lan-troubleshoot-close" id="lan-troubleshoot-close" aria-label="Close">&times;</button>
-            <h3 id="lan-troubleshoot-title">Windows LAN Troubleshooting</h3>
-            <p class="lan-troubleshoot-intro">If you can't connect to the host, try these steps:</p>
+            <button class="lan-troubleshoot-close" id="lan-troubleshoot-close" aria-label="${t('common.close')}">&times;</button>
+            <h3 id="lan-troubleshoot-title">${t('menu.lan.troubleshootingTitle')}</h3>
+            <p class="lan-troubleshoot-intro">${t('menu.lan.troubleshootingIntro')}</p>
             <ol class="lan-troubleshoot-steps">
               <li>
-                <strong>Open Command Prompt as Administrator</strong>
-                <span class="lan-troubleshoot-hint">Search "cmd" in Start Menu &rarr; right-click &rarr; "Run as administrator"</span>
+                <strong>${t('menu.lan.troubleshootingAdmin')}</strong>
+                <span class="lan-troubleshoot-hint">${t('menu.lan.troubleshootingAdminHint')}</span>
               </li>
               <li>
-                <strong>Run the following command:</strong>
+                <strong>${t('menu.lan.troubleshootingRunCommand')}</strong>
                 <code class="lan-troubleshoot-cmd">netsh winsock reset</code>
               </li>
               <li>
-                <strong>Restart your computer</strong>
+                <strong>${t('menu.lan.troubleshootingRestart')}</strong>
               </li>
               <li>
-                <strong>Try connecting again</strong>
+                <strong>${t('menu.lan.troubleshootingTryAgain')}</strong>
               </li>
             </ol>
             <div class="lan-troubleshoot-warning">
-              <strong>&#9888; Warning:</strong> <code>netsh winsock reset</code> resets your Windows network stack.
-              It can affect other network applications. Only run this if you are having connection issues.
+              <strong>&#9888; ${t('menu.lan.warningLabel')}</strong> ${t('menu.lan.troubleshootingWarning')}
             </div>
-            <p class="lan-troubleshoot-subhead">If that doesn't work:</p>
+            <p class="lan-troubleshoot-subhead">${t('menu.lan.troubleshootingIfNotWork')}</p>
             <ul class="lan-troubleshoot-extra">
-              <li>Check your firewall &mdash; allow Node.js through Windows Defender Firewall</li>
-              <li>Ensure both devices are on the <strong>same Wi-Fi network</strong></li>
-              <li>Ask the host for their local IP address (shown on the host screen)</li>
+              <li>${t('menu.lan.troubleshootingFirewall')}</li>
+              <li>${t('menu.lan.troubleshootingSameWifi')}</li>
+              <li>${t('menu.lan.troubleshootingAskHostIp')}</li>
             </ul>
-            <button class="lan-btn lan-troubleshoot-ok" id="lan-troubleshoot-ok">Got it</button>
+            <button class="lan-btn lan-troubleshoot-ok" id="lan-troubleshoot-ok">${t('common.ok')}</button>
           </div>
         </div>
 
@@ -549,7 +552,7 @@ export class StartMenu {
           <p>${t('menu.misc.controlsHint')}</p>
           <button class="weapon-info-btn" id="weapon-mastery-btn">${t('menu.buttons.weaponMastery')}</button>
           <button class="weapon-info-btn" id="weapon-info-btn">${t('menu.buttons.weaponDatabase')}</button>
-          <button class="weapon-info-btn" id="enemy-types-btn">ENEMY TYPES</button>
+          <button class="weapon-info-btn" id="enemy-types-btn">${t('menu.buttons.enemyTypes')}</button>
           <button class="weapon-info-btn" id="visual-styles-btn">${t('menu.buttons.visualStyles')}</button>
           <button class="weapon-info-btn" id="settings-btn">${t('common.settings')}</button>
           ${this.isDebugMode ? '<button class="weapon-info-btn debug-obj-btn" id="debug-obj-btn" style="border-color:#ff8800;color:#ff8800;">DEBUG: LOAD MODELS</button>' : ''}
@@ -2532,7 +2535,7 @@ export class StartMenu {
     lanStartHostBtn?.addEventListener('click', async () => {
       lanHostSurfacePick.classList.add('hidden');
       lanHostInfo.classList.remove('hidden');
-      lanHostStatus.textContent = 'Starting server...';
+      lanHostStatus.textContent = t('menu.misc.startingServer');
       lanHostUrl.textContent = '';
       lanQRContainer.innerHTML = '';
       lanEnterBtn.classList.add('hidden');
@@ -2557,7 +2560,7 @@ export class StartMenu {
             return baseUrl.replace('localhost', newIp);
           };
 
-          lanHostStatus.textContent = 'Server running!';
+          lanHostStatus.textContent = t('menu.lan.serverRunning');
           lanHostUrl.innerHTML = '';
 
           const makeCopyRow = (label: string, url: string) => {
@@ -2569,13 +2572,13 @@ export class StartMenu {
             `;
             const copyBtn = document.createElement('button');
             copyBtn.className = 'lan-copy-btn';
-            copyBtn.textContent = 'COPY';
+            copyBtn.textContent = t('menu.lan.copy');
             copyBtn.addEventListener('click', () => {
               navigator.clipboard.writeText(url).then(() => {
-                copyBtn.textContent = 'COPIED';
+                copyBtn.textContent = t('menu.lan.copied');
                 copyBtn.classList.add('copied');
                 setTimeout(() => {
-                  copyBtn.textContent = 'COPY';
+                  copyBtn.textContent = t('menu.lan.copy');
                   copyBtn.classList.remove('copied');
                 }, 1500);
               });
@@ -2606,8 +2609,8 @@ export class StartMenu {
             wsl2Note.className = 'lan-wsl2-note';
             const winIp = result.windowsAddresses?.[0] ?? '(unknown)';
             wsl2Note.innerHTML = `
-              <b>&#9888; WSL2 detected</b> — Use <b>LAN (Windows)</b> address from other devices.<br>
-              Requires port forwarding: run <code>Setup-WSL-LAN.bat</code> as Administrator.<br>
+              <b>&#9888; ${t('menu.lan.wsl2Detected')}</b> ${t('menu.lan.wsl2UseWindowsLan')}<br>
+              ${t('menu.lan.wsl2PortForwarding')}<br>
               <span class="lan-wsl2-cmd">netsh interface portproxy add v4tov4 listenport=3000 listenaddress=0.0.0.0 connectaddress=${result.addresses[0] ?? '?'} connectport=3000</span><br>
               <span class="lan-wsl2-cmd">netsh interface portproxy add v4tov4 listenport=2567 listenaddress=0.0.0.0 connectaddress=${result.addresses[0] ?? '?'} connectport=2567</span><br>
               <small>Then connect from laptop: <b>http://${winIp}:${vitePort}</b></small>
@@ -2676,7 +2679,7 @@ export class StartMenu {
       // CRITICAL: Reset ALL hosted state to prevent stale UI
       lanHostInfo.classList.add('hidden');
       lanHostSurfacePick.classList.add('hidden');
-      lanHostStatus.textContent = 'Starting server...';
+      lanHostStatus.textContent = t('menu.misc.startingServer');
       lanHostUrl.textContent = '';
       lanQRContainer.innerHTML = '';
       lanEnterBtn.classList.add('hidden');
@@ -2730,7 +2733,7 @@ export class StartMenu {
       if (hostedServerUrl) {
         this.lanClient.stopHost().catch(() => {});
         hostedServerUrl = '';
-        lanHostStatus.textContent = 'Starting server...';
+        lanHostStatus.textContent = t('menu.misc.startingServer');
         lanHostUrl.textContent = '';
         lanQRContainer.innerHTML = '';
       }
@@ -2977,14 +2980,14 @@ export class StartMenu {
     const refreshBtn = this.container.querySelector('#lan-refresh-btn') as HTMLButtonElement | null;
 
     if (refreshBtn) {
-      refreshBtn.textContent = 'SCANNING...';
+      refreshBtn.textContent = t('menu.lan.scanning');
       refreshBtn.disabled = true;
     }
 
     // Show scanning state only if list is empty
     const emptyEl = this.container.querySelector('#lan-lobby-empty') as HTMLElement | null;
     if (emptyEl && lobbyList.children.length <= 1) {
-      emptyEl.innerHTML = '<p class="lan-lobby-scanning">Scanning local network...</p>';
+      emptyEl.innerHTML = `<p class="lan-lobby-scanning">${t('menu.lan.scanningLocalNetwork')}</p>`;
       emptyEl.style.display = '';
     }
 
@@ -2994,13 +2997,13 @@ export class StartMenu {
     } catch {
       const empty = this.container.querySelector('#lan-lobby-empty') as HTMLElement | null;
       if (empty) {
-        empty.innerHTML = `<p>${LAN_SCAN_STATIC_BUILD_NOTICE}</p>`;
+        empty.innerHTML = `<p>${t('menu.lan.staticScanNotice')}</p>`;
         empty.style.display = '';
       }
     }
 
     if (refreshBtn) {
-      refreshBtn.textContent = 'REFRESH';
+      refreshBtn.textContent = t('menu.buttons.refresh');
       refreshBtn.disabled = false;
     }
 
@@ -3018,8 +3021,8 @@ export class StartMenu {
       empty.className = 'lan-lobby-empty';
       empty.id = 'lan-lobby-empty';
       empty.innerHTML = `
-        <p>No games found on LAN</p>
-        <p style="font-size: 11px; color: #445555;">Make sure a server is running and you are on the same network</p>
+        <p>${t('menu.lan.noGamesFound')}</p>
+        <p style="font-size: 11px; color: #445555;">${t('menu.lan.noGamesFoundHint')}</p>
       `;
       container.appendChild(empty);
       return;
@@ -3093,7 +3096,7 @@ export class StartMenu {
         <span class="lan-lobby-status ${statusClass}">${details.statusLabel}</span>
       </div>
       <div class="lan-lobby-qr-container"></div>
-      ${isSelf ? '<button class="lan-lobby-stop-btn">STOP</button>' : ''}
+      ${isSelf ? `<button class="lan-lobby-stop-btn">${t('menu.lan.stop')}</button>` : ''}
     `;
 
     // Generate QR code for this lobby entry

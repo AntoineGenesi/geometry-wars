@@ -179,7 +179,7 @@ import {
 } from './utils/StartupCache';
 import type { NetworkStartupConfig } from './network/NetworkClient';
 import { LANClient } from './network/LANClient';
-import { initI18n } from './i18n';
+import { initI18n, t } from './i18n';
 import { computeCameraRelativeAimAngle } from './utils/aimAngle';
 import { createGameMode, type IGameMode, type QuickGameModeType } from './core/modes';
 import { showGameLoading, hideGameLoading } from './ui/GameLoadingOverlay';
@@ -436,17 +436,17 @@ async function promptForNameIfNeeded(): Promise<string> {
     title.style.cssText =
       'color:#00ffff;font-size:20px;font-weight:bold;letter-spacing:4px;' +
       'text-align:center;text-shadow:0 0 10px #00ffff;margin-bottom:8px;';
-    title.textContent = 'ENTER YOUR NAME';
+    title.textContent = t('network.namePrompt.title');
 
     const hint = document.createElement('div');
     hint.style.cssText = 'color:#88aaaa;font-size:12px;text-align:center;margin-bottom:4px;';
-    hint.textContent = 'Choose a name to join the game';
+    hint.textContent = t('network.namePrompt.hint');
 
     const input = document.createElement('input');
     input.dataset.networkNameInput = 'true';
     input.type = 'text';
     input.maxLength = 20;
-    input.placeholder = 'Your name...';
+    input.placeholder = t('network.namePrompt.placeholder');
     input.autocomplete = 'off';
     input.style.cssText =
       'background:rgba(0,40,40,0.8);border:2px solid #006666;color:#00ffff;' +
@@ -464,7 +464,7 @@ async function promptForNameIfNeeded(): Promise<string> {
 
     const joinBtn = document.createElement('button');
     joinBtn.dataset.networkNameSubmit = 'true';
-    joinBtn.textContent = 'JOIN GAME';
+    joinBtn.textContent = t('network.namePrompt.joinGame');
     joinBtn.style.cssText =
       'background:linear-gradient(180deg,#00aa00,#006600);border:2px solid #00ff00;' +
       'color:#ffffff;padding:14px 40px;font:bold 16px monospace;cursor:pointer;' +
@@ -517,17 +517,17 @@ function showNameTakenOverlay(takenName: string): void {
   title.style.cssText =
     'color:#ff4444;font-size:20px;font-weight:bold;letter-spacing:4px;' +
     'text-align:center;text-shadow:0 0 10px #ff0000;margin-bottom:8px;';
-  title.textContent = 'NAME ALREADY IN USE';
+  title.textContent = t('network.nameTaken.title');
 
   const hint = document.createElement('div');
   hint.style.cssText = 'color:#ffaaaa;font-size:13px;text-align:center;margin-bottom:4px;';
-  hint.textContent = `"${takenName}" is already taken by a connected player. Choose a different name.`;
+  hint.textContent = t('network.nameTaken.hint', { name: takenName });
 
   const input = document.createElement('input');
   input.dataset.networkNameInput = 'true';
   input.type = 'text';
   input.maxLength = 20;
-  input.placeholder = 'Your name...';
+  input.placeholder = t('network.namePrompt.placeholder');
   input.autocomplete = 'off';
   input.style.cssText =
     'background:rgba(40,0,0,0.8);border:2px solid #660000;color:#ff8888;' +
@@ -545,7 +545,7 @@ function showNameTakenOverlay(takenName: string): void {
 
   const joinBtn = document.createElement('button');
   joinBtn.dataset.networkNameSubmit = 'true';
-  joinBtn.textContent = 'JOIN GAME';
+  joinBtn.textContent = t('network.namePrompt.joinGame');
   joinBtn.style.cssText =
     'background:linear-gradient(180deg,#00aa00,#006600);border:2px solid #00ff00;' +
     'color:#ffffff;padding:14px 40px;font:bold 16px monospace;cursor:pointer;' +
@@ -2046,7 +2046,7 @@ async function main() {
 
   // Add text label
   const statusText = document.createElement('div');
-  statusText.textContent = 'Connecting to the server';
+  statusText.textContent = t('network.connection.connectingToServer');
   spinnerEl.appendChild(statusText);
 
   // Add spinner animation
@@ -2676,7 +2676,7 @@ async function main() {
 
   const settingsBtn = document.createElement('button');
   settingsBtn.id = 'lobby-settings-btn';
-  settingsBtn.textContent = '⚙ GAME SETTINGS';
+  settingsBtn.textContent = `⚙ ${t('network.lobby.gameSettings')}`;
   settingsBtn.style.cssText =
     'margin-top:14px;padding:8px 20px;font:bold 12px monospace;cursor:pointer;' +
     'border:2px solid #0066cc;background:#001830;color:#44aaff;letter-spacing:2px;' +
@@ -2712,39 +2712,39 @@ async function main() {
     'background:rgba(0,8,24,0.88);border:1px solid rgba(0,102,204,0.4);' +
     'color:#44aaff;font:11px monospace;letter-spacing:1px;padding:10px 18px;' +
     'border-radius:4px;z-index:90;display:none;text-align:center;max-width:360px;';
-  nonHostSettingsEl.innerHTML = '<span style="color:#0ff;font-weight:bold;letter-spacing:2px">HOST SETTINGS</span><br>' +
-    '<span id="lobby-settings-summary" style="color:#88ccee">Loading...</span>';
+  nonHostSettingsEl.innerHTML = `<span style="color:#0ff;font-weight:bold;letter-spacing:2px">${t('network.lobby.hostSettings')}</span><br>` +
+    `<span id="lobby-settings-summary" style="color:#88ccee">${t('common.loading')}</span>`;
   document.body.appendChild(nonHostSettingsEl);
 
   function formatSettingsSummary(s: GameSettings): string {
     const parts: string[] = [
-      `Mode: ${s.mode.toUpperCase()}`,
-      `Surface: ${s.surface.replace(/-/g, ' ').toUpperCase()}`,
-      `Lives: ${s.infiniteLives ? '∞' : s.lives}`,
-      `Difficulty: ${s.difficultyMultiplier.toFixed(1)}x`,
-      `Max Players: ${s.maxPlayers ?? 10}`,
+      `${t('gameSettingsPanel.labels.mode')}: ${s.mode.toUpperCase()}`,
+      `${t('gameSettingsPanel.labels.surface')}: ${s.surface.replace(/-/g, ' ').toUpperCase()}`,
+      `${t('gameSettingsPanel.labels.lives')}: ${s.infiniteLives ? '∞' : s.lives}`,
+      `${t('gameSettingsPanel.labels.difficulty')}: ${s.difficultyMultiplier.toFixed(1)}x`,
+      `${t('gameSettingsPanel.labels.maxPlayers')}: ${s.maxPlayers ?? 10}`,
     ];
-    if (s.pvpEnabled) parts.push('PvP: ON');
-    if (s.timeLimit > 0) parts.push(`Time: ${Math.round(s.timeLimit / 60)}min`);
+    if (s.pvpEnabled) parts.push(`PvP: ${t('gameSettingsPanel.values.on')}`);
+    if (s.timeLimit > 0) parts.push(`${t('gameSettingsPanel.labels.timeLimit')}: ${Math.round(s.timeLimit / 60)}${t('gameSettingsPanel.units.min')}`);
     return parts.join(' · ');
   }
 
   // Start button
   const startBtn = document.createElement('button');
-  startBtn.textContent = 'START GAME';
+  startBtn.textContent = t('network.lobby.startGame');
   startBtn.style.cssText =
     'position:fixed;bottom:80px;left:50%;transform:translateX(-50%);' +
     'padding:20px 40px;font:bold 24px monospace;background:#0a0;color:#fff;' +
     'border:2px solid #0f0;cursor:pointer;z-index:100;display:none;';
   startBtn.onclick = () => {
     if (!network.isConnected()) {
-      updateStatusText('Not connected to server!');
+      updateStatusText(t('network.connection.notConnected'));
       statusEl.style.color = '#f44';
       return;
     }
     if (!isHost) {
       // Should not happen (button is hidden for non-hosts) but guard just in case.
-      updateStatusText('Only the host can start the game.');
+      updateStatusText(t('network.lobby.onlyHostCanStart'));
       return;
     }
     // Build choice string: surface:mode:size:lives
@@ -2777,13 +2777,13 @@ async function main() {
     }
     startBtn.style.display = 'none';
     modeSelectorDiv.style.display = 'none';
-    updateStatusText('Starting...');
+    updateStatusText(t('network.connection.starting'));
   };
   document.body.appendChild(startBtn);
 
   // Back to menu button
   const backBtn = document.createElement('button');
-  backBtn.textContent = 'BACK TO MENU';
+  backBtn.textContent = t('network.lobby.backToMenu');
   backBtn.style.cssText =
     'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);' +
     'padding:15px 30px;font:bold 18px monospace;background:#a00;color:#fff;' +
@@ -2795,7 +2795,7 @@ async function main() {
 
   // Stop Server button (visible to host, top-right corner)
   const stopServerBtn = document.createElement('button');
-  stopServerBtn.textContent = 'STOP SERVER';
+  stopServerBtn.textContent = t('network.lobby.stopServer');
   stopServerBtn.style.cssText =
     'position:fixed;top:50px;right:10px;' +
     'padding:8px 16px;font:bold 12px monospace;background:#800;color:#fff;' +
@@ -3145,7 +3145,7 @@ async function main() {
   connectionLostTitle.style.cssText =
     'color:#ff4444;font-size:48px;font-weight:bold;' +
     'text-shadow:0 0 20px #ff2222;margin-bottom:16px;letter-spacing:4px;';
-  connectionLostTitle.textContent = 'CONNECTION LOST';
+  connectionLostTitle.textContent = t('network.connectionLost.title');
   connectionLostOverlay.appendChild(connectionLostTitle);
 
   const connectionLostReason = document.createElement('div');
@@ -3156,11 +3156,11 @@ async function main() {
   const connectionLostHint = document.createElement('div');
   connectionLostHint.style.cssText =
     'color:#888888;font-size:14px;margin-bottom:24px;letter-spacing:2px;';
-  connectionLostHint.textContent = 'Press ESC or click below to return to main menu';
+  connectionLostHint.textContent = t('network.connectionLost.hint');
   connectionLostOverlay.appendChild(connectionLostHint);
 
   const connectionLostBackBtn = document.createElement('button');
-  connectionLostBackBtn.textContent = '◀  RETURN TO MAIN MENU';
+  connectionLostBackBtn.textContent = `◀  ${t('network.connectionLost.returnToMainMenu')}`;
   connectionLostBackBtn.style.cssText =
     'padding:16px 48px;font:bold 20px monospace;' +
     'background:#220000;color:#fff;border:2px solid #cc4444;cursor:pointer;' +
@@ -3210,7 +3210,7 @@ async function main() {
     'color:rgba(255,80,80,0.9);font-size:22px;font-weight:bold;' +
     'letter-spacing:3px;text-shadow:0 0 12px #ff0000;' +
     'background:rgba(0,0,0,0.55);padding:10px 28px;border:1px solid rgba(255,80,80,0.4);';
-  deadOverlayText.textContent = 'YOU DIED — SPECTATING';
+  deadOverlayText.textContent = t('network.death.spectating');
   deadOverlay.appendChild(deadOverlayText);
   document.body.appendChild(deadOverlay);
 
@@ -3230,7 +3230,7 @@ async function main() {
   deathCountdownLabel.style.cssText =
     'font-size:18px;color:rgba(255,80,80,0.8);letter-spacing:4px;' +
     'text-shadow:0 0 10px #ff0000;';
-  deathCountdownLabel.textContent = 'RESPAWNING';
+  deathCountdownLabel.textContent = t('network.death.respawning');
   deathCountdownEl.appendChild(deathCountdownNumber);
   deathCountdownEl.appendChild(deathCountdownLabel);
   document.body.appendChild(deathCountdownEl);
@@ -3284,7 +3284,7 @@ async function main() {
     'backdrop-filter:blur(4px);font-family:monospace;';
 
   const localMenuTitle = document.createElement('div');
-  localMenuTitle.textContent = 'MENU';
+  localMenuTitle.textContent = t('network.localMenu.title');
   localMenuTitle.style.cssText =
     'color:#ffff00;font-size:64px;font-weight:bold;' +
     'text-shadow:0 0 20px #ffff00,0 0 40px #ffaa00;' +
@@ -3292,7 +3292,7 @@ async function main() {
   localMenuEl.appendChild(localMenuTitle);
 
   const localMenuWarning = document.createElement('div');
-  localMenuWarning.textContent = '⚠  Game continues — only the host can pause the server';
+  localMenuWarning.textContent = `⚠  ${t('network.localMenu.hostPauseWarning')}`;
   localMenuWarning.style.cssText =
     'color:#ff8800;font-size:14px;margin-bottom:36px;letter-spacing:1px;';
   localMenuEl.appendChild(localMenuWarning);

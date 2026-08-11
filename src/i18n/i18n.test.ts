@@ -6,6 +6,12 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import en from './locales/en.json';
+import es from './locales/es.json';
+import fr from './locales/fr.json';
+import de from './locales/de.json';
+import ru from './locales/ru.json';
+import ar from './locales/ar.json';
 
 // ---------------------------------------------------------------------------
 // Minimal localStorage mock
@@ -51,6 +57,24 @@ vi.mock('i18next-browser-languagedetector', () => ({
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
+
+type LocaleValue = string | number | boolean | null | LocaleObject | LocaleValue[];
+interface LocaleObject {
+  [key: string]: LocaleValue;
+}
+
+function flattenLocaleKeys(value: LocaleObject, prefix = ''): string[] {
+  const keys: string[] = [];
+  for (const [key, child] of Object.entries(value)) {
+    const nextKey = prefix ? `${prefix}.${key}` : key;
+    if (child && typeof child === 'object' && !Array.isArray(child)) {
+      keys.push(...flattenLocaleKeys(child as LocaleObject, nextKey));
+    } else {
+      keys.push(nextKey);
+    }
+  }
+  return keys.sort();
+}
 
 describe('i18n module', () => {
   beforeEach(async () => {
@@ -150,5 +174,22 @@ describe('i18n module', () => {
     await initI18n();
 
     expect(getCurrentLanguage()).toMatch(/^fr/);
+  });
+});
+
+describe('locale key parity', () => {
+  const locales: Record<string, LocaleObject> = { en, es, fr, de, ru, ar };
+  const englishKeys = flattenLocaleKeys(en);
+
+  it.each(Object.entries(locales))('%s has the same keys as en', (localeName, locale) => {
+    const localeKeys = flattenLocaleKeys(locale);
+    const missing = englishKeys.filter((key) => !localeKeys.includes(key));
+    const extra = localeKeys.filter((key) => !englishKeys.includes(key));
+
+    expect({ localeName, missing, extra }).toEqual({
+      localeName,
+      missing: [],
+      extra: [],
+    });
   });
 });

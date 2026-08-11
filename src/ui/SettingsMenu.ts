@@ -1233,15 +1233,15 @@ export class SettingsMenu {
     // Privacy notice when renderer is masked
     const privacyNote = isRendererMasked
       ? `<div style="color:#886644;font-size:11px;margin-top:4px;line-height:1.4;">
-           Chrome restricts GPU hardware details for privacy.
-           ${r?.webgpuAdapter ? 'WebGPU adapter info shown above provides hardware details.' : 'Enable WebGPU flags for better hardware detection.'}
+           ${t('settings.gpu.privacyRestricted')}
+           ${r?.webgpuAdapter ? t('settings.gpu.privacyAdapterShown') : t('settings.gpu.privacyEnableWebgpu')}
          </div>`
       : '';
 
     return `
       <div class="section-heading">${t('settings.gpu.renderer')}</div>
       <div class="info-row">
-        <span class="info-label">Requested Renderer</span>
+        <span class="info-label">${t('settings.gpu.requestedRenderer')}</span>
         <span id="requested-renderer-value" class="info-value ${rendererDisplay.requestedRendererClass}" data-renderer-requested="${rendererDisplay.requestedRendererValue}">${rendererDisplay.requestedRendererLabel}</span>
       </div>
       <div class="info-row">
@@ -1249,7 +1249,7 @@ export class SettingsMenu {
         <span id="active-renderer-value" class="info-value ${rendererDisplay.actualRendererClass}" data-renderer-actual="${this.rendererBackend}" data-renderer-is-webgpu="${String(this.rendererIsWebGPU)}">${rendererDisplay.actualRendererLabel}</span>
       </div>
       <div class="info-row">
-        <span class="info-label">WebGPU Status</span>
+        <span class="info-label">${t('settings.gpu.webgpuStatus')}</span>
         <span id="webgpu-status-value" class="info-value ${rendererDisplay.webgpuStatusClass}" data-webgpu-status="${rendererDisplay.webgpuStatus}">${rendererDisplay.webgpuStatusLabel}</span>
       </div>
       ${webgpuToggleSection}
@@ -1304,8 +1304,7 @@ export class SettingsMenu {
           ${t('settings.gpu.runFullBenchmark')}
         </button>
         <div style="color:#668888;font-size:11px;margin-top:8px;line-height:1.4;">
-          Tests real gameplay performance with moving enemies, bullets, and collisions.
-          Creates a full game session and measures FPS across increasing entity counts.
+          ${t('settings.gpu.fullBenchmarkHint')}
         </div>
       </div>
     `;
@@ -1327,7 +1326,7 @@ export class SettingsMenu {
       const isActive = i === activeIdx;
       return `<div class="style-item${isActive ? ' style-item-active' : ''}" data-style-index="${i}">
         <span class="style-item-name">${this.escapeHtml(p.name)}</span>
-        <span class="style-item-badge">${isActive ? 'ACTIVE' : ''}</span>
+        <span class="style-item-badge">${isActive ? t('settings.graphics.active') : ''}</span>
       </div>`;
     }).join('');
 
@@ -1367,53 +1366,53 @@ export class SettingsMenu {
         <div class="toggle ${g.trailEffects ? 'on' : ''}" id="toggle-trails" data-setting="trailEffects"></div>
       </div>
       <div class="setting-row">
-        <span class="setting-label">Opaque Surfaces</span>
+        <span class="setting-label">${t('settings.graphics.opaqueSurfaces')}</span>
         <div class="toggle ${g.surfaceOpaque ? 'on' : ''}" id="toggle-surface-opaque" data-setting="surfaceOpaque"></div>
       </div>
 
-      <div class="section-heading">Grid Lines</div>
+      <div class="section-heading">${t('settings.graphics.gridLines')}</div>
       <div class="setting-row">
-        <span class="setting-label">Brightness</span>
+        <span class="setting-label">${t('settings.graphics.brightness')}</span>
         <input type="range" id="grid-brightness" min="0" max="1" step="0.05" value="${loadGridBrightness(isMobile())}" />
         <span class="setting-value" id="grid-brightness-val">${(loadGridBrightness(isMobile()) * 100).toFixed(0)}%</span>
       </div>
       <div class="setting-hint">
-        <small>0% = invisible, 100% = maximum.</small>
+        <small>${t('settings.graphics.gridBrightnessHint')}</small>
       </div>
       <div class="setting-row">
-        <span class="setting-label">Density</span>
+        <span class="setting-label">${t('settings.graphics.density')}</span>
         <div>
           ${(['low', 'medium', 'high'] as GridDensityPreset[]).map(p =>
-            `<button class="inline-preset-btn${loadGridDensity() === p ? ' active' : ''}" data-grid-density="${p}">${p.charAt(0).toUpperCase() + p.slice(1)}</button>`
+            `<button class="inline-preset-btn${loadGridDensity() === p ? ' active' : ''}" data-grid-density="${p}">${t('settings.graphics.gridDensity.' + p)}</button>`
           ).join('')}
         </div>
       </div>
       <div class="setting-hint">
-        <small>Grid line count applies on the next map load.</small>
+        <small>${t('settings.graphics.gridDensityHint')}</small>
       </div>
 
-      <div class="section-heading">Surface Appearance</div>
+      <div class="section-heading">${t('settings.graphics.surfaceAppearance')}</div>
       <div class="setting-row">
-        <span class="setting-label">Opacity</span>
+        <span class="setting-label">${t('settings.graphics.opacity')}</span>
         <input type="range" id="surface-opacity" min="0" max="1" step="0.05" value="${g.surfaceOpacity}" />
         <span class="setting-value" id="surface-opacity-val">${(g.surfaceOpacity * 100).toFixed(0)}%</span>
       </div>
       <div class="setting-hint">
-        <small>Quick: </small>
+        <small>${t('settings.graphics.quick')}: </small>
         ${SURFACE_OPACITY_PRESETS.map(p =>
-          `<button class="inline-preset-btn${g.surfaceOpacity === p.value ? ' active' : ''}" data-surface-opacity="${p.value}">${p.label}</button>`
+          `<button class="inline-preset-btn${g.surfaceOpacity === p.value ? ' active' : ''}" data-surface-opacity="${p.value}">${t('settings.graphics.opacityPresets.' + p.label.replace(/ /g, ''))}</button>`
         ).join('')}
       </div>
       <div class="setting-row">
-        <span class="setting-label">Color</span>
+        <span class="setting-label">${t('settings.graphics.color')}</span>
         <div class="surface-color-swatches">
           ${SURFACE_COLOR_PRESETS.map(p =>
-            `<button class="color-swatch${g.surfaceColor === p.value ? ' active' : ''}" data-surface-color="${p.value}" title="${p.label}" style="background:#${p.value.toString(16).padStart(6,'0')}"></button>`
+            `<button class="color-swatch${g.surfaceColor === p.value ? ' active' : ''}" data-surface-color="${p.value}" title="${t('settings.graphics.colorPresets.' + p.label.replace(/[ ()]/g, ''))}" style="background:#${p.value.toString(16).padStart(6,'0')}"></button>`
           ).join('')}
         </div>
       </div>
       <div class="setting-hint">
-        <small>Color applies immediately. Light colors reflect enemy/bullet glow best.</small>
+        <small>${t('settings.graphics.colorHint')}</small>
       </div>
 
       <div class="section-heading">${t('settings.graphics.limits')}</div>
@@ -1519,25 +1518,25 @@ export class SettingsMenu {
         ${t('settings.gameplay.ddaHint')}
       </div>
 
-      <div class="section-heading">HUD Visibility</div>
+      <div class="section-heading">${t('settings.gameplay.hudVisibility')}</div>
       <div class="setting-row">
-        <span class="setting-label">Minimap</span>
+        <span class="setting-label">${t('settings.gameplay.minimap')}</span>
         <div class="toggle ${h.minimap ? 'on' : ''}" id="toggle-hud-minimap" data-setting="hudMinimap"></div>
       </div>
       <div class="setting-row">
-        <span class="setting-label">Per-Type Kill Streaks</span>
+        <span class="setting-label">${t('settings.gameplay.perTypeKillStreaks')}</span>
         <div class="toggle ${h.killLog ? 'on' : ''}" id="toggle-hud-kill-log" data-setting="hudKillLog"></div>
       </div>
       <div class="setting-row">
-        <span class="setting-label">Total Kills</span>
+        <span class="setting-label">${t('settings.gameplay.totalKills')}</span>
         <div class="toggle ${h.totalKillCounter ? 'on' : ''}" id="toggle-hud-total-kills" data-setting="hudTotalKills"></div>
       </div>
       <div class="setting-row">
-        <span class="setting-label">Enemy Streak Announcements</span>
+        <span class="setting-label">${t('settings.gameplay.enemyStreakAnnouncements')}</span>
         <div class="toggle ${h.enemyStreakAnnouncements ? 'on' : ''}" id="toggle-hud-enemy-streaks" data-setting="hudEnemyStreaks"></div>
       </div>
       <div style="color:#668888;font-size:12px;margin-top:4px;line-height:1.5;">
-        These settings hide or show live HUD overlays in single-player and LAN where the widget exists. Mobile still keeps its existing uncluttered defaults.
+        ${t('settings.gameplay.hudVisibilityHint')}
       </div>
     `;
   }

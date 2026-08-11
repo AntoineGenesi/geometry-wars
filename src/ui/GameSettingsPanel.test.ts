@@ -336,6 +336,7 @@ describe('GameSettingsPanel', () => {
 
     it('onChange fires after reset with default settings', () => {
       const spy = vi.fn();
+      panel.destroy();
       const p = new GameSettingsPanel({
         document: mockDoc as unknown as PanelDocument,
         onChange: spy,

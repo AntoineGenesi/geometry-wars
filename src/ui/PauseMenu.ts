@@ -182,11 +182,11 @@ export class PauseMenu {
             </button>
             <button class="pause-btn enemy-types-btn" data-action="enemy-types">
               <span class="btn-icon">?</span>
-              <span>ENEMY TYPES</span>
+              <span>${t('pauseMenu.enemyTypes')}</span>
             </button>
             <button class="pause-btn mastery-btn" data-action="mastery">
               <span class="btn-icon">⭐</span>
-              <span>WEAPON MASTERY</span>
+              <span>${t('pauseMenu.weaponMastery')}</span>
             </button>
             <button class="pause-btn settings-btn" data-action="settings">
               <span class="btn-icon">⚙</span>
@@ -222,14 +222,14 @@ export class PauseMenu {
             </button>
             <button class="pause-btn server-settings-btn hidden" data-action="server-settings">
               <span class="btn-icon">&#x2699;</span>
-              <span>SERVER SETTINGS</span>
+              <span>${t('pauseMenu.serverSettings')}</span>
             </button>
           </div>
 
           <div class="pause-stats-container">
             <label class="allow-pause-toggle hidden">
               <input type="checkbox" class="allow-pause-checkbox" />
-              <span>Allow all players to pause</span>
+              <span>${t('pauseMenu.allowAllPlayersPause')}</span>
             </label>
             <div class="pause-qr-section hidden">
               <div class="stats-section-title">${t('pauseMenu.stats.joinThisGame')}</div>
@@ -237,7 +237,7 @@ export class PauseMenu {
             </div>
             <div class="pause-stats-panel">
               <div class="stats-lives-section hidden">
-                <div class="stats-section-title">LIVES</div>
+                <div class="stats-section-title">${t('pauseMenu.stats.lives')}</div>
                 <div class="stats-lives-display"></div>
               </div>
             <div class="stats-level-section hidden">
@@ -257,11 +257,11 @@ export class PauseMenu {
               <div class="stats-weapon-info"></div>
             </div>
             <div class="stats-multiplayer-mode-section" style="display:none">
-              <div class="stats-section-title">MULTIPLAYER</div>
+              <div class="stats-section-title">${t('pauseMenu.stats.multiplayer')}</div>
               <div class="stats-multiplayer-mode-name"></div>
             </div>
             <div class="stats-mode-section" style="display:none">
-              <div class="stats-section-title">GAME MODE</div>
+              <div class="stats-section-title">${t('pauseMenu.stats.gameMode')}</div>
               <div class="stats-mode-name"></div>
             </div>
             <div class="stats-score-section">
@@ -282,9 +282,9 @@ export class PauseMenu {
               <div class="stats-perf-content"></div>
             </div>
             <div class="stats-game-settings-section hidden">
-              <div class="stats-section-title">GAME SETTINGS</div>
+              <div class="stats-section-title">${t('pauseMenu.stats.gameSettings')}</div>
               <div class="stats-game-settings-content"></div>
-              <div class="stats-pending-settings hidden" style="color:#ffaa44;margin-top:4px;font-size:10px;">⚡ New settings apply next wave</div>
+              <div class="stats-pending-settings hidden" style="color:#ffaa44;margin-top:4px;font-size:10px;">⚡ ${t('pauseMenu.stats.pendingSettings')}</div>
             </div>
             </div>
           </div>
@@ -1286,7 +1286,7 @@ export class PauseMenu {
       const btn = this.container.querySelector('.server-settings-btn');
       const textSpan = btn?.querySelector('span:last-child');
       if (textSpan) {
-        textSpan.textContent = hasPending ? '⚡ SERVER SETTINGS' : 'SERVER SETTINGS';
+        textSpan.textContent = hasPending ? `⚡ ${t('pauseMenu.serverSettings')}` : t('pauseMenu.serverSettings');
       }
     }
     const section = this.container.querySelector('.stats-game-settings-section');
@@ -1300,21 +1300,21 @@ export class PauseMenu {
     const content = section.querySelector('.stats-game-settings-content');
     if (content) {
       const lines: string[] = [
-        `Mode: <b>${settings.mode.toUpperCase()}</b>`,
-        `Lives: <b>${settings.infiniteLives ? '∞' : settings.lives}</b>`,
-        `Difficulty: <b>${settings.difficultyMultiplier.toFixed(1)}x</b>`,
-        `Spawn Rate: <b>${settings.enemySpawnRateMultiplier.toFixed(1)}x</b>`,
-        `Enemy Cap: <b>${settings.enemyCountCap}</b>`,
+        `${t('gameSettingsPanel.labels.mode')}: <b>${settings.mode.toUpperCase()}</b>`,
+        `${t('gameSettingsPanel.labels.lives')}: <b>${settings.infiniteLives ? '∞' : settings.lives}</b>`,
+        `${t('gameSettingsPanel.labels.difficulty')}: <b>${settings.difficultyMultiplier.toFixed(1)}x</b>`,
+        `${t('gameSettingsPanel.labels.spawnRate')}: <b>${settings.enemySpawnRateMultiplier.toFixed(1)}x</b>`,
+        `${t('gameSettingsPanel.labels.enemyCountCap')}: <b>${settings.enemyCountCap}</b>`,
       ];
       if (settings.pvpEnabled) {
-        lines.push(`PvP: <b>ON</b>  (${settings.pvpWinCondition})`);
-        if (settings.friendlyFire) lines.push(`Friendly Fire: <b>ON</b>`);
+        lines.push(`PvP: <b>${t('gameSettingsPanel.values.on')}</b>  (${settings.pvpWinCondition})`);
+        if (settings.friendlyFire) lines.push(`${t('gameSettingsPanel.labels.friendlyFire')}: <b>${t('gameSettingsPanel.values.on')}</b>`);
       }
       if (settings.startingWeapon !== 'standard') {
-        lines.push(`Starting Weapon: <b>${settings.startingWeapon.replace(/_/g, ' ')}</b>`);
+        lines.push(`${t('gameSettingsPanel.labels.startingWeapon')}: <b>${settings.startingWeapon.replace(/_/g, ' ')}</b>`);
       }
       if (settings.timeLimit > 0) {
-        lines.push(`Time Limit: <b>${Math.round(settings.timeLimit / 60)}min</b>`);
+        lines.push(`${t('gameSettingsPanel.labels.timeLimit')}: <b>${Math.round(settings.timeLimit / 60)} ${t('gameSettingsPanel.units.min')}</b>`);
       }
       content.innerHTML = lines.join('<br>');
     }
@@ -1486,7 +1486,7 @@ export class PauseMenu {
 
     // BACK button
     const backBtn = document.createElement('button');
-    backBtn.textContent = '◀ BACK';
+    backBtn.textContent = `◀ ${t('pauseMenu.settingsActions.back')}`;
     backBtn.style.cssText = `${btnBase};background:rgba(40,40,80,0.5);border:1px solid rgba(120,120,200,0.4);color:#aaaacc;`;
     backBtn.addEventListener('mouseover', () => { backBtn.style.background = 'rgba(60,60,120,0.7)'; });
     backBtn.addEventListener('mouseout', () => { backBtn.style.background = 'rgba(40,40,80,0.5)'; });
@@ -1494,9 +1494,9 @@ export class PauseMenu {
 
     // APPLY NEXT ROUND button
     const applyBtn = document.createElement('button');
-    applyBtn.textContent = '✓ APPLY NEXT ROUND';
+    applyBtn.textContent = `✓ ${t('pauseMenu.settingsActions.applyNextRound')}`;
     applyBtn.style.cssText = `${btnBase};background:rgba(0,80,0,0.4);border:1px solid rgba(0,200,0,0.5);color:#00ff88;`;
-    applyBtn.title = 'Settings will take effect at the start of the next wave';
+    applyBtn.title = t('pauseMenu.settingsActions.applyNextRoundTitle');
     applyBtn.addEventListener('mouseover', () => { applyBtn.style.background = 'rgba(0,120,0,0.5)'; });
     applyBtn.addEventListener('mouseout', () => { applyBtn.style.background = 'rgba(0,80,0,0.4)'; });
     applyBtn.addEventListener('click', () => {
@@ -1508,9 +1508,9 @@ export class PauseMenu {
 
     // RESTART ROUND button
     const restartBtn = document.createElement('button');
-    restartBtn.textContent = '⟳ RESTART ROUND';
+    restartBtn.textContent = `⟳ ${t('pauseMenu.settingsActions.restartRound')}`;
     restartBtn.style.cssText = `${btnBase};background:rgba(100,0,0,0.4);border:1px solid rgba(255,80,0,0.5);color:#ff8844;`;
-    restartBtn.title = 'Restart round immediately — all players see a 5s countdown';
+    restartBtn.title = t('pauseMenu.settingsActions.restartRoundTitle');
     restartBtn.addEventListener('mouseover', () => { restartBtn.style.background = 'rgba(140,0,0,0.5)'; });
     restartBtn.addEventListener('mouseout', () => { restartBtn.style.background = 'rgba(100,0,0,0.4)'; });
     restartBtn.addEventListener('click', () => {
@@ -1552,7 +1552,7 @@ export class PauseMenu {
       try {
         const pathname = new URL(url).pathname;
         if (/^\/\d{5}$/.test(pathname)) {
-          label = `Join Code: ${pathname.slice(1)}`;
+          label = t('pauseMenu.joinCode', { code: pathname.slice(1) });
         }
       } catch { /* keep label as url */ }
       const display = createQRCodeDisplay(url, label, 160);
@@ -1600,7 +1600,7 @@ export class PauseMenu {
 
     section.classList.remove('hidden');
     if (livesInfo.infinite) {
-      displayEl.innerHTML = '<span style="color:#0ff;font-size:18px;text-shadow:0 0 8px #0ff;">\u2665 \u221e INFINITE</span>';
+      displayEl.innerHTML = `<span style="color:#0ff;font-size:18px;text-shadow:0 0 8px #0ff;">\u2665 \u221e ${t('pauseMenu.stats.infinite')}</span>`;
     } else {
       const hearts = livesInfo.count <= 5
         ? '\u2665'.repeat(Math.max(0, livesInfo.count))

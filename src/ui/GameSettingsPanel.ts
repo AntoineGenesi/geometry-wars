@@ -16,6 +16,12 @@ import {
   DEFAULT_GAME_SETTINGS, VALID_MODES, VALID_SURFACES,
   VALID_STARTING_WEAPONS, PVP_MODES,
 } from '../../server/shared/GameSettings';
+import { t } from '../i18n';
+
+function tr(key: string, fallback: string, opts?: object): string {
+  const value = t(key, opts);
+  return !value || value === key ? fallback : value;
+}
 
 // ---------------------------------------------------------------------------
 // Pure helper functions (exported for unit testing)
@@ -28,47 +34,47 @@ export function isPvpActive(settings: GameSettings): boolean {
 
 /** Human-readable label for the lives slider value. */
 export function getLivesLabel(lives: number): string {
-  if (lives === 1) return `1 (Hardcore)`;
-  if (lives <= 2) return `${lives} (Hard)`;
-  if (lives <= 3) return `${lives} (Normal)`;
-  if (lives <= 5) return `${lives} (Easy)`;
-  return `${lives} (Casual)`;
+  if (lives === 1) return `1 (${tr('gameSettingsPanel.difficulties.hardcore', 'Hardcore')})`;
+  if (lives <= 2) return `${lives} (${tr('gameSettingsPanel.difficulties.hard', 'Hard')})`;
+  if (lives <= 3) return `${lives} (${tr('gameSettingsPanel.difficulties.normal', 'Normal')})`;
+  if (lives <= 5) return `${lives} (${tr('gameSettingsPanel.difficulties.easy', 'Easy')})`;
+  return `${lives} (${tr('gameSettingsPanel.difficulties.casual', 'Casual')})`;
 }
 
 /** Human-readable label for the difficulty multiplier slider. */
 export function getDifficultyLabel(multiplier: number): string {
   const x = multiplier.toFixed(2);
-  if (multiplier <= 0.6) return `${x}x (Easy)`;
-  if (multiplier <= 0.9) return `${x}x (Medium)`;
-  if (multiplier <= 1.1) return `${x}x (Normal)`;
-  if (multiplier <= 1.5) return `${x}x (Hard)`;
-  return `${x}x (Insane)`;
+  if (multiplier <= 0.6) return `${x}x (${tr('gameSettingsPanel.difficulties.easy', 'Easy')})`;
+  if (multiplier <= 0.9) return `${x}x (${tr('gameSettingsPanel.difficulties.medium', 'Medium')})`;
+  if (multiplier <= 1.1) return `${x}x (${tr('gameSettingsPanel.difficulties.normal', 'Normal')})`;
+  if (multiplier <= 1.5) return `${x}x (${tr('gameSettingsPanel.difficulties.hard', 'Hard')})`;
+  return `${x}x (${tr('gameSettingsPanel.difficulties.insane', 'Insane')})`;
 }
 
 /** Human-readable label for the spawn rate multiplier slider. */
 export function getSpawnRateLabel(multiplier: number): string {
   const x = multiplier.toFixed(2);
-  if (multiplier <= 0.4) return `${x}x (Very Slow)`;
-  if (multiplier <= 0.7) return `${x}x (Slow)`;
-  if (multiplier <= 1.1) return `${x}x (Normal)`;
-  if (multiplier <= 1.8) return `${x}x (Fast)`;
-  return `${x}x (Frenzy)`;
+  if (multiplier <= 0.4) return `${x}x (${tr('gameSettingsPanel.speeds.verySlow', 'Very Slow')})`;
+  if (multiplier <= 0.7) return `${x}x (${tr('gameSettingsPanel.speeds.slow', 'Slow')})`;
+  if (multiplier <= 1.1) return `${x}x (${tr('gameSettingsPanel.difficulties.normal', 'Normal')})`;
+  if (multiplier <= 1.8) return `${x}x (${tr('gameSettingsPanel.speeds.fast', 'Fast')})`;
+  return `${x}x (${tr('gameSettingsPanel.speeds.frenzy', 'Frenzy')})`;
 }
 
 /** Human-readable label for the time limit slider. */
 export function getTimeLimitLabel(seconds: number): string {
-  if (seconds === 0) return 'Unlimited';
+  if (seconds === 0) return tr('gameSettingsPanel.values.unlimited', 'Unlimited');
   if (seconds < 120) return `${seconds}s`;
-  return `${Math.round(seconds / 60)} min`;
+  return `${Math.round(seconds / 60)} ${tr('gameSettingsPanel.units.min', 'min')}`;
 }
 
 /** Human-readable label for boss frequency. */
 export function getBossFreqLabel(value: number): string {
-  if (value === 0) return '0.00 (Never)';
-  if (value <= 0.25) return `${value.toFixed(2)} (Rare)`;
-  if (value <= 0.6) return `${value.toFixed(2)} (Normal)`;
-  if (value <= 0.85) return `${value.toFixed(2)} (Frequent)`;
-  return `${value.toFixed(2)} (Always)`;
+  if (value === 0) return `0.00 (${tr('gameSettingsPanel.frequencies.never', 'Never')})`;
+  if (value <= 0.25) return `${value.toFixed(2)} (${tr('gameSettingsPanel.frequencies.rare', 'Rare')})`;
+  if (value <= 0.6) return `${value.toFixed(2)} (${tr('gameSettingsPanel.difficulties.normal', 'Normal')})`;
+  if (value <= 0.85) return `${value.toFixed(2)} (${tr('gameSettingsPanel.frequencies.frequent', 'Frequent')})`;
+  return `${value.toFixed(2)} (${tr('gameSettingsPanel.frequencies.always', 'Always')})`;
 }
 
 // ---------------------------------------------------------------------------
@@ -176,12 +182,12 @@ export class GameSettingsPanel {
     // Header
     const header = this.el('div', '', 'gsp-header');
     const title = this.el('span', '', 'gsp-title');
-    title.textContent = 'GAME SETTINGS';
+    title.textContent = tr('gameSettingsPanel.title', 'GAME SETTINGS');
     header.appendChild(title);
 
     if (this.showCloseButton) {
       const closeBtn = this.el('button', '', 'gsp-close-btn');
-      closeBtn.textContent = '✕ CLOSE';
+      closeBtn.textContent = `✕ ${tr('common.close', 'CLOSE')}`;
       closeBtn.addEventListener('click', () => this.hide());
       header.appendChild(closeBtn);
     }
@@ -207,7 +213,7 @@ export class GameSettingsPanel {
     // Reset button
     const footer = this.el('div', '', 'gsp-footer');
     const resetBtn = this.el('button', '', 'gsp-reset-btn');
-    resetBtn.textContent = 'RESET TO DEFAULTS';
+    resetBtn.textContent = tr('gameSettingsPanel.resetToDefaults', 'RESET TO DEFAULTS');
     resetBtn.addEventListener('click', () => this.resetToDefaults());
     footer.appendChild(resetBtn);
     scroll.appendChild(footer);
@@ -216,28 +222,28 @@ export class GameSettingsPanel {
   }
 
   private buildModeSection(): HTMLElement {
-    const section = this.section('GAME MODE');
+    const section = this.section(tr('gameSettingsPanel.sections.gameMode', 'GAME MODE'));
 
     section.appendChild(this.buildButtonGroup<GameMode>(
-      'mode', 'Mode',
+      'mode', tr('gameSettingsPanel.labels.mode', 'Mode'),
       VALID_MODES as unknown as GameMode[],
       (v) => v.toUpperCase(),
     ));
 
     section.appendChild(this.buildButtonGroup<GameSurface>(
-      'surface', 'Surface',
+      'surface', tr('gameSettingsPanel.labels.surface', 'Surface'),
       VALID_SURFACES as unknown as GameSurface[],
       (v) => v.replace(/-/g, ' ').toUpperCase(),
     ));
 
     section.appendChild(this.buildButtonGroup<StartingWeapon>(
-      'startingWeapon', 'Starting Weapon',
+      'startingWeapon', tr('gameSettingsPanel.labels.startingWeapon', 'Starting Weapon'),
       VALID_STARTING_WEAPONS as unknown as StartingWeapon[],
       (v) => v.replace(/_/g, ' ').toUpperCase(),
     ));
 
     section.appendChild(this.buildButtonGroup<VisualQuality>(
-      'visualQuality', 'Visual Quality',
+      'visualQuality', tr('gameSettingsPanel.labels.visualQuality', 'Visual Quality'),
       ['auto', 'high', 'medium', 'low'] as VisualQuality[],
       (v) => v.toUpperCase(),
     ));
@@ -246,47 +252,47 @@ export class GameSettingsPanel {
   }
 
   private buildLivesSection(): HTMLElement {
-    const section = this.section('LIVES');
-    section.appendChild(this.buildSlider('lives', 'Lives', 1, 9, 1, getLivesLabel));
-    section.appendChild(this.buildToggle('infiniteLives', 'Infinite Lives'));
+    const section = this.section(tr('gameSettingsPanel.sections.lives', 'LIVES'));
+    section.appendChild(this.buildSlider('lives', tr('gameSettingsPanel.labels.lives', 'Lives'), 1, 9, 1, getLivesLabel));
+    section.appendChild(this.buildToggle('infiniteLives', tr('gameSettingsPanel.labels.infiniteLives', 'Infinite Lives')));
     return section;
   }
 
   private buildDifficultySection(): HTMLElement {
-    const section = this.section('DIFFICULTY');
-    section.appendChild(this.buildSlider('difficultyMultiplier', 'Difficulty', 0.5, 2.0, 0.05, getDifficultyLabel));
-    section.appendChild(this.buildSlider('enemySpawnRateMultiplier', 'Spawn Rate', 0.25, 3.0, 0.05, getSpawnRateLabel));
-    section.appendChild(this.buildSlider('bossFrequency', 'Boss Frequency', 0.0, 1.0, 0.05, getBossFreqLabel));
+    const section = this.section(tr('gameSettingsPanel.sections.difficulty', 'DIFFICULTY'));
+    section.appendChild(this.buildSlider('difficultyMultiplier', tr('gameSettingsPanel.labels.difficulty', 'Difficulty'), 0.5, 2.0, 0.05, getDifficultyLabel));
+    section.appendChild(this.buildSlider('enemySpawnRateMultiplier', tr('gameSettingsPanel.labels.spawnRate', 'Spawn Rate'), 0.25, 3.0, 0.05, getSpawnRateLabel));
+    section.appendChild(this.buildSlider('bossFrequency', tr('gameSettingsPanel.labels.bossFrequency', 'Boss Frequency'), 0.0, 1.0, 0.05, getBossFreqLabel));
     return section;
   }
 
   private buildEnemiesSection(): HTMLElement {
-    const section = this.section('ENEMIES & BULLETS');
-    section.appendChild(this.buildSlider('maxPlayers', 'Max Players', 2, 20, 1, (v) => String(v)));
-    section.appendChild(this.buildSlider('enemyCountCap', 'Max Enemies', 10, 100, 5, (v) => String(v)));
-    section.appendChild(this.buildSlider('bulletCountCap', 'Max Bullets', 50, 1000, 50, (v) => String(v)));
+    const section = this.section(tr('gameSettingsPanel.sections.enemiesBullets', 'ENEMIES & BULLETS'));
+    section.appendChild(this.buildSlider('maxPlayers', tr('gameSettingsPanel.labels.maxPlayers', 'Max Players'), 2, 20, 1, (v) => String(v)));
+    section.appendChild(this.buildSlider('enemyCountCap', tr('gameSettingsPanel.labels.enemyCountCap', 'Max Enemies'), 10, 100, 5, (v) => String(v)));
+    section.appendChild(this.buildSlider('bulletCountCap', tr('gameSettingsPanel.labels.bulletCountCap', 'Max Bullets'), 50, 1000, 50, (v) => String(v)));
     return section;
   }
 
   private buildPickupsSection(): HTMLElement {
-    const section = this.section('PICKUPS & HEALING');
-    section.appendChild(this.buildSlider('healingFrequency', 'Healing Frequency (s)', 5, 120, 5, (v) => `${v}s`));
-    section.appendChild(this.buildSlider('healingAmount', 'Healing Amount (HP)', 5, 100, 5, (v) => String(v)));
-    section.appendChild(this.buildSlider('weaponSpawnFrequency', 'Weapon Pickup Rate', 0.1, 3.0, 0.1, (v) => `${v.toFixed(1)}x`));
-    section.appendChild(this.buildSlider('buffSpawnFrequency', 'Buff Pickup Rate', 0.1, 3.0, 0.1, (v) => `${v.toFixed(1)}x`));
+    const section = this.section(tr('gameSettingsPanel.sections.pickupsHealing', 'PICKUPS & HEALING'));
+    section.appendChild(this.buildSlider('healingFrequency', tr('gameSettingsPanel.labels.healingFrequency', 'Healing Frequency (s)'), 5, 120, 5, (v) => `${v}s`));
+    section.appendChild(this.buildSlider('healingAmount', tr('gameSettingsPanel.labels.healingAmount', 'Healing Amount (HP)'), 5, 100, 5, (v) => String(v)));
+    section.appendChild(this.buildSlider('weaponSpawnFrequency', tr('gameSettingsPanel.labels.weaponSpawnRate', 'Weapon Pickup Rate'), 0.1, 3.0, 0.1, (v) => `${v.toFixed(1)}x`));
+    section.appendChild(this.buildSlider('buffSpawnFrequency', tr('gameSettingsPanel.labels.buffSpawnRate', 'Buff Pickup Rate'), 0.1, 3.0, 0.1, (v) => `${v.toFixed(1)}x`));
     return section;
   }
 
   private buildTimeSection(): HTMLElement {
-    const section = this.section('TIME LIMIT');
-    section.appendChild(this.buildSlider('timeLimit', 'Time Limit', 0, 3600, 60, getTimeLimitLabel));
+    const section = this.section(tr('gameSettingsPanel.sections.timeLimit', 'TIME LIMIT'));
+    section.appendChild(this.buildSlider('timeLimit', tr('gameSettingsPanel.labels.timeLimit', 'Time Limit'), 0, 3600, 60, getTimeLimitLabel));
     return section;
   }
 
   private buildHealthBarsSection(): HTMLElement {
-    const section = this.section('HEALTH BARS');
+    const section = this.section(tr('gameSettingsPanel.sections.healthBars', 'HEALTH BARS'));
     section.appendChild(this.buildButtonGroup<HealthBarVisibility>(
-      'healthBarVisibility', 'Visibility',
+      'healthBarVisibility', tr('gameSettingsPanel.labels.visibility', 'Visibility'),
       ['all', 'friendly', 'enemy', 'none'] as HealthBarVisibility[],
       (v) => v.toUpperCase(),
     ));
@@ -294,17 +300,17 @@ export class GameSettingsPanel {
   }
 
   private buildPvpSection(): HTMLElement {
-    const section = this.section('PvP SETTINGS');
-    section.appendChild(this.buildToggle('pvpEnabled', 'PvP Damage'));
-    section.appendChild(this.buildToggle('friendlyFire', 'Friendly Fire'));
-    section.appendChild(this.buildSlider('pvpDamageMultiplier', 'PvP Damage Multiplier', 0.1, 10, 0.1,
+    const section = this.section(tr('gameSettingsPanel.sections.pvpSettings', 'PvP SETTINGS'));
+    section.appendChild(this.buildToggle('pvpEnabled', tr('gameSettingsPanel.labels.pvpDamage', 'PvP Damage')));
+    section.appendChild(this.buildToggle('friendlyFire', tr('gameSettingsPanel.labels.friendlyFire', 'Friendly Fire')));
+    section.appendChild(this.buildSlider('pvpDamageMultiplier', tr('gameSettingsPanel.labels.pvpDamageMultiplier', 'PvP Damage Multiplier'), 0.1, 10, 0.1,
       (v) => `${v.toFixed(1)}x`));
     section.appendChild(this.buildButtonGroup<PvpWinCondition>(
-      'pvpWinCondition', 'Win Condition',
+      'pvpWinCondition', tr('gameSettingsPanel.labels.winCondition', 'Win Condition'),
       ['kills', 'survival', 'score'] as PvpWinCondition[],
       (v) => v.toUpperCase(),
     ));
-    section.appendChild(this.buildSlider('pvpKillLimit', 'Kill Limit', 1, 50, 1, (v) => String(v)));
+    section.appendChild(this.buildSlider('pvpKillLimit', tr('gameSettingsPanel.labels.killLimit', 'Kill Limit'), 1, 50, 1, (v) => String(v)));
     return section;
   }
 
@@ -367,12 +373,12 @@ export class GameSettingsPanel {
 
     const toggle = this.el('button', '', 'gsp-toggle');
     const currentVal = Boolean(this.settings[field]);
-    toggle.textContent = currentVal ? 'ON' : 'OFF';
+    toggle.textContent = currentVal ? tr('gameSettingsPanel.values.on', 'ON') : tr('gameSettingsPanel.values.off', 'OFF');
     toggle.classList.add(currentVal ? 'gsp-toggle-on' : 'gsp-toggle-off');
 
     toggle.addEventListener('click', () => {
       const newVal = !(this.settings[field] as boolean);
-      toggle.textContent = newVal ? 'ON' : 'OFF';
+      toggle.textContent = newVal ? tr('gameSettingsPanel.values.on', 'ON') : tr('gameSettingsPanel.values.off', 'OFF');
       toggle.classList.toggle('gsp-toggle-on', newVal);
       toggle.classList.toggle('gsp-toggle-off', !newVal);
       this.applyChange(field, newVal as GameSettings[K]);
@@ -471,7 +477,7 @@ export class GameSettingsPanel {
       } else if (el.tagName === 'BUTTON') {
         // Toggle button
         const boolVal = Boolean(value);
-        el.textContent = boolVal ? 'ON' : 'OFF';
+        el.textContent = boolVal ? tr('gameSettingsPanel.values.on', 'ON') : tr('gameSettingsPanel.values.off', 'OFF');
         el.classList.toggle('gsp-toggle-on', boolVal);
         el.classList.toggle('gsp-toggle-off', !boolVal);
       } else if (el.classList.contains('gsp-btn-group')) {
@@ -488,7 +494,7 @@ export class GameSettingsPanel {
   private syncToggle(field: keyof GameSettings, value: boolean): void {
     const el = this.inputMap.get(field);
     if (!el) return;
-    el.textContent = value ? 'ON' : 'OFF';
+    el.textContent = value ? tr('gameSettingsPanel.values.on', 'ON') : tr('gameSettingsPanel.values.off', 'OFF');
     el.classList.toggle('gsp-toggle-on', value);
     el.classList.toggle('gsp-toggle-off', !value);
   }
