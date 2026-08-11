@@ -5,6 +5,7 @@ import { WeaponType } from '../weapons/WeaponTypes';
 export interface PendingUpgradeActivation {
   nodeId: string;
   weaponType: WeaponType;
+  autoApplied?: boolean;
 }
 
 export type UpgradeActivationReconcileStatus = 'accepted' | 'rejected' | 'missing_pending';
@@ -16,6 +17,7 @@ export interface ActiveUpgradeNodeSnapshot {
 export interface MpBuildChoiceSupportFilterResult {
   supportedNodeIds: string[];
   unsupportedNodeIds: string[];
+  autoApplyNodeId: string | null;
   shouldShowChoiceScreen: boolean;
 }
 
@@ -32,7 +34,8 @@ export function filterMpBuildChoiceNodeIds(
   return {
     supportedNodeIds,
     unsupportedNodeIds,
-    shouldShowChoiceScreen: supportedNodeIds.length > 0,
+    autoApplyNodeId: supportedNodeIds.length === 1 ? supportedNodeIds[0] : null,
+    shouldShowChoiceScreen: supportedNodeIds.length > 1,
   };
 }
 

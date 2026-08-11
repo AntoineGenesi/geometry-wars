@@ -15,6 +15,9 @@ export class MatchUpgradeTracker {
   /** Callback fired after the player confirms a build choice (a node is now active). */
   onUpgradeActivated: ((nodeId: string, weaponType: WeaponType) => void) | null = null;
 
+  /** Callback fired when a single actionable node auto-applies without choice UI. */
+  onAutoUpgradeApplied: ((nodeId: string, weaponType: WeaponType) => void) | null = null;
+
   /**
    * Callback fired when a kill threshold is crossed and one or more nodes are
    * available for the player to choose.  The caller should pause the game and
@@ -27,15 +30,17 @@ export class MatchUpgradeTracker {
   private readonly permanentUnlocks: Set<string>;
   private readonly store: MasteryPointStore;
   private pendingChoice: { weaponType: WeaponType; nodeIds: string[] } | null = null;
+  private readonly autoApplySingleNode: boolean;
 
   /**
    * @param store - The persistent mastery point store.  The tracker is seeded
    *   with the nodes already unlocked in the store, and will call
    *   earnPoint/spendPoint when the player confirms an in-game build choice.
    */
-  constructor(store: MasteryPointStore) {
+  constructor(store: MasteryPointStore, options: { autoApplySingleNode?: boolean } = {}) {
     this.store = store;
     this.permanentUnlocks = new Set(store.getUnlockedNodes());
+    this.autoApplySingleNode = options.autoApplySingleNode ?? true;
   }
 
   // -------------------------------------------------------------------------
@@ -103,19 +108,19 @@ export class MatchUpgradeTracker {
    * over to future games.  If spendPoint fails (e.g. node already unlocked via
    * the mastery menu), the local in-match activation still proceeds.
    */
-  confirmChoice(nodeId: string, weaponType: WeaponType): void {
+  confirmChoice(nodeId: string, weaponType: WeaponType): boolean {
     this.pendingChoice = null;
     const tree = UPGRADE_TREES[weaponType];
     const node = tree?.nodes.find(upgradeNode => upgradeNode.id === nodeId);
-    if (!tree || !node) return;
+    if (!tree || !node) return false;
 
     const ps = this.makePointLookup(weaponType);
-    if (isExcluded(nodeId, tree, ps)) return;
-    if (node.excludes?.some(excludedId => ps.getNodePoints(excludedId) > 0)) return;
+    if (isExcluded(nodeId, tree, ps)) return false;
+    if (node.excludes?.some(excludedId => ps.getNodePoints(excludedId) > 0)) return false;
 
     this.store.earnPoint(weaponType);
     this.store.spendPoint(nodeId, node.maxPoints ?? 1, node.cost ?? 1, tree);
-    this.activateNode(nodeId, weaponType);
+    return this.activateNode(nodeId, weaponType);
   }
 
   /** Clear all state and activate permanent unlocks — call at the start of a new match. */
@@ -180,10 +185,7 @@ export class MatchUpgradeTracker {
         }
       }
 
-      if (available.length > 0) {
-        this.pendingChoice = { weaponType, nodeIds: available };
-        this.onBuildChoiceAvailable?.(weaponType, available);
-      }
+      this.handleAvailableNodes(weaponType, available);
     }
   }
 
@@ -215,21 +217,33 @@ export class MatchUpgradeTracker {
       }
     }
 
-    if (available.length > 0) {
-      this.pendingChoice = { weaponType, nodeIds: available };
-      this.onBuildChoiceAvailable?.(weaponType, available);
-    }
+    this.handleAvailableNodes(weaponType, available);
   }
 
-  private activateNode(nodeId: string, weaponType: WeaponType): void {
+  private handleAvailableNodes(weaponType: WeaponType, nodeIds: string[]): void {
+    if (nodeIds.length === 0) return;
+    if (this.autoApplySingleNode && nodeIds.length === 1) {
+      const nodeId = nodeIds[0];
+      if (this.confirmChoice(nodeId, weaponType)) {
+        this.onAutoUpgradeApplied?.(nodeId, weaponType);
+      }
+      return;
+    }
+
+    this.pendingChoice = { weaponType, nodeIds };
+    this.onBuildChoiceAvailable?.(weaponType, nodeIds);
+  }
+
+  private activateNode(nodeId: string, weaponType: WeaponType): boolean {
     let weaponSet = this.activeUpgrades.get(weaponType);
     if (!weaponSet) {
       weaponSet = new Set();
       this.activeUpgrades.set(weaponType, weaponSet);
     }
-    if (weaponSet.has(nodeId)) return; // already active — guard against duplicate calls
+    if (weaponSet.has(nodeId)) return false; // already active — guard against duplicate calls
 
     weaponSet.add(nodeId);
     this.onUpgradeActivated?.(nodeId, weaponType);
+    return true;
   }
 }

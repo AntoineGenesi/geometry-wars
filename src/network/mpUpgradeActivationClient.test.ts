@@ -34,7 +34,7 @@ function makePending(
   tracker: MatchUpgradeTracker;
   pendingUpgradeActivations: Map<string, PendingUpgradeActivation>;
 } {
-  const tracker = new MatchUpgradeTracker(makeStore([nodeId]));
+  const tracker = new MatchUpgradeTracker(makeStore([nodeId]), { autoApplySingleNode: false });
   tracker.onBuildChoiceAvailable = vi.fn();
   const node = getNodeById(nodeId);
   expect(node).toBeDefined();
@@ -142,7 +142,22 @@ describe('MP upgrade activation client reconciliation', () => {
     expect(result).toEqual({
       supportedNodeIds: ['standard_a_1', 'spread_b_2'],
       unsupportedNodeIds: ['standard_b_4', 'black_hole_a_1'],
+      autoApplyNodeId: null,
       shouldShowChoiceScreen: true,
+    });
+  });
+
+  it('marks one supported MP node as an auto activation request, not a choice screen', () => {
+    const result = filterMpBuildChoiceNodeIds([
+      'standard_a_1',
+      'standard_b_4',
+    ]);
+
+    expect(result).toEqual({
+      supportedNodeIds: ['standard_a_1'],
+      unsupportedNodeIds: ['standard_b_4'],
+      autoApplyNodeId: 'standard_a_1',
+      shouldShowChoiceScreen: false,
     });
   });
 
@@ -156,6 +171,7 @@ describe('MP upgrade activation client reconciliation', () => {
     expect(result).toEqual({
       supportedNodeIds: [],
       unsupportedNodeIds: ['standard_b_4', 'standard_ar_5', 'black_hole_a_1'],
+      autoApplyNodeId: null,
       shouldShowChoiceScreen: false,
     });
   });

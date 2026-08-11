@@ -17,6 +17,8 @@
  */
 
 import { SoundEngine } from '../audio/SoundEngine';
+import { getNodeById } from '../systems/UpgradeTreeData';
+import { WEAPON_CONFIGS, WeaponType } from '../weapons/WeaponTypes';
 import { BrailleAnimator } from './BrailleAnimator';
 import type { BraillePattern } from './BrailleAnimator';
 import {
@@ -218,6 +220,51 @@ export class EnemyKillStreakAnnouncer {
 
   isVisible(): boolean {
     return this.visible;
+  }
+
+  /** Show a killstreak-style one-line notice for an auto-applied upgrade. */
+  announceUpgradeApplied(nodeId: string, weaponType: WeaponType): void {
+    if (!this.visible) return;
+    const node = getNodeById(nodeId);
+    const weapon = WEAPON_CONFIGS[weaponType];
+    if (!node || !weapon) return;
+
+    if (this.timeRemaining > 0) {
+      this._hide();
+    }
+
+    const color = `#${weapon.color.toString(16).padStart(6, '0')}`;
+    this.currentAnnouncementCount = 0;
+    this.asciiFrameIndex = 0;
+    this.asciiFrameAccumulator = 0;
+
+    this.asciiEl.textContent = 'AUTO UPGRADE';
+    this.asciiEl.style.color = color;
+    this.asciiEl.style.textShadow = `0 0 8px ${color}, 0 0 16px ${color}`;
+    this.nameEl.textContent = 'ALREADY APPLIED';
+    this.nameEl.style.color = color;
+    this.nameEl.style.textShadow = [
+      `0 0 10px ${color}`,
+      `0 0 25px ${color}`,
+      `0 0 50px ${color}`,
+    ].join(', ');
+    this.countEl.textContent = `${weapon.name}: ${node.description}`;
+
+    this.brailleEl.style.color = color;
+    this.brailleEl.style.textShadow = `0 0 8px ${color}`;
+    this.brailleAnimator.stop();
+    this.brailleAnimator.setPattern('pulse');
+    this.brailleAnimator.start();
+
+    this.container.classList.remove('eksa-active');
+    this.container.style.display = 'block';
+    this.container.style.opacity = '1';
+    this.container.style.transition = '';
+    void this.container.offsetWidth;
+    this.container.classList.add('eksa-active');
+
+    this.timeRemaining = VISIBLE_DURATION + FADE_DURATION;
+    this.sound.play('multiplierUp', { pitch: 1.1, volume: 0.7 });
   }
 
   // ---------------------------------------------------------------------------

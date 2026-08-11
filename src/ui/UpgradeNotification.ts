@@ -17,7 +17,7 @@ export class UpgradeNotification {
     this.container.id = 'upgrade-notification';
     this.container.style.cssText = `
       position: fixed;
-      top: 12%;
+      bottom: 11%;
       left: 50%;
       transform: translateX(-50%);
       z-index: 500;
