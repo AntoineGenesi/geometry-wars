@@ -1680,6 +1680,130 @@ async function main() {
     _localRenderLastTargetToPlayer = localPlayer.mesh.position.distanceTo(target);
     _localRenderTargetTracker.getTarget(nowMs, _localRenderFrameTarget);
   }
+
+  function _roundChoppy(value: number): number {
+    return Math.round(value * 100) / 100;
+  }
+
+  function _recordChoppyValue(values: number[], value: number): void {
+    if (Number.isFinite(value)) values.push(value);
+  }
+
+  function _choppyStats(values: number[]): {
+    avg?: number;
+    p95?: number;
+    p99?: number;
+    max?: number;
+    min?: number;
+  } {
+    if (values.length === 0) return {};
+    const sorted = values.slice().sort((a, b) => a - b);
+    const sum = values.reduce((acc, value) => acc + value, 0);
+    const percentile = (p: number) => sorted[Math.min(sorted.length - 1, Math.ceil(sorted.length * p) - 1)];
+    return {
+      avg: _roundChoppy(sum / values.length),
+      p95: _roundChoppy(percentile(0.95)),
+      p99: _roundChoppy(percentile(0.99)),
+      max: _roundChoppy(sorted[sorted.length - 1]),
+      min: _roundChoppy(sorted[0]),
+    };
+  }
+
+  const _choppyFrameDtMs: number[] = [];
+  const _choppyServerSampleAgeMs: number[] = [];
+  const _choppyServerSampleIntervalMs: number[] = [];
+  const _choppyServerSampleDelta: number[] = [];
+  let _choppyLongFrameCountOver33ms = 0;
+  let _choppyLongFrameCountOver50ms = 0;
+  let _choppyInputSendCount = 0;
+  let _choppyInputChangedCount = 0;
+  let _choppyInputMoveAbsSum = 0;
+  let _choppyInputAimAbsSum = 0;
+  let _choppyInputSampleCount = 0;
+  let _choppyLastInputSentAtMs = 0;
+  let _choppySnapBaseline = _localRenderSnapCount;
+  let _choppyResetBaseline = _localRenderTargetTracker.getTelemetry().resetCount;
+  let _choppyStaleScaleMin = 1;
+  let _lastChoppinessMetrics: Partial<ClientMetricsPayload> | null = null;
+
+  function recordChoppinessRenderFrame(dtMs: number): void {
+    if (currentRoomPhase !== 'playing') return;
+    _recordChoppyValue(_choppyFrameDtMs, dtMs);
+    if (dtMs > 33) _choppyLongFrameCountOver33ms++;
+    if (dtMs > 50) _choppyLongFrameCountOver50ms++;
+    const renderTelemetry = _localRenderTargetTracker.getTelemetry();
+    if (!renderTelemetry.valid) return;
+    _recordChoppyValue(_choppyServerSampleAgeMs, renderTelemetry.sampleAgeMs);
+    _recordChoppyValue(_choppyServerSampleIntervalMs, renderTelemetry.serverSampleIntervalMs);
+    _recordChoppyValue(_choppyServerSampleDelta, renderTelemetry.serverSampleDelta);
+    if (Number.isFinite(renderTelemetry.staleScale)) {
+      _choppyStaleScaleMin = Math.min(_choppyStaleScaleMin, renderTelemetry.staleScale);
+    }
+  }
+
+  function recordChoppinessInput(inputState: { moveX: number; moveY: number; aimX: number; aimY: number }): void {
+    _choppyInputSendCount++;
+    _choppyInputChangedCount++;
+    _choppyInputSampleCount++;
+    _choppyInputMoveAbsSum += Math.hypot(inputState.moveX, inputState.moveY);
+    _choppyInputAimAbsSum += Math.hypot(inputState.aimX, inputState.aimY);
+    _choppyLastInputSentAtMs = performance.now();
+  }
+
+  function consumeChoppinessMetrics(): Partial<ClientMetricsPayload> {
+    const frame = _choppyStats(_choppyFrameDtMs);
+    const sampleAge = _choppyStats(_choppyServerSampleAgeMs);
+    const sampleInterval = _choppyStats(_choppyServerSampleIntervalMs);
+    const sampleDelta = _choppyStats(_choppyServerSampleDelta);
+    const renderTelemetry = _localRenderTargetTracker.getTelemetry();
+    const networkStats = network.consumeStateTimingStats();
+    const metrics: Partial<ClientMetricsPayload> = {
+      ...networkStats,
+      frameDtAvg: frame.avg,
+      frameDtP95: frame.p95,
+      frameDtP99: frame.p99,
+      longFrameCountOver33ms: _choppyLongFrameCountOver33ms,
+      longFrameCountOver50ms: _choppyLongFrameCountOver50ms,
+      serverSampleAgeMsAvg: sampleAge.avg,
+      serverSampleAgeMsP95: sampleAge.p95,
+      serverSampleAgeMsMax: sampleAge.max,
+      serverSampleIntervalMsAvg: sampleInterval.avg,
+      serverSampleIntervalMsP95: sampleInterval.p95,
+      serverSampleIntervalMsMax: sampleInterval.max,
+      serverSampleDeltaP95: sampleDelta.p95,
+      snapCountDelta: _localRenderSnapCount - _choppySnapBaseline,
+      resetCountDelta: renderTelemetry.resetCount - _choppyResetBaseline,
+      staleScaleMin: _choppyStaleScaleMin === 1 ? 1 : _roundChoppy(_choppyStaleScaleMin),
+      inputSendCount: _choppyInputSendCount,
+      inputChangedCount: _choppyInputChangedCount,
+      lastInputAgeMs: _choppyLastInputSentAtMs > 0 ? _roundChoppy(performance.now() - _choppyLastInputSentAtMs) : undefined,
+      moveInputAbsAvg: _choppyInputSampleCount > 0 ? _roundChoppy(_choppyInputMoveAbsSum / _choppyInputSampleCount) : undefined,
+      aimInputAbsAvg: _choppyInputSampleCount > 0 ? _roundChoppy(_choppyInputAimAbsSum / _choppyInputSampleCount) : undefined,
+      playerCount: networkPlayers.size,
+      weaponPickupCount: networkWeaponPickups.size,
+      superPickupCount: networkSuperPickups.size,
+      buffPickupCount: networkBuffPickups.size,
+      healthPickupCount: networkHealthPickups.size,
+    };
+
+    _lastChoppinessMetrics = metrics;
+    _choppyFrameDtMs.length = 0;
+    _choppyServerSampleAgeMs.length = 0;
+    _choppyServerSampleIntervalMs.length = 0;
+    _choppyServerSampleDelta.length = 0;
+    _choppyLongFrameCountOver33ms = 0;
+    _choppyLongFrameCountOver50ms = 0;
+    _choppyInputSendCount = 0;
+    _choppyInputChangedCount = 0;
+    _choppyInputMoveAbsSum = 0;
+    _choppyInputAimAbsSum = 0;
+    _choppyInputSampleCount = 0;
+    _choppySnapBaseline = _localRenderSnapCount;
+    _choppyResetBaseline = renderTelemetry.resetCount;
+    _choppyStaleScaleMin = 1;
+
+    return metrics;
+  }
   // Track previous health per enemy to detect damage and spawn damage number popups
   const enemyPrevHealth = new Map<string, number>();
 
@@ -7409,6 +7533,7 @@ async function main() {
 
       if (changed) {
         network.sendInput(currentInput);
+        recordChoppinessInput(inputState);
         lastSentInput = { ...currentInput };
         lastInputSendTime = 0;
       }
@@ -8107,6 +8232,7 @@ async function main() {
         ? activeBuffsList.map(b => `${b.type}:${b.stacks}`).join(',')
         : undefined;
       const currentFps = Math.round(perfTracker.fps);
+      const choppinessMetrics = consumeChoppinessMetrics();
       const metrics: ClientMetricsPayload = {
         time: latestGameTime,
         fps: currentFps,
@@ -8124,6 +8250,7 @@ async function main() {
         activeBuffs: activeBuffsStr,
         surfaceName: lastCreatedSurfaceType || undefined,
         gameMode: latestGameMode || undefined,
+        ...choppinessMetrics,
       };
       network.sendMetrics(metrics);
     }
@@ -8400,6 +8527,7 @@ async function main() {
           localPlayerId,
           roomPhase: currentRoomPhase,
         },
+        choppiness: _lastChoppinessMetrics,
         frame: _mpTelFrameCount,
         time: game.clock.totalTime,
         waveNumber: latestWaveNumber,
@@ -8540,6 +8668,7 @@ async function main() {
     const _cameraRenderNow = performance.now();
     const _cameraRenderDt = Math.min((_cameraRenderNow - _lastCameraRenderTime) / 1000, 0.1);
     _lastCameraRenderTime = _cameraRenderNow;
+    recordChoppinessRenderFrame(_cameraRenderDt * 1000);
 
     const surf = surface;
     const transform = getTransform;
