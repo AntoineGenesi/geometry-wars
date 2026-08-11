@@ -712,7 +712,7 @@ async function main() {
   await initI18n();
   // Show loading overlay during game initialization (covers both direct URL and StartMenu paths).
   // We dismiss it just before network.connect() so the lobby UI is visible while connecting.
-  showGameLoading('CONNECTING TO SERVER...');
+  showGameLoading(t('network.connection.connectingOverlay'));
 
   // Detect mobile mode early — affects input, quality, and entity limits.
   const mobile = isMobile();
@@ -2280,12 +2280,12 @@ async function main() {
   }
 
   // ---- Game mode selector (host only, shown in lobby) ----
-  const LOBBY_MODES: Array<{ id: string; label: string; icon: string }> = [
-    { id: 'waves',          label: 'WAVES',          icon: '〰' },
-    { id: 'king',           label: 'KING',           icon: '👑' },
-    { id: 'sniper',         label: 'SNIPER',         icon: '🎯' },
-    { id: 'rainbow',        label: 'RAINBOW',        icon: '🌈' },
-    { id: 'claustrophobia', label: 'CLAUSTROPHOBIA', icon: '🔴' },
+  const LOBBY_MODES: Array<{ id: string; labelKey: string; icon: string }> = [
+    { id: 'waves',          labelKey: 'voting.modes.waves',          icon: '〰' },
+    { id: 'king',           labelKey: 'voting.modes.king',           icon: '👑' },
+    { id: 'sniper',         labelKey: 'voting.modes.sniper',         icon: '🎯' },
+    { id: 'rainbow',        labelKey: 'voting.modes.rainbow',        icon: '🌈' },
+    { id: 'claustrophobia', labelKey: 'voting.modes.claustrophobia', icon: '🔴' },
   ];
 
   const urlParams = new URLSearchParams(window.location.search);
@@ -2309,7 +2309,7 @@ async function main() {
     'display:none;z-index:100;text-align:center;';
 
   const modeLabelEl = document.createElement('div');
-  modeLabelEl.textContent = 'GAME MODE';
+  modeLabelEl.textContent = t('gameSettingsPanel.sections.gameMode');
   modeLabelEl.style.cssText =
     'color:#0ff;font:12px monospace;letter-spacing:3px;margin-bottom:8px;' +
     'text-shadow:0 0 8px #0ff;';
@@ -2344,9 +2344,9 @@ async function main() {
     return btn;
   }
 
-  const coopBtn = createModeBtn('CO-OP', '');
-  const pvpBtn = createModeBtn('PvP', 'pvp');
-  const pvpveBtn = createModeBtn('PvPvE', 'pvpve');
+  const coopBtn = createModeBtn(t('network.lobby.coop'), '');
+  const pvpBtn = createModeBtn(t('voting.modes.pvp'), 'pvp');
+  const pvpveBtn = createModeBtn(t('voting.modes.pvpve'), 'pvpve');
   gameModeRow.appendChild(coopBtn);
   gameModeRow.appendChild(pvpBtn);
   gameModeRow.appendChild(pvpveBtn);
@@ -2358,7 +2358,7 @@ async function main() {
   winConditionSection.style.cssText = 'display:none;border-top:1px solid #333;padding-top:12px;margin-bottom:8px;';
 
   const winCondLabel = document.createElement('div');
-  winCondLabel.textContent = 'WIN CONDITION';
+  winCondLabel.textContent = t('voting.winCondition.title');
   winCondLabel.style.cssText = 'font-size:11px;letter-spacing:2px;color:#555;margin-bottom:8px;';
   winConditionSection.appendChild(winCondLabel);
 
@@ -2379,9 +2379,9 @@ async function main() {
     return btn;
   }
 
-  const killsBtn = createWinCondBtn('KILLS', 'kills');
-  const timeBtn = createWinCondBtn('TIME', 'time');
-  const livesBtn = createWinCondBtn('LIVES', 'lives');
+  const killsBtn = createWinCondBtn(t('gameOver.pvp.kills'), 'kills');
+  const timeBtn = createWinCondBtn(t('voting.winCondition.timeLimit'), 'time');
+  const livesBtn = createWinCondBtn(t('pauseMenu.stats.lives'), 'lives');
   winCondRow.appendChild(killsBtn);
   winCondRow.appendChild(timeBtn);
   winCondRow.appendChild(livesBtn);
@@ -2389,7 +2389,10 @@ async function main() {
 
   const killsInput = document.createElement('div');
   killsInput.style.cssText = 'display:none;align-items:center;gap:10px;margin-bottom:4px;';
-  killsInput.innerHTML = '<span style="font-size:12px;color:#888;flex:0 0 auto;">First to</span>';
+  const killsPrefix = document.createElement('span');
+  killsPrefix.textContent = t('network.lobby.firstTo');
+  killsPrefix.style.cssText = 'font-size:12px;color:#888;flex:0 0 auto;';
+  killsInput.appendChild(killsPrefix);
   const killsCount = document.createElement('input');
   killsCount.type = 'number';
   killsCount.min = '1';
@@ -2401,14 +2404,17 @@ async function main() {
   killsCount.oninput = () => { lobbyKillTarget = Math.max(1, parseInt(killsCount.value, 10) || 10); };
   killsInput.appendChild(killsCount);
   const killsUnit = document.createElement('span');
-  killsUnit.textContent = 'kills';
+  killsUnit.textContent = t('voting.winCondition.kills');
   killsUnit.style.cssText = 'font-size:12px;color:#888;';
   killsInput.appendChild(killsUnit);
   winConditionSection.appendChild(killsInput);
 
   const timeSelect = document.createElement('div');
   timeSelect.style.cssText = 'display:none;align-items:center;gap:6px;margin-bottom:4px;flex-wrap:wrap;';
-  timeSelect.innerHTML = '<span style="font-size:12px;color:#888;flex:0 0 auto;">Time limit</span>';
+  const timePrefix = document.createElement('span');
+  timePrefix.textContent = t('gameSettingsPanel.labels.timeLimit');
+  timePrefix.style.cssText = 'font-size:12px;color:#888;flex:0 0 auto;';
+  timeSelect.appendChild(timePrefix);
   // s44r-01: Custom minutes+seconds input (replaced fixed dropdown)
   const timeMinsInput = document.createElement('input');
   timeMinsInput.type = 'number';
@@ -2419,7 +2425,7 @@ async function main() {
     'width:52px;padding:4px 6px;font:14px monospace;background:#001;color:#0ff;' +
     'border:1px solid #0af;outline:none;text-align:center;';
   const timeMinsLabel = document.createElement('span');
-  timeMinsLabel.textContent = 'min';
+  timeMinsLabel.textContent = t('voting.winCondition.min');
   timeMinsLabel.style.cssText = 'font-size:12px;color:#888;';
   const timeSecsInput = document.createElement('input');
   timeSecsInput.type = 'number';
@@ -2430,7 +2436,7 @@ async function main() {
     'width:52px;padding:4px 6px;font:14px monospace;background:#001;color:#0ff;' +
     'border:1px solid #0af;outline:none;text-align:center;';
   const timeSecsLabel = document.createElement('span');
-  timeSecsLabel.textContent = 'sec';
+  timeSecsLabel.textContent = t('voting.winCondition.sec');
   timeSecsLabel.style.cssText = 'font-size:12px;color:#888;';
   function updateTimeLimitFromInputs(): void {
     const mins = Math.max(0, Math.min(59, parseInt(timeMinsInput.value, 10) || 0));
@@ -2447,7 +2453,10 @@ async function main() {
 
   const livesInput = document.createElement('div');
   livesInput.style.cssText = 'display:none;align-items:center;gap:10px;margin-bottom:4px;';
-  livesInput.innerHTML = '<span style="font-size:12px;color:#888;flex:0 0 auto;">Lives per player</span>';
+  const livesPrefix = document.createElement('span');
+  livesPrefix.textContent = t('network.lobby.livesPerPlayer');
+  livesPrefix.style.cssText = 'font-size:12px;color:#888;flex:0 0 auto;';
+  livesInput.appendChild(livesPrefix);
   const livesCount = document.createElement('input');
   livesCount.type = 'number';
   livesCount.min = '1';
@@ -2459,7 +2468,7 @@ async function main() {
   livesCount.oninput = () => { lobbyLivesCount = Math.max(1, parseInt(livesCount.value, 10) || 3); };
   livesInput.appendChild(livesCount);
   const livesHint = document.createElement('span');
-  livesHint.textContent = '(last standing wins)';
+  livesHint.textContent = t('network.lobby.lastStandingWins');
   livesHint.style.cssText = 'font-size:11px;color:#555;';
   livesInput.appendChild(livesHint);
   winConditionSection.appendChild(livesInput);
@@ -2496,7 +2505,7 @@ async function main() {
 
   // ---- Wave type label (divider before map/wave selection) ----
   const waveTypeLabelEl = document.createElement('div');
-  waveTypeLabelEl.textContent = 'WAVE TYPE';
+  waveTypeLabelEl.textContent = t('network.lobby.waveType');
   waveTypeLabelEl.style.cssText =
     'color:#0ff;font:12px monospace;letter-spacing:3px;margin:12px 0 8px;' +
     'text-shadow:0 0 8px #0ff;border-top:1px solid #333;padding-top:12px;';
@@ -2511,12 +2520,12 @@ async function main() {
   claustrophobiaNoteEl.style.cssText =
     'display:none;margin-top:8px;color:#ff4444;font:11px monospace;letter-spacing:1px;' +
     'text-shadow:0 0 6px #ff4444;';
-  claustrophobiaNoteEl.textContent = '🔴 Small surfaces only (sphere/torus/capsule/icosahedron)';
+  claustrophobiaNoteEl.textContent = t('network.lobby.claustrophobiaSmallSurfaces');
 
   const modeBtnEls = new Map<string, HTMLButtonElement>();
   for (const m of LOBBY_MODES) {
     const btn = document.createElement('button');
-    btn.textContent = `${m.icon} ${m.label}`;
+    btn.textContent = `${m.icon} ${t(m.labelKey)}`;
     btn.style.cssText =
       'padding:8px 14px;font:bold 12px monospace;cursor:pointer;' +
       'border:2px solid #444;background:#111;color:#aaa;letter-spacing:1px;';
@@ -2554,7 +2563,7 @@ async function main() {
   livesRow.style.cssText = 'margin-top:14px;display:flex;align-items:center;gap:8px;justify-content:center;flex-wrap:wrap;';
 
   const livesLabelEl = document.createElement('div');
-  livesLabelEl.textContent = 'LIVES';
+  livesLabelEl.textContent = t('pauseMenu.stats.lives');
   livesLabelEl.style.cssText = 'color:#0ff;font:12px monospace;letter-spacing:3px;text-shadow:0 0 8px #0ff;';
   livesRow.appendChild(livesLabelEl);
 
@@ -2870,7 +2879,7 @@ async function main() {
   });
   pauseMenu.onExit(() => {
     // Show loading indicator immediately so user sees feedback during disconnect
-    showGameLoading('RETURNING TO MENU...');
+    showGameLoading(t('network.connection.returningToMenu'));
     network.disconnect();
     // Small delay to let the loading screen render, then reload
     requestAnimationFrame(() => {
@@ -3110,7 +3119,7 @@ async function main() {
       if (!isPaused) {
         showPauseOverlay(true);
       }
-      updateStatusText(pausedByName ? `PAUSED by ${pausedByName}` : 'PAUSED');
+      updateStatusText(pausedByName ? t('network.status.pausedBy', { name: pausedByName }) : t('voting.paused'));
     } else if (lastAuthoritativePaused || isPaused || isInLookMode || pauseMenu.showingServerPause) {
       showPauseOverlay(false);
     }
@@ -3118,7 +3127,7 @@ async function main() {
       pausedByName = '';
       if (currentRoomPhase === 'playing') {
         const waveNumber = latestGameState?.waveNumber;
-        updateStatusText(Number.isFinite(waveNumber) ? `Wave ${waveNumber}` : 'PLAYING');
+        updateStatusText(Number.isFinite(waveNumber) ? t('network.status.wave', { wave: waveNumber }) : t('network.status.playing'));
       }
     }
     lastAuthoritativePaused = authoritativePaused;
@@ -3317,7 +3326,7 @@ async function main() {
   localMenuResumeBtn.onclick = () => { hideLocalMenu(); };
   localMenuEl.appendChild(localMenuResumeBtn);
 
-  const localMenuReturnBtn = makeMenuBtn('◀  RETURN TO MAIN MENU', '#220000', '#cc4444');
+  const localMenuReturnBtn = makeMenuBtn(`◀  ${t('network.connectionLost.returnToMainMenu')}`, '#220000', '#cc4444');
   localMenuReturnBtn.onclick = () => {
     hideLocalMenu();
     network.disconnect();
@@ -3326,7 +3335,7 @@ async function main() {
   localMenuEl.appendChild(localMenuReturnBtn);
 
   // Host-only: stop the server and kick all players back to menu
-  const localMenuStopServerBtn = makeMenuBtn('⏹  STOP SERVER (ALL PLAYERS)', '#440000', '#ff2200');
+  const localMenuStopServerBtn = makeMenuBtn(`⏹  ${t('network.lobby.stopServer')} (${t('network.localMenu.allPlayers')})`, '#440000', '#ff2200');
   localMenuStopServerBtn.style.display = 'none';
   localMenuStopServerBtn.onclick = async () => {
     hideLocalMenu();
@@ -3337,7 +3346,7 @@ async function main() {
   localMenuEl.appendChild(localMenuStopServerBtn);
 
   const localMenuHint = document.createElement('div');
-  localMenuHint.textContent = mobile ? 'Tap ⏸ to resume' : 'Press ESC to resume';
+  localMenuHint.textContent = mobile ? t('network.localMenu.tapResume') : t('network.localMenu.escResume');
   localMenuHint.style.cssText = 'color:#555566;font-size:13px;margin-top:28px;letter-spacing:2px;';
   localMenuEl.appendChild(localMenuHint);
 
@@ -3346,8 +3355,8 @@ async function main() {
   function showLocalMenu(): void {
     localMenuOpen = true;
     localMenuWarning.textContent = allowAllPlayersPause
-      ? '⚠  Press Escape to pause the game for everyone'
-      : '⚠  Game continues — only the host can pause the server';
+      ? `⚠  ${t('network.localMenu.pressEscapePauseAll')}`
+      : `⚠  ${t('network.localMenu.hostPauseWarning')}`;
     // Allow touch events to reach menu buttons while local menu is open.
     if (input instanceof TouchInput) input.setGamePaused(true);
     // Send zero input immediately so the server stops moving this player
@@ -3624,7 +3633,7 @@ async function main() {
   // "RETURN TO MENU" button in network mode: end game (host only) then disconnect.
   gameOverScreen.onReturnToMenu(() => {
     // Show loading indicator immediately so user sees feedback during disconnect
-    showGameLoading('RETURNING TO MENU...');
+    showGameLoading(t('network.connection.returningToMenu'));
     if (isHost) {
       network.sendEndGame();
     } else {
@@ -3688,7 +3697,7 @@ async function main() {
     },
     onReturnToMenu: () => {
       // Show loading indicator immediately so user sees feedback during disconnect
-      showGameLoading('RETURNING TO MENU...');
+      showGameLoading(t('network.connection.returningToMenu'));
       if (isHost) {
         network.sendEndGame();
       } else {
@@ -6212,18 +6221,20 @@ async function main() {
 
     // Game state — derive status text from roomPhase + legacy flags
     if (currentRoomPhase === 'voting') {
-      updateStatusText('VOTING');
+      updateStatusText(t('voting.voting'));
       startBtn.style.display = 'none';
       modeSelectorDiv.style.display = 'none';
       nonHostSettingsEl.style.display = 'none';
     } else if (state.gameStarted && currentRoomPhase === 'playing') {
-      updateStatusText(state.isPaused ? (pausedByName ? `PAUSED by ${pausedByName}` : 'PAUSED') : `Wave ${state.waveNumber}`);
+      updateStatusText(state.isPaused
+        ? (pausedByName ? t('network.status.pausedBy', { name: pausedByName }) : t('voting.paused'))
+        : t('network.status.wave', { wave: state.waveNumber }));
       startBtn.style.display = 'none';
       modeSelectorDiv.style.display = 'none';
       nonHostSettingsEl.style.display = 'none';
     } else if (state.gameOver && currentRoomPhase !== 'voting') {
       // Legacy path: gameOver flag (pre-voting-state-machine servers or initial game)
-      updateStatusText('GAME OVER');
+      updateStatusText(t('gameOver.title'));
       startBtn.style.display = 'none';
       modeSelectorDiv.style.display = 'none';
       nonHostSettingsEl.style.display = 'none';
@@ -6277,14 +6288,15 @@ async function main() {
     } else if (currentRoomPhase === 'lobby' || (!state.gameStarted && !state.gameOver)) {
       if (isHost) {
         // Host sees the Start Game button and mode selector.
-        updateStatusText('Waiting for players... (Host: select mode + press START GAME)');
+        updateStatusText(t('network.lobby.waitingForPlayersHost'));
         startBtn.style.display = 'block';
         modeSelectorDiv.style.display = 'block';
         nonHostSettingsEl.style.display = 'none';
       } else {
         // Non-host: show waiting message and read-only settings display.
-        const modeLabel = LOBBY_MODES.find(m => m.id === state.gameMode)?.label ?? state.gameMode?.toUpperCase() ?? 'WAVES';
-        updateStatusText(`Waiting for host to start... Mode: ${modeLabel}`);
+        const lobbyMode = LOBBY_MODES.find(m => m.id === state.gameMode);
+        const modeLabel = lobbyMode ? t(lobbyMode.labelKey) : state.gameMode?.toUpperCase() ?? t('voting.modes.waves');
+        updateStatusText(t('network.lobby.waitingForHostMode', { mode: modeLabel }));
         startBtn.style.display = 'none';
         modeSelectorDiv.style.display = 'none';
         nonHostSettingsEl.style.display = 'block';
@@ -6386,8 +6398,7 @@ async function main() {
       network.disconnect();
       // Synthesise a timeout error that feeds into the existing .catch() handler
       const timeoutError = new Error(
-        `Connection timed out after ${CONNECTION_TIMEOUT_MS / 1000}s. ` +
-        `Is the server running and reachable from this device?`
+        t('network.connection.timedOutMessage', { seconds: CONNECTION_TIMEOUT_MS / 1000 })
       );
       // Manually trigger the catch path by re-running the error UI inline
       statusEl.style.display = 'none';
@@ -6399,7 +6410,7 @@ async function main() {
         'font-family:monospace;padding:20px;box-sizing:border-box;';
       const title = document.createElement('div');
       title.style.cssText = 'color:#f44;font-size:32px;font-weight:bold;letter-spacing:4px;margin-bottom:12px;text-align:center;';
-      title.textContent = 'CONNECTION TIMED OUT';
+      title.textContent = t('network.connection.timedOutTitle');
       errPanel.appendChild(title);
       const reason = document.createElement('div');
       reason.style.cssText = 'color:#faa;font-size:14px;margin-bottom:24px;max-width:600px;text-align:center;';
@@ -6408,12 +6419,12 @@ async function main() {
       const btns = document.createElement('div');
       btns.style.cssText = 'display:flex;gap:16px;margin-top:8px;flex-wrap:wrap;justify-content:center;';
       const retryBtn = document.createElement('button');
-      retryBtn.textContent = 'RETRY';
+      retryBtn.textContent = t('network.connection.retry');
       retryBtn.style.cssText = 'padding:12px 28px;font:bold 16px monospace;background:#060;color:#0f0;border:2px solid #0f0;cursor:pointer;letter-spacing:2px;';
       retryBtn.onclick = () => window.location.reload();
       btns.appendChild(retryBtn);
       const backBtnEl = document.createElement('button');
-      backBtnEl.textContent = '◀ MAIN MENU';
+      backBtnEl.textContent = `◀ ${t('network.connection.mainMenu')}`;
       backBtnEl.style.cssText = 'padding:12px 28px;font:bold 16px monospace;background:#110;color:#888;border:2px solid #446;cursor:pointer;letter-spacing:2px;';
       backBtnEl.onclick = () => { window.location.href = window.location.pathname; };
       btns.appendChild(backBtnEl);
@@ -6431,7 +6442,7 @@ async function main() {
     onRetrying: () => {
       // First attempt failed — show reconnecting status while auto-retry is in progress.
       // This fires on mobile when the network is still stabilizing after screen-on.
-      updateStatusText('Connection failed — reconnecting...');
+      updateStatusText(t('network.status.connectionFailedReconnecting'));
       console.log('[NetworkMain] Auto-retrying connection after initial failure...');
     },
   }).then(() => {
@@ -6458,18 +6469,18 @@ async function main() {
     // Show Start Game button immediately if we're the host; onStateChange will
     // re-evaluate this on every state update with the authoritative isHost value.
     if (isHost) {
-      updateStatusText('Connected! You are the HOST — press START GAME.');
+      updateStatusText(t('network.status.connectedHostStart'));
       startBtn.style.display = 'block';
       modeSelectorDiv.style.display = 'block';
     } else {
-      updateStatusText('Connected! Waiting for host to start the game...');
+      updateStatusText(t('network.status.connectedWaitingHost'));
       startBtn.style.display = 'none';
     }
 
     network.setCallbacks({
       onStateChange,
       onGameStart: () => {
-        updateStatusText('Game starting...');
+        updateStatusText(t('network.status.gameStarting'));
         startBtn.style.display = 'none';
         modeSelectorDiv.style.display = 'none';
         gameOverShown = false; // Reset so GameOverScreen can show next game over
@@ -6602,7 +6613,7 @@ async function main() {
         netMainLog(`[NetworkMain] Player ${id} entity removed immediately on disconnect`);
       },
       onHostLeft: () => {
-        handleConnectionLost('Host disconnected from the game.');
+        handleConnectionLost(t('network.status.hostDisconnected'));
       },
       onHostChanged: (newHostId: string) => {
         // isHost is updated via onStateChange (state.hostId sync), but give
@@ -6611,13 +6622,13 @@ async function main() {
           isHost = true;
           // Stop server is only in the pause menu — never shown in the HUD.
           stopServerBtn.style.display = 'none';
-          updateStatusText('You are now the host!');
+          updateStatusText(t('network.status.youAreHost'));
           statusEl.style.color = '#0ff';
           netMainLog('[NetworkMain] Host role transferred to this client');
         }
       },
       onGameEnded: () => {
-        handleConnectionLost('The host has ended the game.');
+        handleConnectionLost(t('network.status.hostEndedGame'));
       },
       onPlayerLevelUp: (data: { playerId: string; newLevel: number; playerName: string }) => {
         if (data.playerId === localPlayerId) {
@@ -6777,7 +6788,7 @@ async function main() {
         // specific callback (e.g. onHostLeft) and not a deliberate disconnect
         // (code 1000 = normal closure triggered by our own disconnect() call).
         if (!connectionLost && code !== 1000) {
-          handleConnectionLost(`Server connection closed (code ${code}).`);
+          handleConnectionLost(t('network.status.serverConnectionClosed', { code }));
         }
       },
       onStartupHash: (hash: string) => {
@@ -6808,7 +6819,7 @@ async function main() {
         if (data.phase === 'voting') {
           startBtn.style.display = 'none';
           modeSelectorDiv.style.display = 'none';
-          updateStatusText('VOTING');
+          updateStatusText(t('voting.voting'));
         } else if (data.phase === 'playing') {
           startBtn.style.display = 'none';
           modeSelectorDiv.style.display = 'none';
@@ -6886,14 +6897,14 @@ async function main() {
 
     const title = document.createElement('div');
     title.style.cssText = 'color:#f44;font-size:32px;font-weight:bold;letter-spacing:4px;margin-bottom:12px;';
-    title.textContent = isServerDown ? 'SERVER UNREACHABLE' : 'CONNECTION FAILED';
+    title.textContent = isServerDown ? t('network.connection.serverUnreachable') : t('network.connection.connectionFailed');
     errPanel.appendChild(title);
 
     const reason = document.createElement('div');
     reason.style.cssText = 'color:#faa;font-size:14px;margin-bottom:12px;max-width:600px;text-align:center;word-break:break-word;white-space:pre-wrap;';
     reason.textContent = isServerDown
-      ? `Could not reach game server at ${serverUrl}`
-      : `Error: ${msg}`;
+      ? t('network.connection.couldNotReachServer', { url: serverUrl })
+      : t('network.connection.errorMessage', { message: msg });
     errPanel.appendChild(reason);
 
     // Session-expiry hint — shown when the server is reachable but the session failed.
@@ -6902,8 +6913,8 @@ async function main() {
     const sessionHint = document.createElement('div');
     sessionHint.style.cssText = 'color:#888;font-size:13px;margin-bottom:16px;max-width:520px;text-align:center;line-height:1.6;border:1px solid #333;padding:10px 16px;border-radius:4px;';
     sessionHint.textContent = isServerDown
-      ? 'Your phone may have lost Wi-Fi when the screen turned off. Retrying once automatically — if it still fails, check the connection and try again.'
-      : 'If your screen turned off while in a game, your session may have expired. Tap RETRY — you will rejoin as a new player.';
+      ? t('network.connection.phoneWifiHint')
+      : t('network.connection.sessionExpiredHint');
     errPanel.appendChild(sessionHint);
 
     // Possible-cause checklist (always visible)
@@ -6914,17 +6925,17 @@ async function main() {
     const isWSL2Ip = /^172\.(1[6-9]|2[0-9]|3[01])\./.test(hostname);
     const steps = [
       isServerDown
-        ? '1. Is the "Geometry Wars Server" window open and running on the host PC?'
-        : '1. The server started but the handshake failed — try RETRY below',
-      `2. Firewall: Windows must allow inbound TCP on port 3000 (the Vite dev server port)`,
-      '3. Both devices must be on the same WiFi / LAN',
+        ? t('network.diagnostics.stepServerWindow')
+        : t('network.diagnostics.stepHandshakeFailed'),
+      t('network.diagnostics.stepFirewall'),
+      t('network.diagnostics.stepSameWifi'),
       isHttps
-        ? '4. ⚠ You are on HTTPS — change to http:// to allow WebSocket connections'
-        : `4. Test server health: open ${healthUrl}/health in a browser tab`,
+        ? t('network.diagnostics.stepHttps')
+        : t('network.diagnostics.stepHealth', { url: healthUrl }),
       ...(isWSL2Ip ? [
-        `5. ⚠ WSL2 IP detected (${hostname}) — this IP is unreachable from other devices!`,
-        '   Use the Windows LAN IP (192.168.x.x) shown in the host screen instead.',
-        '   Run Setup-WSL-LAN.bat as Administrator to enable port forwarding.',
+        t('network.diagnostics.stepWslIp', { hostname }),
+        t('network.diagnostics.stepUseWindowsLan'),
+        t('network.diagnostics.stepPortForwarding'),
       ] : []),
     ];
     const list = document.createElement('div');
@@ -6940,10 +6951,10 @@ async function main() {
     if (diagEntries.length > 0) {
       const diagSection = document.createElement('div');
       diagSection.style.cssText = 'color:#666;font-size:12px;margin-bottom:16px;max-width:600px;text-align:left;border:1px solid #333;padding:10px;border-radius:4px;';
-      diagSection.innerHTML = '<div style="color:#888;margin-bottom:6px;font-weight:bold;">Connection Diagnostics:</div>' +
-        `<div>Server URL: <span style="color:#0af">${serverUrl}</span></div>` +
-        `<div>Fallback URL: <span style="color:#0af">${fallbackUrl ?? '(none)'}</span></div>` +
-        `<div>Cross-origin: <span style="color:${isCrossOrigin ? '#f44' : '#0f0'}">${isCrossOrigin ? 'YES' : 'no (same-origin)'}</span></div>` +
+      diagSection.innerHTML = `<div style="color:#888;margin-bottom:6px;font-weight:bold;">${t('network.diagnostics.title')}</div>` +
+        `<div>${t('network.diagnostics.serverUrl')}: <span style="color:#0af">${serverUrl}</span></div>` +
+        `<div>${t('network.diagnostics.fallbackUrl')}: <span style="color:#0af">${fallbackUrl ?? t('network.diagnostics.none')}</span></div>` +
+        `<div>${t('network.diagnostics.crossOrigin')}: <span style="color:${isCrossOrigin ? '#f44' : '#0f0'}">${isCrossOrigin ? t('network.diagnostics.yes') : t('network.diagnostics.noSameOrigin')}</span></div>` +
         diagEntries.map(([label, status]) =>
           `<div>${label}: <span style="color:${status.startsWith('OK') ? '#0f0' : '#f44'}">${status}</span></div>`
         ).join('');
@@ -6953,7 +6964,7 @@ async function main() {
     // Diagnostic link
     const diagLink = document.createElement('a');
     diagLink.href = '/lan-test.html';
-    diagLink.textContent = 'Run LAN Diagnostics';
+    diagLink.textContent = t('network.diagnostics.runLanDiagnostics');
     diagLink.style.cssText =
       'color:#0af;font-size:14px;margin-bottom:20px;letter-spacing:1px;';
     errPanel.appendChild(diagLink);
@@ -6968,7 +6979,7 @@ async function main() {
     btns.style.cssText = 'display:flex;gap:16px;margin-top:8px;';
 
     const retryBtn = document.createElement('button');
-    retryBtn.textContent = 'RETRY CONNECTION';
+    retryBtn.textContent = t('network.diagnostics.retryConnection');
     retryBtn.style.cssText =
       'padding:12px 28px;font:bold 16px monospace;background:#060;color:#0f0;' +
       'border:2px solid #0f0;cursor:pointer;letter-spacing:2px;';
@@ -6976,7 +6987,7 @@ async function main() {
     btns.appendChild(retryBtn);
 
     const backBtnInPanel = document.createElement('button');
-    backBtnInPanel.textContent = '◀ MAIN MENU';
+    backBtnInPanel.textContent = `◀ ${t('network.connection.mainMenu')}`;
     backBtnInPanel.style.cssText =
       'padding:12px 28px;font:bold 16px monospace;background:#110;color:#888;' +
       'border:2px solid #446;cursor:pointer;letter-spacing:2px;';
@@ -6987,7 +6998,8 @@ async function main() {
 
     // Copy Debug Info button
     const copyBtn = document.createElement('button');
-    copyBtn.textContent = '📋 COPY DEBUG INFO';
+    const copyDebugInfoLabel = t('network.diagnostics.copyDebugInfo');
+    copyBtn.textContent = copyDebugInfoLabel;
     copyBtn.style.cssText =
       'margin-top:12px;padding:8px 20px;font:bold 13px monospace;background:#001133;color:#06f;' +
       'border:1px solid #06f;cursor:pointer;letter-spacing:1px;';
@@ -7004,8 +7016,8 @@ async function main() {
         ...Object.entries(diagnosticResults).map(([k, v]) => `${k}: ${v}`),
       ].join('\n');
       navigator.clipboard.writeText(info).then(
-        () => { copyBtn.textContent = '✓ COPIED'; setTimeout(() => { copyBtn.textContent = '📋 COPY DEBUG INFO'; }, 2000); },
-        () => { copyBtn.textContent = 'COPY FAILED — SEE CONSOLE'; }
+        () => { copyBtn.textContent = t('network.diagnostics.copied'); setTimeout(() => { copyBtn.textContent = copyDebugInfoLabel; }, 2000); },
+        () => { copyBtn.textContent = t('network.diagnostics.copyFailed'); }
       );
     };
     errPanel.appendChild(copyBtn);
@@ -7013,7 +7025,10 @@ async function main() {
     // Direct connect input — bypass lobby, type host IP manually
     const directDiv = document.createElement('div');
     directDiv.style.cssText = 'margin-top:20px;max-width:600px;width:100%;border-top:1px solid #333;padding-top:16px;';
-    directDiv.innerHTML = '<div style="color:#666;font-size:12px;margin-bottom:8px;letter-spacing:1px;">DIRECT CONNECT (bypass lobby — type host IP)</div>';
+    const directTitle = document.createElement('div');
+    directTitle.textContent = t('network.diagnostics.directConnectTitle');
+    directTitle.style.cssText = 'color:#666;font-size:12px;margin-bottom:8px;letter-spacing:1px;';
+    directDiv.appendChild(directTitle);
     const directRow = document.createElement('div');
     directRow.style.cssText = 'display:flex;gap:8px;align-items:center;';
     const directInput = document.createElement('input');
@@ -7024,7 +7039,7 @@ async function main() {
       'flex:1;padding:8px 12px;font:14px monospace;background:#001;color:#0af;' +
       'border:1px solid #06f;outline:none;';
     const directBtn = document.createElement('button');
-    directBtn.textContent = 'CONNECT';
+    directBtn.textContent = t('network.diagnostics.connect');
     directBtn.style.cssText =
       'padding:8px 16px;font:bold 13px monospace;background:#003;color:#06f;' +
       'border:1px solid #06f;cursor:pointer;white-space:nowrap;';

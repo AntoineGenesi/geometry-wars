@@ -526,7 +526,19 @@
     "connection": {
       "connectingToServer": "Connecting to the server",
       "notConnected": "Not connected to server!",
-      "starting": "Starting..."
+      "starting": "Starting...",
+      "returningToMenu": "RETURNING TO MENU...",
+      "connectingOverlay": "CONNECTING TO SERVER...",
+      "timedOutTitle": "CONNECTION TIMED OUT",
+      "timedOutMessage": "Connection timed out after {{seconds}}s. Is the server running and reachable from this device?",
+      "retry": "RETRY",
+      "mainMenu": "MAIN MENU",
+      "serverUnreachable": "SERVER UNREACHABLE",
+      "connectionFailed": "CONNECTION FAILED",
+      "couldNotReachServer": "Could not reach game server at {{url}}",
+      "errorMessage": "Error: {{message}}",
+      "phoneWifiHint": "Your phone may have lost Wi-Fi when the screen turned off. Retrying once automatically — if it still fails, check the connection and try again.",
+      "sessionExpiredHint": "If your screen turned off while in a game, your session may have expired. Tap RETRY — you will rejoin as a new player."
     },
     "lobby": {
       "gameSettings": "GAME SETTINGS",
@@ -534,7 +546,15 @@
       "startGame": "START GAME",
       "onlyHostCanStart": "Only the host can start the game.",
       "backToMenu": "BACK TO MENU",
-      "stopServer": "STOP SERVER"
+      "stopServer": "STOP SERVER",
+      "coop": "CO-OP",
+      "waveType": "WAVE TYPE",
+      "claustrophobiaSmallSurfaces": "🔴 Small surfaces only (sphere/torus/capsule/icosahedron)",
+      "firstTo": "First to",
+      "livesPerPlayer": "Lives per player",
+      "lastStandingWins": "(last standing wins)",
+      "waitingForPlayersHost": "Waiting for players... (Host: select mode + press START GAME)",
+      "waitingForHostMode": "Waiting for host to start... Mode: {{mode}}"
     },
     "connectionLost": {
       "title": "CONNECTION LOST",
@@ -547,7 +567,49 @@
     },
     "localMenu": {
       "title": "MENU",
-      "hostPauseWarning": "Game continues - only the host can pause the server"
+      "hostPauseWarning": "Game continues - only the host can pause the server",
+      "allPlayers": "ALL PLAYERS",
+      "tapResume": "Tap ⏸ to resume",
+      "escResume": "Press ESC to resume",
+      "pressEscapePauseAll": "Press Escape to pause the game for everyone"
+    },
+    "status": {
+      "pausedBy": "PAUSED by {{name}}",
+      "playing": "PLAYING",
+      "wave": "Wave {{wave}}",
+      "connectedHostStart": "Connected! You are the HOST — press START GAME.",
+      "connectedWaitingHost": "Connected! Waiting for host to start the game...",
+      "gameStarting": "Game starting...",
+      "connectionFailedReconnecting": "Connection failed — reconnecting...",
+      "youAreHost": "You are now the host!",
+      "hostDisconnected": "Host disconnected from the game.",
+      "hostEndedGame": "The host has ended the game.",
+      "serverConnectionClosed": "Server connection closed (code {{code}})."
+    },
+    "diagnostics": {
+      "title": "Connection Diagnostics:",
+      "serverUrl": "Server URL",
+      "fallbackUrl": "Fallback URL",
+      "none": "(none)",
+      "crossOrigin": "Cross-origin",
+      "yes": "YES",
+      "noSameOrigin": "no (same-origin)",
+      "runLanDiagnostics": "Run LAN Diagnostics",
+      "retryConnection": "RETRY CONNECTION",
+      "copyDebugInfo": "📋 COPY DEBUG INFO",
+      "copied": "✓ COPIED",
+      "copyFailed": "COPY FAILED — SEE CONSOLE",
+      "directConnectTitle": "DIRECT CONNECT (bypass lobby — type host IP)",
+      "connect": "CONNECT",
+      "stepServerWindow": "1. Is the \"Geometry Wars Server\" window open and running on the host PC?",
+      "stepHandshakeFailed": "1. The server started but the handshake failed — try RETRY below",
+      "stepFirewall": "2. Firewall: Windows must allow inbound TCP on port 3000 (the Vite dev server port)",
+      "stepSameWifi": "3. Both devices must be on the same WiFi / LAN",
+      "stepHttps": "4. ⚠ You are on HTTPS — change to http:// to allow WebSocket connections",
+      "stepHealth": "4. Test server health: open {{url}}/health in a browser tab",
+      "stepWslIp": "5. ⚠ WSL2 IP detected ({{hostname}}) — this IP is unreachable from other devices!",
+      "stepUseWindowsLan": "   Use the Windows LAN IP (192.168.x.x) shown in the host screen instead.",
+      "stepPortForwarding": "   Run Setup-WSL-LAN.bat as Administrator to enable port forwarding."
     }
   }
 }
