@@ -385,5 +385,28 @@ export class ProfilingOverlay {
       background: rgba(60, 80, 120, 0.5);
       border-radius: 2px;
     }
+
+    @media (max-width: 500px) {
+      #profiling-overlay {
+        top: 64px;
+        left: max(12px, env(safe-area-inset-left, 0px));
+        right: max(12px, env(safe-area-inset-right, 0px));
+        width: auto;
+        max-width: calc(100vw - 24px);
+        font-size: 11px;
+      }
+
+      #profiling-overlay .profiling-scope-list {
+        max-height: 45vh;
+      }
+
+      #profiling-overlay .profiling-scope-row {
+        grid-template-columns: 1fr auto auto;
+      }
+
+      #profiling-overlay .profiling-scope-bar {
+        display: none;
+      }
+    }
   `;
 }

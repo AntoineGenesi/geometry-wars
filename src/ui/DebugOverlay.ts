@@ -810,14 +810,15 @@ export class DebugOverlay {
   private static readonly CSS = `
     #debug-overlay {
       position: fixed;
-      top: 120px;
-      left: 10px;
+      right: 16px;
+      bottom: 152px;
       z-index: 900;
       pointer-events: none;
       font-family: 'Consolas', 'Courier New', monospace;
       font-size: 13px;
       line-height: 1.4;
       user-select: none;
+      width: 240px;
     }
 
     #debug-overlay .debug-live {
@@ -878,7 +879,7 @@ export class DebugOverlay {
       border-radius: 4px;
       padding: 5px 8px;
       pointer-events: none;
-      min-width: 200px;
+      min-width: 0;
     }
 
     #debug-overlay .debug-profiler-title {
@@ -1068,9 +1069,11 @@ export class DebugOverlay {
     /* --- Mobile compact mode (≤ 500px wide) --- */
     @media (max-width: 500px) {
       #debug-overlay {
-        top: 4px;
+        top: auto;
         left: auto;
-        right: 4px;
+        right: max(12px, env(safe-area-inset-right, 0px));
+        bottom: max(72px, calc(env(safe-area-inset-bottom, 0px) + 72px));
+        width: auto;
         font-size: 10px;
         line-height: 1.3;
       }
@@ -1081,6 +1084,10 @@ export class DebugOverlay {
         gap: 6px;
         align-items: center;
         padding: 3px 6px;
+      }
+
+      #debug-overlay .debug-toggle-graphs {
+        display: none;
       }
 
       /* Layout each row inline instead of stacked */
