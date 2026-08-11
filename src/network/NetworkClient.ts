@@ -336,6 +336,83 @@ export interface ClientMetricsPayload {
   surfaceName?: string;
   /** Current game mode (e.g. "waves") */
   gameMode?: string;
+  /** Average render-frame delta in milliseconds for the metrics window. */
+  frameDtAvg?: number;
+  /** 95th percentile render-frame delta in milliseconds. */
+  frameDtP95?: number;
+  /** 99th percentile render-frame delta in milliseconds. */
+  frameDtP99?: number;
+  /** Render frames over 33ms in the metrics window. */
+  longFrameCountOver33ms?: number;
+  /** Render frames over 50ms in the metrics window. */
+  longFrameCountOver50ms?: number;
+  /** Coalesced state handler calls emitted to network-main in the metrics window. */
+  stateChangeCount?: number;
+  /** Average Colyseus patch arrival interval in milliseconds. */
+  patchIntervalAvg?: number;
+  /** 95th percentile Colyseus patch arrival interval in milliseconds. */
+  patchIntervalP95?: number;
+  /** Maximum Colyseus patch arrival interval in milliseconds. */
+  patchIntervalMax?: number;
+  /** Average schema-to-client-state conversion cost in milliseconds. */
+  convertStateMsAvg?: number;
+  /** 95th percentile schema-to-client-state conversion cost in milliseconds. */
+  convertStateMsP95?: number;
+  /** Average network-main onStateChange callback cost in milliseconds. */
+  onStateChangeMsAvg?: number;
+  /** 95th percentile network-main onStateChange callback cost in milliseconds. */
+  onStateChangeMsP95?: number;
+  /** Average local render target server-sample age in milliseconds. */
+  serverSampleAgeMsAvg?: number;
+  /** 95th percentile local render target server-sample age in milliseconds. */
+  serverSampleAgeMsP95?: number;
+  /** Maximum local render target server-sample age in milliseconds. */
+  serverSampleAgeMsMax?: number;
+  /** Average authoritative server-sample interval in milliseconds. */
+  serverSampleIntervalMsAvg?: number;
+  /** 95th percentile authoritative server-sample interval in milliseconds. */
+  serverSampleIntervalMsP95?: number;
+  /** Maximum authoritative server-sample interval in milliseconds. */
+  serverSampleIntervalMsMax?: number;
+  /** 95th percentile world-space distance between consecutive local server samples. */
+  serverSampleDeltaP95?: number;
+  /** Local render target snap count delta in the metrics window. */
+  snapCountDelta?: number;
+  /** Local render target reset count delta in the metrics window. */
+  resetCountDelta?: number;
+  /** Minimum stale-scale observed in the metrics window. */
+  staleScaleMin?: number;
+  /** Number of input packets sent to the server in the metrics window. */
+  inputSendCount?: number;
+  /** Number of changed-input packets sent in the metrics window. */
+  inputChangedCount?: number;
+  /** Milliseconds since the latest input packet was sent. */
+  lastInputAgeMs?: number;
+  /** Average absolute movement joystick magnitude sampled before input sends. */
+  moveInputAbsAvg?: number;
+  /** Average absolute aim joystick/mouse magnitude sampled before input sends. */
+  aimInputAbsAvg?: number;
+  /** Players observed by the client in the metrics window. */
+  playerCount?: number;
+  /** Weapon pickups observed by the client in the metrics window. */
+  weaponPickupCount?: number;
+  /** Super pickups observed by the client in the metrics window. */
+  superPickupCount?: number;
+  /** Buff pickups observed by the client in the metrics window. */
+  buffPickupCount?: number;
+  /** Health pickups observed by the client in the metrics window. */
+  healthPickupCount?: number;
+}
+
+export interface NetworkStateTimingStats {
+  stateChangeCount?: number;
+  patchIntervalAvg?: number;
+  patchIntervalP95?: number;
+  patchIntervalMax?: number;
+  convertStateMsAvg?: number;
+  convertStateMsP95?: number;
+  onStateChangeMsAvg?: number;
+  onStateChangeMsP95?: number;
 }
 
 /** Startup config payload from server (mirrors GameRoom.ts StartupConfigPayload) */
@@ -567,6 +644,25 @@ function netLog(...args: unknown[]): void {
   }
 }
 
+function networkNowMs(): number {
+  return typeof performance !== 'undefined' && typeof performance.now === 'function'
+    ? performance.now()
+    : Date.now();
+}
+
+function summarizeTimingWindow(values: number[]): { avg?: number; p95?: number; max?: number } {
+  if (values.length === 0) return {};
+  const sorted = values.slice().sort((a, b) => a - b);
+  const sum = values.reduce((acc, value) => acc + value, 0);
+  const p95Index = Math.min(sorted.length - 1, Math.ceil(sorted.length * 0.95) - 1);
+  const round = (value: number) => Math.round(value * 100) / 100;
+  return {
+    avg: round(sum / values.length),
+    p95: round(sorted[p95Index]),
+    max: round(sorted[sorted.length - 1]),
+  };
+}
+
 /**
  * Network client for connecting to Colyseus game server
  */
@@ -582,6 +678,11 @@ export class NetworkClient {
   // onAdd/listen/onStateChange all triggering simultaneously. Uses
   // requestAnimationFrame to coalesce into a single call per frame.
   private stateChangePending = false;
+  private stateTimingStateChangeCount = 0;
+  private stateTimingLastPatchMs = 0;
+  private readonly stateTimingPatchIntervals: number[] = [];
+  private readonly stateTimingConvertMs: number[] = [];
+  private readonly stateTimingOnStateChangeMs: number[] = [];
 
   /** The primary server URL this client was constructed with. */
   private serverUrl: string;
@@ -702,7 +803,7 @@ export class NetworkClient {
           clearInterval(pollInterval);
           netLog(`[Network] State ready after ${pollCount * 100}ms, players=${players.size}`);
           const state = this.convertState(room.state);
-          this.callbacks.onStateChange?.(state);
+          this.emitStateChange(state);
         }
       }, 100);
     } catch (error) {
@@ -742,7 +843,7 @@ export class NetworkClient {
       this.stateChangePending = false;
       if (!this.room?.state || !this.callbacks.onStateChange) return;
       const gameState = this.convertState(this.room.state);
-      this.callbacks.onStateChange(gameState);
+      this.emitStateChange(gameState);
     });
   }
 
@@ -753,6 +854,7 @@ export class NetworkClient {
     // Colyseus fires onStateChange at patch rate (~30Hz), but onAdd/listen
     // callbacks can also trigger in the same frame, causing 3-4x redundant work.
     this.room.onStateChange(() => {
+      this.recordPatchArrival();
       this.scheduleStateChange();
     });
 
@@ -1002,7 +1104,45 @@ export class NetworkClient {
     });
   }
 
+  private recordPatchArrival(): void {
+    const nowMs = networkNowMs();
+    if (this.stateTimingLastPatchMs > 0) {
+      this.stateTimingPatchIntervals.push(nowMs - this.stateTimingLastPatchMs);
+    }
+    this.stateTimingLastPatchMs = nowMs;
+  }
+
+  private emitStateChange(state: NetworkGameState): void {
+    if (!this.callbacks.onStateChange) return;
+    const startedMs = networkNowMs();
+    this.callbacks.onStateChange(state);
+    this.stateTimingOnStateChangeMs.push(networkNowMs() - startedMs);
+    this.stateTimingStateChangeCount++;
+  }
+
+  consumeStateTimingStats(): NetworkStateTimingStats {
+    const patch = summarizeTimingWindow(this.stateTimingPatchIntervals);
+    const convert = summarizeTimingWindow(this.stateTimingConvertMs);
+    const onStateChange = summarizeTimingWindow(this.stateTimingOnStateChangeMs);
+    const stats: NetworkStateTimingStats = {
+      stateChangeCount: this.stateTimingStateChangeCount,
+      patchIntervalAvg: patch.avg,
+      patchIntervalP95: patch.p95,
+      patchIntervalMax: patch.max,
+      convertStateMsAvg: convert.avg,
+      convertStateMsP95: convert.p95,
+      onStateChangeMsAvg: onStateChange.avg,
+      onStateChangeMsP95: onStateChange.p95,
+    };
+    this.stateTimingStateChangeCount = 0;
+    this.stateTimingPatchIntervals.length = 0;
+    this.stateTimingConvertMs.length = 0;
+    this.stateTimingOnStateChangeMs.length = 0;
+    return stats;
+  }
+
   private convertState(state: unknown): NetworkGameState {
+    const convertStartedMs = networkNowMs();
     const s = state as {
       players: Map<string, NetworkPlayerState>;
       bullets: ForEachable<NetworkBulletState>;
@@ -1073,7 +1213,7 @@ export class NetworkClient {
     const emptyArray: ForEachable<never> = { forEach() {} };
     const emptyMap = new Map<string, string>();
     const emptyBoolMap = new Map<string, boolean>();
-    return {
+    const converted: NetworkGameState = {
       players: s.players,
       bullets: s.bullets || emptyArray,
       blackHoleBolts: s.blackHoleBolts || emptyArray,
@@ -1132,6 +1272,8 @@ export class NetworkClient {
       allowAllPlayersPause: s.allowAllPlayersPause ?? true,
       pausedById: s.pausedById ?? '',
     };
+    this.stateTimingConvertMs.push(networkNowMs() - convertStartedMs);
+    return converted;
   }
 
   /**
@@ -1469,7 +1611,7 @@ export class NetworkClient {
   triggerInitialSync(): void {
     if (!this.room?.state || !this.callbacks.onStateChange) return;
     const state = this.convertState(this.room.state);
-    this.callbacks.onStateChange(state);
+    this.emitStateChange(state);
   }
 
   /**

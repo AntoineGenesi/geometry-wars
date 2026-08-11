@@ -38,6 +38,39 @@ describe('ClientMetricsPayload — telemetry field format', () => {
       activeBuffs: 'hot_hands:3,shock_aura:1',
       surfaceName: 'sphere',
       gameMode: 'waves',
+      frameDtAvg: 16.67,
+      frameDtP95: 24.5,
+      frameDtP99: 41.25,
+      longFrameCountOver33ms: 2,
+      longFrameCountOver50ms: 1,
+      stateChangeCount: 590,
+      patchIntervalAvg: 16.4,
+      patchIntervalP95: 18.2,
+      patchIntervalMax: 34.1,
+      convertStateMsAvg: 0.18,
+      convertStateMsP95: 0.41,
+      onStateChangeMsAvg: 1.4,
+      onStateChangeMsP95: 3.9,
+      serverSampleAgeMsAvg: 8.2,
+      serverSampleAgeMsP95: 19.8,
+      serverSampleAgeMsMax: 45.6,
+      serverSampleIntervalMsAvg: 16.1,
+      serverSampleIntervalMsP95: 17.9,
+      serverSampleIntervalMsMax: 32.8,
+      serverSampleDeltaP95: 0.08,
+      snapCountDelta: 0,
+      resetCountDelta: 1,
+      staleScaleMin: 0.72,
+      inputSendCount: 96,
+      inputChangedCount: 96,
+      lastInputAgeMs: 12.5,
+      moveInputAbsAvg: 0.64,
+      aimInputAbsAvg: 0.98,
+      playerCount: 2,
+      weaponPickupCount: 1,
+      superPickupCount: 0,
+      buffPickupCount: 2,
+      healthPickupCount: 1,
     };
 
     // All required fields must be present
@@ -58,6 +91,14 @@ describe('ClientMetricsPayload — telemetry field format', () => {
     expect(payload.activeBuffs).toBe('hot_hands:3,shock_aura:1');
     expect(payload.surfaceName).toBe('sphere');
     expect(payload.gameMode).toBe('waves');
+    expect(payload.frameDtP99).toBe(41.25);
+    expect(payload.patchIntervalP95).toBe(18.2);
+    expect(payload.convertStateMsP95).toBe(0.41);
+    expect(payload.onStateChangeMsP95).toBe(3.9);
+    expect(payload.serverSampleAgeMsP95).toBe(19.8);
+    expect(payload.serverSampleDeltaP95).toBe(0.08);
+    expect(payload.inputSendCount).toBe(96);
+    expect(payload.playerCount).toBe(2);
   });
 
   it('serializes cleanly to JSON (server log format)', () => {
@@ -87,6 +128,10 @@ describe('ClientMetricsPayload — telemetry field format', () => {
     expect(parsed.gameMode).toBe('waves');
     // activeBuffs should not be present (undefined serializes to absent)
     expect(parsed.activeBuffs).toBeUndefined();
+    // Choppiness fields remain optional and absent when the client has no window.
+    expect(parsed.frameDtP95).toBeUndefined();
+    expect(parsed.patchIntervalP95).toBeUndefined();
+    expect((parsed as unknown as Record<string, unknown>).tickMsP95).toBeUndefined();
   });
 
   describe('formatActiveBuffs', () => {

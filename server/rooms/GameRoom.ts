@@ -1078,10 +1078,49 @@ interface ServerEnemyAI {
   spawnTimer?: number;
 }
 
+type ServerTickSection =
+  | 'tick'
+  | 'movement'
+  | 'bullets'
+  | 'enemies'
+  | 'collisions'
+  | 'pickups'
+  | 'waves'
+  | 'other';
+
+function serverPerfNowMs(): number {
+  return typeof performance !== 'undefined' && typeof performance.now === 'function'
+    ? performance.now()
+    : Date.now();
+}
+
+function summarizeServerTickWindow(values: number[]): { avg?: number; p95?: number; max?: number } {
+  if (values.length === 0) return {};
+  const sorted = values.slice().sort((a, b) => a - b);
+  const sum = values.reduce((acc, value) => acc + value, 0);
+  const p95Index = Math.min(sorted.length - 1, Math.ceil(sorted.length * 0.95) - 1);
+  const round = (value: number) => Math.round(value * 100) / 100;
+  return {
+    avg: round(sum / values.length),
+    p95: round(sorted[p95Index]),
+    max: round(sorted[sorted.length - 1]),
+  };
+}
+
 export class GameRoom extends Room<GameState> {
   private nextBulletId = 0;
   private nextEnemyId = 0;
   private metricsLogPath: string | null = null;
+  private readonly tickMetricWindows: Record<ServerTickSection, number[]> = {
+    tick: [],
+    movement: [],
+    bullets: [],
+    enemies: [],
+    collisions: [],
+    pickups: [],
+    waves: [],
+    other: [],
+  };
   private hostIsLocal: boolean = false;
   /** True when the current host joined with requestHost=true (navigated from the start menu). */
   private hostRequestedHost: boolean = false;
@@ -2844,6 +2883,7 @@ export class GameRoom extends Room<GameState> {
   private handleClientMetrics(client: Client, data: Record<string, unknown>): void {
     if (!this.metricsLogPath) return;
     const player = this.state.players.get(client.sessionId);
+    const serverTickSummary = this.consumeTickMetricSummary();
     const entry = JSON.stringify({
       _type: 'metrics',
       sessionId: this.roomId,
@@ -2851,6 +2891,7 @@ export class GameRoom extends Room<GameState> {
       playerId: client.sessionId,
       playerName: player?.name ?? 'unknown',
       mapSize: this.state.mapSize,
+      ...serverTickSummary,
       ...data,
     });
     try {
@@ -2859,6 +2900,36 @@ export class GameRoom extends Room<GameState> {
       this.logger.error('[GameRoom] Failed to write metrics entry:', err);
       this.metricsLogPath = null;
     }
+  }
+
+  private recordTickMetric(section: ServerTickSection, ms: number): void {
+    if (!Number.isFinite(ms) || ms < 0) return;
+    this.tickMetricWindows[section].push(ms);
+  }
+
+  private consumeTickMetricSummary(): Record<string, number | undefined> {
+    const metricFor = (prefix: string, values: number[]) => {
+      const stats = summarizeServerTickWindow(values);
+      return {
+        [`${prefix}Avg`]: stats.avg,
+        [`${prefix}P95`]: stats.p95,
+        [`${prefix}Max`]: stats.max,
+      };
+    };
+    const summary = {
+      ...metricFor('tickMs', this.tickMetricWindows.tick),
+      ...metricFor('tickMovementMs', this.tickMetricWindows.movement),
+      ...metricFor('tickBulletsMs', this.tickMetricWindows.bullets),
+      ...metricFor('tickEnemiesMs', this.tickMetricWindows.enemies),
+      ...metricFor('tickCollisionsMs', this.tickMetricWindows.collisions),
+      ...metricFor('tickPickupsMs', this.tickMetricWindows.pickups),
+      ...metricFor('tickWavesMs', this.tickMetricWindows.waves),
+      ...metricFor('tickOtherMs', this.tickMetricWindows.other),
+    };
+    for (const section of Object.keys(this.tickMetricWindows) as ServerTickSection[]) {
+      this.tickMetricWindows[section].length = 0;
+    }
+    return summary;
   }
 
   /**
@@ -5305,6 +5376,7 @@ export class GameRoom extends Room<GameState> {
   }
 
   private tickGame() {
+    const tickStartedMs = serverPerfNowMs();
     const dt = 1 / TICK_RATE;
     // Increment game timer only if not paused
     if (!this.state.countdownPaused) {
@@ -5312,22 +5384,35 @@ export class GameRoom extends Room<GameState> {
     }
 
     // Apply player movement from stored inputs (60Hz consistent)
+    let sectionStartedMs = serverPerfNowMs();
     this.applyPlayerMovement(dt);
+    let sectionEndedMs = serverPerfNowMs();
+    this.recordTickMetric('movement', sectionEndedMs - sectionStartedMs);
 
     // Update bullets
+    sectionStartedMs = sectionEndedMs;
     this.updateBullets(dt);
+    sectionEndedMs = serverPerfNowMs();
+    this.recordTickMetric('bullets', sectionEndedMs - sectionStartedMs);
 
     // Update enemies
+    sectionStartedMs = sectionEndedMs;
     this.updateEnemies(dt);
 
     // Black Hole is a server-owned field layered on top of normal enemy AI.
     this.updateBlackHoleBolts(dt);
     this.updateBlackHoleFields(dt);
+    sectionEndedMs = serverPerfNowMs();
+    this.recordTickMetric('enemies', sectionEndedMs - sectionStartedMs);
 
     // Check collisions
+    sectionStartedMs = sectionEndedMs;
     this.checkCollisions();
+    sectionEndedMs = serverPerfNowMs();
+    this.recordTickMetric('collisions', sectionEndedMs - sectionStartedMs);
 
     // Update weapon pickups (age + despawn)
+    sectionStartedMs = sectionEndedMs;
     this.updateWeaponPickups(dt);
 
     // Update super pickups (age + despawn)
@@ -5341,10 +5426,16 @@ export class GameRoom extends Room<GameState> {
 
     // Update shield pickups (age + despawn)
     this.updateShieldPickups(dt);
+    sectionEndedMs = serverPerfNowMs();
+    this.recordTickMetric('pickups', sectionEndedMs - sectionStartedMs);
 
     // Wave-based enemy spawning (replaces old per-2s individual spawn)
+    sectionStartedMs = sectionEndedMs;
     this.tickWaves(dt);
+    sectionEndedMs = serverPerfNowMs();
+    this.recordTickMetric('waves', sectionEndedMs - sectionStartedMs);
 
+    sectionStartedMs = sectionEndedMs;
     // Drain per-player invincibility timers
     this.drainInvincibility(dt);
 
@@ -5367,6 +5458,9 @@ export class GameRoom extends Room<GameState> {
         && this.state.gameTime >= CLAUSTROPHOBIA_TIME_LIMIT_SECS) {
       this.logger.log(`[GameRoom] Claustrophobia time limit reached (${CLAUSTROPHOBIA_TIME_LIMIT_SECS}s)`);
       this.transitionToVoting();
+      sectionEndedMs = serverPerfNowMs();
+      this.recordTickMetric('other', sectionEndedMs - sectionStartedMs);
+      this.recordTickMetric('tick', sectionEndedMs - tickStartedMs);
       return;
     }
 
@@ -5377,6 +5471,9 @@ export class GameRoom extends Room<GameState> {
 
     // Check game over
     this.checkGameOver();
+    sectionEndedMs = serverPerfNowMs();
+    this.recordTickMetric('other', sectionEndedMs - sectionStartedMs);
+    this.recordTickMetric('tick', sectionEndedMs - tickStartedMs);
   }
 
   private tickVoting() {

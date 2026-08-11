@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import puppeteer from 'puppeteer-core';
 import { spawn, execSync } from 'child_process';
-import { existsSync, mkdirSync, readdirSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'fs';
 import { dirname, resolve } from 'path';
 import { fileURLToPath } from 'url';
 
@@ -153,8 +153,14 @@ function summarize(samples) {
   const renderSamples = samples
     .map((sample) => sample?.camera?.renderTarget)
     .filter((target) => target && target.valid);
+  const choppinessSamples = samples
+    .map((sample) => sample?.choppiness)
+    .filter((choppiness) => choppiness && typeof choppiness === 'object');
   const values = (name) => renderSamples
     .map((target) => Number(target[name]))
+    .filter((value) => Number.isFinite(value));
+  const choppyValues = (name) => choppinessSamples
+    .map((choppiness) => Number(choppiness[name]))
     .filter((value) => Number.isFinite(value));
   const stat = (name) => {
     const list = values(name);
@@ -166,11 +172,14 @@ function summarize(samples) {
       avg: list.reduce((sum, value) => sum + value, 0) / list.length,
     };
   };
+  const choppyStat = (name) => statFrom(choppyValues(name));
   const last = samples[samples.length - 1] || null;
   const lastTarget = renderSamples[renderSamples.length - 1] || null;
+  const lastChoppiness = choppinessSamples[choppinessSamples.length - 1] || null;
   return {
     sampleCount: samples.length,
     renderTargetSampleCount: renderSamples.length,
+    choppinessSampleCount: choppinessSamples.length,
     fps: statFrom(samples.map((sample) => sample?.fps).filter(Number.isFinite)),
     targetDelta: stat('targetDelta'),
     cameraDelta: stat('cameraDelta'),
@@ -179,6 +188,22 @@ function summarize(samples) {
     serverSampleAgeMs: stat('serverSampleAgeMs'),
     serverSampleIntervalMs: stat('serverSampleIntervalMs'),
     serverSampleDelta: stat('serverSampleDelta'),
+    choppiness: {
+      frameDtP95: choppyStat('frameDtP95'),
+      frameDtP99: choppyStat('frameDtP99'),
+      longFrameCountOver33ms: choppyStat('longFrameCountOver33ms'),
+      longFrameCountOver50ms: choppyStat('longFrameCountOver50ms'),
+      patchIntervalP95: choppyStat('patchIntervalP95'),
+      patchIntervalMax: choppyStat('patchIntervalMax'),
+      convertStateMsP95: choppyStat('convertStateMsP95'),
+      onStateChangeMsP95: choppyStat('onStateChangeMsP95'),
+      sampleAgeP95: choppyStat('serverSampleAgeMsP95'),
+      sampleAgeMax: choppyStat('serverSampleAgeMsMax'),
+      inputSendCount: choppyStat('inputSendCount'),
+      lastInputAgeMs: choppyStat('lastInputAgeMs'),
+      latest: lastChoppiness,
+      causalBuckets: summarizeChoppinessBuckets(lastChoppiness),
+    },
     last: last ? {
       time: last.time,
       frame: last.frame,
@@ -207,6 +232,87 @@ function statFrom(list) {
     max: Math.max(...list),
     avg: list.reduce((sum, value) => sum + value, 0) / list.length,
   };
+}
+
+function summarizeChoppinessBuckets(choppiness) {
+  if (!choppiness) {
+    return {
+      available: false,
+      frame: 'no-client-window-yet',
+      patch: 'no-client-window-yet',
+      stateHandler: 'no-client-window-yet',
+      sampleAge: 'no-client-window-yet',
+      input: 'no-client-window-yet',
+    };
+  }
+  const frameDtP95 = Number(choppiness.frameDtP95);
+  const longFrames33 = Number(choppiness.longFrameCountOver33ms);
+  const patchP95 = Number(choppiness.patchIntervalP95);
+  const patchMax = Number(choppiness.patchIntervalMax);
+  const convertP95 = Number(choppiness.convertStateMsP95);
+  const onStateP95 = Number(choppiness.onStateChangeMsP95);
+  const sampleAgeP95 = Number(choppiness.serverSampleAgeMsP95);
+  const sampleAgeMax = Number(choppiness.serverSampleAgeMsMax);
+  const inputSendCount = Number(choppiness.inputSendCount);
+  const lastInputAgeMs = Number(choppiness.lastInputAgeMs);
+  return {
+    available: true,
+    frame: Number.isFinite(frameDtP95) && (frameDtP95 > 33 || longFrames33 > 0) ? 'watch' : 'ok',
+    patch: Number.isFinite(patchP95) && (patchP95 > 25 || patchMax > 40) ? 'watch' : 'ok',
+    stateHandler: Number.isFinite(onStateP95) && (onStateP95 > 8 || convertP95 > 3) ? 'watch' : 'ok',
+    sampleAge: Number.isFinite(sampleAgeP95) && (sampleAgeP95 > 35 || sampleAgeMax > 80) ? 'watch' : 'ok',
+    input: (Number.isFinite(inputSendCount) && inputSendCount === 0)
+      || (Number.isFinite(lastInputAgeMs) && lastInputAgeMs > 150)
+      ? 'watch'
+      : 'ok',
+  };
+}
+
+function extractMetricsLogPath(output) {
+  const matches = [...String(output || '').matchAll(/Metrics log:\s+(.+mp-perf-[^\s]+\.jsonl)/g)];
+  if (matches.length === 0) return null;
+  return matches[matches.length - 1][1].trim();
+}
+
+function readMetricsRows(logPath) {
+  if (!logPath || !existsSync(logPath)) return [];
+  return readFileSync(logPath, 'utf8')
+    .split('\n')
+    .filter((line) => line.trim().startsWith('{'))
+    .map((line) => {
+      try {
+        return JSON.parse(line);
+      } catch {
+        return null;
+      }
+    })
+    .filter((row) => row && row._type === 'metrics');
+}
+
+function summarizeServerMetrics(rows) {
+  const metric = (name) => statFrom(rows.map((row) => Number(row[name])).filter(Number.isFinite));
+  const latest = rows[rows.length - 1] || null;
+  return {
+    rowCount: rows.length,
+    tickMsP95: metric('tickMsP95'),
+    tickMsMax: metric('tickMsMax'),
+    movementMsP95: metric('tickMovementMsP95'),
+    bulletsMsP95: metric('tickBulletsMsP95'),
+    enemiesMsP95: metric('tickEnemiesMsP95'),
+    collisionsMsP95: metric('tickCollisionsMsP95'),
+    pickupsMsP95: metric('tickPickupsMsP95'),
+    wavesMsP95: metric('tickWavesMsP95'),
+    otherMsP95: metric('tickOtherMsP95'),
+    latest,
+    causalBucket: latest && Number(latest.tickMsP95) > 16 ? 'watch' : rows.length > 0 ? 'ok' : 'no-server-log-window',
+  };
+}
+
+function isNonCriticalProbeError(error) {
+  return error.includes('favicon')
+    || error.includes('AudioContext')
+    || error.includes('user gesture')
+    || error.includes('/health net::ERR_CONNECTION_REFUSED');
 }
 
 async function runProbe() {
@@ -282,6 +388,11 @@ async function runProbe() {
 
     const screenshotPath = resolve(PROJECT_ROOT, `test-screenshots/mp-camera-smoothness/${LABEL}-${timestamp}.png`);
     await page.screenshot({ path: screenshotPath }).catch(() => {});
+    const colyseusOutput = servers.colyseus.output();
+    const viteOutput = servers.vite.output();
+    const metricsLogPath = extractMetricsLogPath(colyseusOutput);
+    const metricsRows = readMetricsRows(metricsLogPath);
+    const serverMetricsSummary = summarizeServerMetrics(metricsRows);
     const report = {
       label: LABEL,
       startedAt,
@@ -294,10 +405,13 @@ async function runProbe() {
       onePage: true,
       startClicked,
       summary: summarize(samples),
+      metricsLogPath,
+      serverMetricsSummary,
       sampleTail: samples.slice(-8).map((sample) => ({
         time: sample.time,
         frame: sample.frame,
         fps: sample.fps,
+        choppiness: sample.choppiness ?? null,
         player: sample.player,
         camera: sample.camera,
         surface: sample.surface,
@@ -307,12 +421,11 @@ async function runProbe() {
       })),
       screenshotPath,
       errors,
-      criticalErrors: errors.filter((error) =>
-        !error.includes('favicon') && !error.includes('AudioContext') && !error.includes('user gesture')),
+      criticalErrors: errors.filter((error) => !isNonCriticalProbeError(error)),
       consoleTail: consoleLogs.slice(-80),
       serverOutputTail: {
-        colyseus: servers.colyseus.output().slice(-1200),
-        vite: servers.vite.output().slice(-1200),
+        colyseus: colyseusOutput.slice(-1200),
+        vite: viteOutput.slice(-1200),
       },
     };
     const reportPath = resolve(PROJECT_ROOT, `reports/mp-camera-smoothness-${LABEL}-${timestamp}.json`);
