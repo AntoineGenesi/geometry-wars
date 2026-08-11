@@ -49,4 +49,20 @@ describe('LocalRenderTargetTracker', () => {
     expect(tracker.getTelemetry().frameBendScale).toBeGreaterThan(0);
     expect(tracker.getTelemetry().frameBendScale).toBeLessThan(1);
   });
+
+  it('caps local target lead for small sustained curved-surface bends', () => {
+    const tracker = new LocalRenderTargetTracker(80, 120);
+    const out = new THREE.Vector3();
+    const straightNormal = new THREE.Vector3(0, 1, 0);
+    const curvedNormal = new THREE.Vector3(0, Math.cos(THREE.MathUtils.degToRad(1)), Math.sin(THREE.MathUtils.degToRad(1)));
+
+    tracker.sample(new THREE.Vector3(0, 0, 0), 0, straightNormal);
+    tracker.sample(new THREE.Vector3(0.2, 0, 0), 33, curvedNormal);
+
+    expect(tracker.getTarget(66, out)).toBe(true);
+    expect(out.x).toBeGreaterThan(0.2);
+    expect(out.x).toBeLessThanOrEqual(0.240001);
+    expect(tracker.getTelemetry().frameBendScale).toBe(1);
+    expect(tracker.getTelemetry().frameCurveScale).toBeLessThan(0.9);
+  });
 });
