@@ -200,6 +200,24 @@ describe('BuildChoiceScreen conflict filtering', () => {
     screen.dispose();
   });
 
+  it('renders cumulative non-Standard percentage copy from upgrade data', () => {
+    const screen = new BuildChoiceScreen();
+    const onConfirm = vi.fn();
+
+    screen.show(
+      WeaponType.Spread,
+      ['spread_bl_5', 'spread_br_5'],
+      new Set(),
+      160,
+      onConfirm,
+    );
+
+    const html = body.children[0].innerHTML;
+    expect(html).toContain('damage per pellet totals +80% [+50%]');
+    expect(html).toContain('damage per pellet totals +110% [+30%]');
+    screen.dispose();
+  });
+
   it('marks MP choices with compact nonblocking layout class', () => {
     const screen = new BuildChoiceScreen();
     const onConfirm = vi.fn();

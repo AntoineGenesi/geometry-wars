@@ -323,6 +323,18 @@ describe('WeaponMasteryScreen — constellation UI', () => {
     expect(html).toContain('bolt damage totals +190% [+50%]');
   });
 
+  it('show() exposes cumulative non-Standard percentage copy for mastery tooltips', () => {
+    screen.show();
+    const html = mockBody.children[0].innerHTML;
+
+    expect(html).toContain('data-node-id="piercing_a_3"');
+    expect(html).toContain('Beam length totals +350% [+200%]');
+    expect(html).toContain('data-node-id="black_hole_ar_4"');
+    expect(html).toContain('Duration totals +390% [+200%]');
+    expect(html).toContain('data-node-id="tesla_coil_b_5"');
+    expect(html).toContain('damage per tick totals +415% [+150%]');
+  });
+
   it('show() HTML contains available points display', () => {
     screen.show();
     const html = mockBody.children[0].innerHTML;
