@@ -181,6 +181,43 @@ describe('BuildChoiceScreen conflict filtering', () => {
     screen.dispose();
   });
 
+  it('renders cumulative Standard Blaster count and percentage copy', () => {
+    const screen = new BuildChoiceScreen();
+    const onConfirm = vi.fn();
+
+    screen.show(
+      WeaponType.Standard,
+      ['standard_a_2', 'standard_br_7'],
+      new Set(),
+      80,
+      onConfirm,
+    );
+
+    const html = body.children[0].innerHTML;
+    expect(html).toContain('Fires +1 bolt, 3 total');
+    expect(html).toContain('bolt damage totals +40% [+40%]');
+    expect(html).toContain('Bolt damage totals +140% [+40%]');
+    screen.dispose();
+  });
+
+  it('renders cumulative non-Standard percentage copy from upgrade data', () => {
+    const screen = new BuildChoiceScreen();
+    const onConfirm = vi.fn();
+
+    screen.show(
+      WeaponType.Spread,
+      ['spread_bl_5', 'spread_br_5'],
+      new Set(),
+      160,
+      onConfirm,
+    );
+
+    const html = body.children[0].innerHTML;
+    expect(html).toContain('damage per pellet totals +80% [+50%]');
+    expect(html).toContain('damage per pellet totals +110% [+30%]');
+    screen.dispose();
+  });
+
   it('marks MP choices with compact nonblocking layout class', () => {
     const screen = new BuildChoiceScreen();
     const onConfirm = vi.fn();

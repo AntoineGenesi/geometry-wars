@@ -89,6 +89,52 @@ describe('UPGRADE_TREES', () => {
     }
   });
 
+  it('Standard Blaster copy reports cumulative totals for counts and percentages', () => {
+    expect(getNodeById('standard_a_2')?.effect).toContain('Fires +1 bolt, 3 total');
+    expect(getNodeById('standard_a_2')?.effect).toContain('bolt damage totals +40% [+40%]');
+    expect(getNodeById('standard_a_3')?.effect).toContain('bolt damage totals +100% [+60%]');
+    expect(getNodeById('standard_al_6')?.effect).toContain('fires +4 bolts, 9 total');
+    expect(getNodeById('standard_ar_6')?.effect).toContain('fire rate totals +110% [+30%]');
+    expect(getNodeById('standard_b_3')?.effect).toContain('Fires +1 bolt, 4 tight total');
+    expect(getNodeById('standard_b_3')?.effect).toContain('fire rate totals +80% [+50%]');
+    expect(getNodeById('standard_br_7')?.effect).toContain('Bolt damage totals +140% [+40%]');
+    expect(getNodeById('standard_br_10')?.effect).toContain('bolt damage totals +190% [+50%]');
+  });
+
+  it('percentage upgrade copy avoids isolated percent fragments across all weapons', () => {
+    const isolatedPercentPattern = /(^|[:,;]\s)[+-]\d+%/;
+    const missingCumulativeContext: string[] = [];
+    const isolatedPercentNodes: string[] = [];
+
+    for (const n of getAllNodes()) {
+      if (!n.effect.includes('%')) continue;
+
+      const effectWithoutBracketDeltas = n.effect.replace(/\[[^\]]+\]/g, '');
+      if (isolatedPercentPattern.test(effectWithoutBracketDeltas)) {
+        isolatedPercentNodes.push(`${n.id}: ${n.effect}`);
+      }
+      if (!/(totals|stays at|remains|than baseline|beyond|tighter|wider|faster|shorter)/i.test(n.effect)) {
+        missingCumulativeContext.push(`${n.id}: ${n.effect}`);
+      }
+    }
+
+    expect(isolatedPercentNodes).toEqual([]);
+    expect(missingCumulativeContext).toEqual([]);
+  });
+
+  it('non-Standard percentage copy reports runtime cumulative totals', () => {
+    expect(getNodeById('spread_bl_5')?.effect).toContain('damage per pellet totals +80% [+50%]');
+    expect(getNodeById('piercing_a_3')?.effect).toContain('Beam length totals +350% [+200%]');
+    expect(getNodeById('piercing_bl_5')?.effect).toContain('fire rate totals +190% [+70%]');
+    expect(getNodeById('chain_lightning_b_4')?.effect).toContain('Damage per arc stays at +155%');
+    expect(getNodeById('homing_a_5')?.effect).toContain('missile speed totals +405% [+150%]');
+    expect(getNodeById('plasma_mortar_b_5')?.effect).toContain('listed explosion damage totals +235% [+50%]');
+    expect(getNodeById('gravity_gun_a_5')?.effect).toContain('pull radius totals +440% [+150%]');
+    expect(getNodeById('laser_beam_b_5')?.effect).toContain('beam duration totals +380% [+150%]');
+    expect(getNodeById('black_hole_ar_4')?.effect).toContain('Duration totals +390% [+200%]');
+    expect(getNodeById('tesla_coil_b_5')?.effect).toContain('damage per tick totals +415% [+150%]');
+  });
+
   it('Homing has two non-empty branches without pinning filler count', () => {
     const tree = UPGRADE_TREES[WeaponType.Homing];
     const branchA = tree.nodes.filter(n => n.branch === 'a');
