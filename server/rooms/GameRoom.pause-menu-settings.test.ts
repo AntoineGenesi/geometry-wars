@@ -370,6 +370,15 @@ describe('pause permission — default and validation mirror', () => {
     state.pausedById = paused ? sessionId : '';
   }
 
+  function clearPauseStateForPhaseBoundary(state: PauseState): { broadcast: boolean } {
+    const wasPaused = state.isPaused === true;
+    state.isPaused = false;
+    state.pausedById = '';
+    if (!wasPaused) return { broadcast: false };
+    state.pauseRevision++;
+    return { broadcast: true };
+  }
+
   it('allows a joiner to pause when the default permission is enabled', () => {
     const state: PauseState = {
       hostId: 'host-123',
@@ -420,6 +429,55 @@ describe('pause permission — default and validation mirror', () => {
     expect(state.isPaused).toBe(false);
     expect(state.pauseRevision).toBe(2);
     expect(state.pausedById).toBe('');
+  });
+
+  it('bumps and broadcasts revision when a phase boundary clears a real pause', () => {
+    const state: PauseState = {
+      hostId: 'host-123',
+      allowAllPlayersPause: true,
+      isPaused: true,
+      pauseRevision: 7,
+      pausedById: 'joiner-456',
+    };
+
+    const result = clearPauseStateForPhaseBoundary(state);
+
+    expect(result.broadcast).toBe(true);
+    expect(state.isPaused).toBe(false);
+    expect(state.pausedById).toBe('');
+    expect(state.pauseRevision).toBe(8);
+  });
+
+  it('does not bump revision when a phase boundary is already unpaused', () => {
+    const state: PauseState = {
+      hostId: 'host-123',
+      allowAllPlayersPause: true,
+      isPaused: false,
+      pauseRevision: 7,
+      pausedById: '',
+    };
+
+    const result = clearPauseStateForPhaseBoundary(state);
+
+    expect(result.broadcast).toBe(false);
+    expect(state.pauseRevision).toBe(7);
+  });
+
+  it('clears stale pausedById at a phase boundary even when already unpaused', () => {
+    const state: PauseState = {
+      hostId: 'host-123',
+      allowAllPlayersPause: true,
+      isPaused: false,
+      pauseRevision: 7,
+      pausedById: 'joiner-456',
+    };
+
+    const result = clearPauseStateForPhaseBoundary(state);
+
+    expect(result.broadcast).toBe(false);
+    expect(state.isPaused).toBe(false);
+    expect(state.pausedById).toBe('');
+    expect(state.pauseRevision).toBe(7);
   });
 });
 

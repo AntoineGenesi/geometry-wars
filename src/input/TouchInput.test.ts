@@ -573,6 +573,8 @@ describe('TouchInput', () => {
     const input = new TouchInput();
     input.setGamePaused(true);
 
+    expect(input.pausedForGame).toBe(true);
+
     const listeners = _windowListeners.get('touchstart') ?? [];
     const event = {
       changedTouches: { length: 1, 0: touch(1, W * 0.25, H * 0.6) },
@@ -602,6 +604,8 @@ describe('TouchInput', () => {
     const input = new TouchInput();
     input.setGamePaused(true);
     input.setGamePaused(false);
+
+    expect(input.pausedForGame).toBe(false);
 
     // Touch in left joystick zone and drag right
     fireWindowEvent('touchstart', [touch(1, W * 0.25, H * 0.6)]);

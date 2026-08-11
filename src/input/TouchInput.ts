@@ -242,6 +242,10 @@ export class TouchInput {
     }
   }
 
+  get pausedForGame(): boolean {
+    return this.gamePaused;
+  }
+
   private resetJoystickState(): void {
     this.leftActive = false;
     this.leftTouchId = null;
