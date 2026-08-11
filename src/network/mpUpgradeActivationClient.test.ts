@@ -5,6 +5,7 @@ import { getNodeById } from '../systems/UpgradeTreeData';
 import { WeaponType } from '../weapons/WeaponTypes';
 import {
   filterMpBuildChoiceNodeIds,
+  handleMpBuildChoiceAvailability,
   reconcileActiveUpgradeSnapshot,
   reconcileUpgradeActivationResult,
   upgradeActivationKey,
@@ -34,7 +35,7 @@ function makePending(
   tracker: MatchUpgradeTracker;
   pendingUpgradeActivations: Map<string, PendingUpgradeActivation>;
 } {
-  const tracker = new MatchUpgradeTracker(makeStore([nodeId]));
+  const tracker = new MatchUpgradeTracker(makeStore([nodeId]), { autoApplySingleNode: false });
   tracker.onBuildChoiceAvailable = vi.fn();
   const node = getNodeById(nodeId);
   expect(node).toBeDefined();
@@ -142,8 +143,90 @@ describe('MP upgrade activation client reconciliation', () => {
     expect(result).toEqual({
       supportedNodeIds: ['standard_a_1', 'spread_b_2'],
       unsupportedNodeIds: ['standard_b_4', 'black_hole_a_1'],
+      autoApplyNodeId: null,
       shouldShowChoiceScreen: true,
     });
+  });
+
+  it('marks one supported MP node as an auto activation request, not a choice screen', () => {
+    const result = filterMpBuildChoiceNodeIds([
+      'standard_a_1',
+      'standard_b_4',
+    ]);
+
+    expect(result).toEqual({
+      supportedNodeIds: ['standard_a_1'],
+      unsupportedNodeIds: ['standard_b_4'],
+      autoApplyNodeId: 'standard_a_1',
+      shouldShowChoiceScreen: false,
+    });
+  });
+
+  it('live MP availability handler sends exactly one server activation request for one supported node', () => {
+    const clearPendingChoice = vi.fn();
+    const setBuildChoiceActive = vi.fn();
+    const sendUpgradeActivationRequest = vi.fn();
+    const showChoiceScreen = vi.fn();
+
+    const result = handleMpBuildChoiceAvailability({
+      weaponType: WeaponType.Standard,
+      availableNodeIds: ['standard_a_1', 'standard_b_4'],
+      clearPendingChoice,
+      setBuildChoiceActive,
+      sendUpgradeActivationRequest,
+      showChoiceScreen,
+    });
+
+    expect(result).toBe('auto_requested');
+    expect(sendUpgradeActivationRequest).toHaveBeenCalledTimes(1);
+    expect(sendUpgradeActivationRequest).toHaveBeenCalledWith('standard_a_1', WeaponType.Standard, true);
+    expect(clearPendingChoice).not.toHaveBeenCalled();
+    expect(showChoiceScreen).not.toHaveBeenCalled();
+    expect(setBuildChoiceActive).toHaveBeenCalledWith(false);
+  });
+
+  it('live MP availability handler preserves unsupported-only no-op with no request', () => {
+    const clearPendingChoice = vi.fn();
+    const setBuildChoiceActive = vi.fn();
+    const sendUpgradeActivationRequest = vi.fn();
+    const showChoiceScreen = vi.fn();
+
+    const result = handleMpBuildChoiceAvailability({
+      weaponType: WeaponType.Standard,
+      availableNodeIds: ['standard_b_4', 'standard_ar_5', 'black_hole_a_1'],
+      clearPendingChoice,
+      setBuildChoiceActive,
+      sendUpgradeActivationRequest,
+      showChoiceScreen,
+    });
+
+    expect(result).toBe('no_supported_nodes');
+    expect(sendUpgradeActivationRequest).not.toHaveBeenCalled();
+    expect(clearPendingChoice).toHaveBeenCalledTimes(1);
+    expect(showChoiceScreen).not.toHaveBeenCalled();
+    expect(setBuildChoiceActive).toHaveBeenCalledWith(false);
+  });
+
+  it('live MP availability handler preserves multi-supported choice UI', () => {
+    const clearPendingChoice = vi.fn();
+    const setBuildChoiceActive = vi.fn();
+    const sendUpgradeActivationRequest = vi.fn();
+    const showChoiceScreen = vi.fn();
+
+    const result = handleMpBuildChoiceAvailability({
+      weaponType: WeaponType.Standard,
+      availableNodeIds: ['standard_a_1', 'standard_b_1', 'standard_b_4'],
+      clearPendingChoice,
+      setBuildChoiceActive,
+      sendUpgradeActivationRequest,
+      showChoiceScreen,
+    });
+
+    expect(result).toBe('choice_screen');
+    expect(sendUpgradeActivationRequest).not.toHaveBeenCalled();
+    expect(clearPendingChoice).not.toHaveBeenCalled();
+    expect(showChoiceScreen).toHaveBeenCalledWith(['standard_a_1', 'standard_b_1'], ['standard_b_4']);
+    expect(setBuildChoiceActive).toHaveBeenCalledWith(true);
   });
 
   it('lets the MP build-choice caller clear pending state without pausing when all offers are unsupported', () => {
@@ -156,6 +239,7 @@ describe('MP upgrade activation client reconciliation', () => {
     expect(result).toEqual({
       supportedNodeIds: [],
       unsupportedNodeIds: ['standard_b_4', 'standard_ar_5', 'black_hole_a_1'],
+      autoApplyNodeId: null,
       shouldShowChoiceScreen: false,
     });
   });

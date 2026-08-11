@@ -48,7 +48,7 @@ describe('MatchUpgradeTracker', () => {
   });
 
   // -------------------------------------------------------------------------
-  // recordKill — fires onBuildChoiceAvailable, does NOT auto-activate
+  // recordKill — auto-applies one actionable node, offers real choices for 2+
   // -------------------------------------------------------------------------
 
   it('does not fire onBuildChoiceAvailable before threshold', () => {
@@ -82,6 +82,25 @@ describe('MatchUpgradeTracker', () => {
       tracker.recordKill(WeaponType.PlasmaMortar);
     }
     expect(tracker.getActiveUpgrades(WeaponType.PlasmaMortar).size).toBe(0);
+  });
+
+  it('auto-applies a single actionable SP node without pending choice UI', () => {
+    const choiceAvailable = vi.fn();
+    const activated = vi.fn();
+    const autoApplied = vi.fn();
+    tracker.onBuildChoiceAvailable = choiceAvailable;
+    tracker.onUpgradeActivated = activated;
+    tracker.onAutoUpgradeApplied = autoApplied;
+
+    for (let i = 0; i < 30; i++) {
+      tracker.recordKill(WeaponType.Standard);
+    }
+
+    expect(choiceAvailable).not.toHaveBeenCalled();
+    expect(tracker.getPendingChoice()).toBeNull();
+    expect(tracker.getActiveUpgrades(WeaponType.Standard)).toContain('standard_a_1');
+    expect(activated).toHaveBeenCalledWith('standard_a_1', WeaponType.Standard);
+    expect(autoApplied).toHaveBeenCalledWith('standard_a_1', WeaponType.Standard);
   });
 
   it('does not fire onBuildChoiceAvailable more than once per threshold crossing', () => {
@@ -268,9 +287,11 @@ describe('MatchUpgradeTracker', () => {
     expect(choices[0]).not.toContain('plasma_mortar_a_2');
   });
 
-  it('higher-threshold node is offered after prerequisite is confirmed', () => {
+  it('higher-threshold single node auto-applies after prerequisite is confirmed', () => {
     const cb = vi.fn();
+    const autoApplied = vi.fn();
     tracker.onBuildChoiceAvailable = cb;
+    tracker.onAutoUpgradeApplied = autoApplied;
 
     // Cross threshold 10, confirm a_1
     for (let i = 0; i < 10; i++) {
@@ -283,9 +304,10 @@ describe('MatchUpgradeTracker', () => {
       tracker.recordKill(WeaponType.PlasmaMortar);
     }
 
-    expect(cb).toHaveBeenCalledTimes(2);
-    const [, secondNodeIds] = cb.mock.calls[1];
-    expect(secondNodeIds).toContain('plasma_mortar_a_2');
+    expect(cb).toHaveBeenCalledTimes(1);
+    expect(tracker.getPendingChoice()).toBeNull();
+    expect(tracker.getActiveUpgrades(WeaponType.PlasmaMortar)).toContain('plasma_mortar_a_2');
+    expect(autoApplied).toHaveBeenCalledWith('plasma_mortar_a_2', WeaponType.PlasmaMortar);
   });
 
   // -------------------------------------------------------------------------
@@ -350,9 +372,8 @@ describe('MatchUpgradeTracker', () => {
     expect(tracker.getKillCount(WeaponType.PlasmaMortar)).toBe(0);
     expect(tracker.getActiveUpgrades(WeaponType.PlasmaMortar).size).toBe(0);
     expect(tracker.getKillCount(WeaponType.Standard)).toBe(30);
-    // Callback fired for Standard only
-    expect(cb).toHaveBeenCalledTimes(1);
-    expect(cb.mock.calls[0][0]).toBe(WeaponType.Standard);
+    expect(cb).not.toHaveBeenCalled();
+    expect(tracker.getActiveUpgrades(WeaponType.Standard)).toContain('standard_a_1');
   });
 
   // -------------------------------------------------------------------------
@@ -430,11 +451,13 @@ describe('MatchUpgradeTracker', () => {
     expect(cb).not.toHaveBeenCalled();
   });
 
-  it('refreshFromStore offers newly unlocked nodes whose kill threshold was already met', () => {
+  it('refreshFromStore auto-applies one newly unlocked node whose kill threshold was already met', () => {
     const s = makeStore([]);
     const t = new MatchUpgradeTracker(s);
     const cb = vi.fn();
+    const autoApplied = vi.fn();
     t.onBuildChoiceAvailable = cb;
+    t.onAutoUpgradeApplied = autoApplied;
 
     for (let i = 0; i < 30; i++) {
       t.recordKill(WeaponType.Standard);
@@ -445,11 +468,9 @@ describe('MatchUpgradeTracker', () => {
     s.spendPoint('standard_a_1');
     t.refreshFromStore(s);
 
-    expect(cb).toHaveBeenCalledTimes(1);
-    expect(cb).toHaveBeenCalledWith(WeaponType.Standard, ['standard_a_1']);
-    expect(t.getPendingChoice()).toEqual({
-      weaponType: WeaponType.Standard,
-      nodeIds: ['standard_a_1'],
-    });
+    expect(cb).not.toHaveBeenCalled();
+    expect(t.getPendingChoice()).toBeNull();
+    expect(t.getActiveUpgrades(WeaponType.Standard)).toContain('standard_a_1');
+    expect(autoApplied).toHaveBeenCalledWith('standard_a_1', WeaponType.Standard);
   });
 });

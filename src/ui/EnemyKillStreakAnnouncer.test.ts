@@ -37,6 +37,7 @@ vi.mock('./BrailleAnimator', () => {
 });
 
 import { EnemyKillStreakAnnouncer } from './EnemyKillStreakAnnouncer';
+import { WeaponType } from '../weapons/WeaponTypes';
 
 // ---------------------------------------------------------------------------
 // Minimal DOM mock
@@ -233,6 +234,22 @@ describe('EnemyKillStreakAnnouncer', () => {
     expect(announcer.streakCount).toBe(1);
     expect(container?.style['display']).not.toBe('block');
     expect(sound.play).not.toHaveBeenCalled();
+  });
+
+  it('shows a top-line auto-applied upgrade notice without changing streak count', () => {
+    announcer.announceUpgradeApplied('standard_a_1', WeaponType.Standard);
+
+    const container = bodyChildren.find(el => el.id === 'enemy-kill-streak-announcer')!;
+    const asciiEl = container.children.find(el => el.className === 'eksa-ascii');
+    const nameEl = container.children.find(el => el.className === 'eksa-name');
+    const countEl = container.children.find(el => el.className === 'eksa-count');
+
+    expect(container.style['display']).toBe('block');
+    expect(asciiEl?.textContent).toBe('AUTO UPGRADE');
+    expect(nameEl?.textContent).toBe('ALREADY APPLIED');
+    expect(countEl?.textContent).toContain('Dual bolts');
+    expect(announcer.streakCount).toBe(0);
+    expect(sound.play).toHaveBeenCalledWith('multiplierUp', expect.objectContaining({ volume: 0.7 }));
   });
 
   // ── resetStreak after 50 kills → next kill triggers streak=1 ─────────────

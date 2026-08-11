@@ -1178,7 +1178,8 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
     upgradeNotification.showMasteryPointEarned();
   };
 
-  // When a kill threshold is crossed, pause the game and show the build-choice UI.
+  // When multiple actionable nodes unlock, pause the game and show the build-choice UI.
+  // Single non-choice unlocks auto-apply in MatchUpgradeTracker.
   matchUpgradeTracker.onBuildChoiceAvailable = (weaponType, availableNodeIds) => {
     isPaused = true;
     ctx.state.isPaused = true;
@@ -1198,6 +1199,10 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
   // Notify the player when a weapon upgrade node activates mid-match (after confirmChoice)
   matchUpgradeTracker.onUpgradeActivated = (nodeId, weaponType) => {
     upgradeNotification.show(nodeId, weaponType);
+  };
+
+  matchUpgradeTracker.onAutoUpgradeApplied = (nodeId, weaponType) => {
+    gameLoop.announceAutoUpgradeApplied(nodeId, weaponType);
   };
 
   // -- Screen shake --

@@ -121,7 +121,7 @@ import {
   SurfaceContactPathingProofSetupResult,
 } from './network/NetworkClient';
 import {
-  filterMpBuildChoiceNodeIds,
+  handleMpBuildChoiceAvailability,
   reconcileActiveUpgradeSnapshot,
   reconcileUpgradeActivationResult,
   upgradeActivationKey,
@@ -1383,7 +1383,7 @@ async function main() {
   const masteryPointStore = MasteryPointStore.load({
     debugPointMode: _netMainDebugMasteryPoints,
   });
-  let matchUpgradeTracker = new MatchUpgradeTracker(masteryPointStore);
+  let matchUpgradeTracker = new MatchUpgradeTracker(masteryPointStore, { autoApplySingleNode: false });
   const upgradeNotification = new UpgradeNotification();
   const buildChoiceScreen = new BuildChoiceScreen();
   // Local flag used while a build-choice card is shown. SP pauses; MP stays live.
@@ -1406,48 +1406,56 @@ async function main() {
     untilMs: number;
   } | null = null;
 
+  function sendUpgradeActivationRequest(
+    nodeId: string,
+    weaponType: WeaponType,
+    autoApplied = false,
+  ): void {
+    const key = upgradeActivationKey(nodeId, weaponType);
+    pendingUpgradeActivations.set(key, { nodeId, weaponType, autoApplied });
+    network.sendUpgradeActivation({
+      nodeId,
+      weaponType,
+      unlockedNodeIds: Array.from(masteryPointStore.getUnlockedNodes()),
+    });
+  }
+
   function wireBuildChoiceCallback(): void {
     matchUpgradeTracker.onBuildChoiceAvailable = (weaponType, availableNodeIds) => {
-      const supportFilter = filterMpBuildChoiceNodeIds(availableNodeIds);
-      if (supportFilter.unsupportedNodeIds.length > 0) {
-        netMainLog(`[NetworkMain] Filtered unsupported MP upgrade choices: ${supportFilter.unsupportedNodeIds.join(', ')}`);
-      }
-      if (!supportFilter.shouldShowChoiceScreen) {
-        matchUpgradeTracker.clearPendingChoice();
-        buildChoiceActive = false;
-        return;
-      }
-
-      buildChoiceActive = true;
-
-      const activeIds = matchUpgradeTracker.getActiveUpgrades(weaponType);
-      const killCount = matchUpgradeTracker.getKillCount(weaponType);
-
-      buildChoiceScreen.show(
+      handleMpBuildChoiceAvailability({
         weaponType,
-        supportFilter.supportedNodeIds,
-        activeIds,
-        killCount,
-        (chosenNodeId) => {
-          const key = upgradeActivationKey(chosenNodeId, weaponType);
-          pendingUpgradeActivations.set(key, { nodeId: chosenNodeId, weaponType });
-          network.sendUpgradeActivation({
-            nodeId: chosenNodeId,
+        availableNodeIds,
+        clearPendingChoice: () => matchUpgradeTracker.clearPendingChoice(),
+        setBuildChoiceActive: (active) => { buildChoiceActive = active; },
+        sendUpgradeActivationRequest,
+        logUnsupported: (unsupportedNodeIds) => {
+          netMainLog(`[NetworkMain] Filtered unsupported MP upgrade choices: ${unsupportedNodeIds.join(', ')}`);
+        },
+        showChoiceScreen: (supportedNodeIds, unsupportedNodeIds) => {
+          const activeIds = matchUpgradeTracker.getActiveUpgrades(weaponType);
+          const killCount = matchUpgradeTracker.getKillCount(weaponType);
+
+          buildChoiceScreen.show(
             weaponType,
-            unlockedNodeIds: Array.from(masteryPointStore.getUnlockedNodes()),
-          });
-          buildChoiceActive = false;
+            supportedNodeIds,
+            activeIds,
+            killCount,
+            (chosenNodeId) => {
+              sendUpgradeActivationRequest(chosenNodeId, weaponType);
+              buildChoiceActive = false;
+            },
+            {
+              mode: 'mp',
+              unsupportedNodeIds,
+              autoDismissMs: 6000,
+              onDismiss: () => {
+                matchUpgradeTracker.clearPendingChoice();
+                buildChoiceActive = false;
+              },
+            },
+          );
         },
-        {
-          mode: 'mp',
-          unsupportedNodeIds: supportFilter.unsupportedNodeIds,
-          autoDismissMs: 6000,
-          onDismiss: () => {
-            matchUpgradeTracker.clearPendingChoice();
-            buildChoiceActive = false;
-          },
-        },
-      );
+      });
     };
     matchUpgradeTracker.onUpgradeActivated = (nodeId, weaponType) => {
       upgradeNotification.show(nodeId, weaponType);
@@ -6111,7 +6119,7 @@ async function main() {
         // Dismiss analytics panel if countdown expired while reviewing
         analyticsPanel.hide();
         // Reset per-match upgrade tracker for the new round.
-        matchUpgradeTracker = new MatchUpgradeTracker(masteryPointStore);
+        matchUpgradeTracker = new MatchUpgradeTracker(masteryPointStore, { autoApplySingleNode: false });
         pendingUpgradeActivations.clear();
         wireBuildChoiceCallback();
         localWeaponManager.setUpgradeTracker(matchUpgradeTracker);
@@ -6135,7 +6143,7 @@ async function main() {
         startActiveGameMode();
         // Reset entities (safe to call even when empty — clears any stale state).
         // Reset per-match upgrade tracker for the first round.
-        matchUpgradeTracker = new MatchUpgradeTracker(masteryPointStore);
+        matchUpgradeTracker = new MatchUpgradeTracker(masteryPointStore, { autoApplySingleNode: false });
         pendingUpgradeActivations.clear();
         wireBuildChoiceCallback();
         localWeaponManager.setUpgradeTracker(matchUpgradeTracker);
@@ -6607,6 +6615,7 @@ async function main() {
       onUpgradeActivationResult: (data) => {
         lastUpgradeActivationResult = { ...data };
         const weaponType = SERVER_TO_WEAPON_TYPE[data.weaponType] ?? WeaponType.Standard;
+        const pending = pendingUpgradeActivations.get(upgradeActivationKey(data.nodeId, weaponType));
         const reconciliation = reconcileUpgradeActivationResult({
           accepted: data.accepted,
           nodeId: data.nodeId,
@@ -6616,6 +6625,9 @@ async function main() {
         });
         if (data.accepted) {
           netMainLog(`[NetworkMain] Server accepted upgrade activation: ${data.weaponType}/${data.nodeId}`);
+          if (pending?.autoApplied) {
+            enemyStreakAnnouncer.announceUpgradeApplied(pending.nodeId, pending.weaponType);
+          }
         } else {
           console.warn(`[NetworkMain] Server rejected upgrade activation: ${data.weaponType}/${data.nodeId} (${data.reason ?? 'unknown'})`);
         }

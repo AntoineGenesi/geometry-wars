@@ -1,7 +1,14 @@
 import { describe, expect, it, vi } from 'vitest';
 import { GameRoom } from './GameRoom';
 import { WeaponType } from '../../src/weapons/WeaponTypes';
+import { getNodeById } from '../../src/systems/UpgradeTreeData';
 import { validateMpUpgradeActivation } from './mpUpgradeActivation';
+
+function threshold(nodeId: string): number {
+  const node = getNodeById(nodeId);
+  if (!node) throw new Error(`missing upgrade node ${nodeId}`);
+  return node.killThreshold;
+}
 
 function makeRoom() {
   const room = Object.create(GameRoom.prototype) as any;
@@ -365,7 +372,7 @@ describe('GameRoom MP weapon upgrade runtime parity', () => {
     const room = makeRoom();
     const activeUpgradeNodes = new Map<string, number>();
     room.state.players.set('p1', { activeUpgradeNodes });
-    room.playerUpgradeKillCounts.set('p1', new Map([[WeaponType.Standard, 10]]));
+    room.playerUpgradeKillCounts.set('p1', new Map([[WeaponType.Standard, threshold('standard_a_1')]]));
     room.logger = { log: vi.fn() };
 
     const result = room.handleUpgradeActivationRequest('p1', {
@@ -428,7 +435,7 @@ describe('GameRoom MP weapon upgrade runtime parity', () => {
       unlockedNodeIds: ['standard_bl_5'],
     }, {
       activeNodeIds: new Set(['standard_b_4']),
-      killCount: 120,
+      killCount: threshold('standard_bl_5'),
     })).toMatchObject({ accepted: false, reason: 'unsupported_runtime_effect' });
   });
 
@@ -439,7 +446,7 @@ describe('GameRoom MP weapon upgrade runtime parity', () => {
       unlockedNodeIds: ['standard_b_4'],
     }, {
       activeNodeIds: new Set(['standard_b_3']),
-      killCount: 120,
+      killCount: threshold('standard_b_4'),
     })).toMatchObject({ accepted: false, reason: 'unsupported_runtime_effect' });
   });
 });

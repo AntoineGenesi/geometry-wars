@@ -6,6 +6,13 @@ import {
   type UpgradeActivationResult,
 } from './mpUpgradeActivation';
 import { WeaponType } from '../../src/weapons/WeaponTypes';
+import { getNodeById } from '../../src/systems/UpgradeTreeData';
+
+function threshold(nodeId: string): number {
+  const node = getNodeById(nodeId);
+  if (!node) throw new Error(`missing upgrade node ${nodeId}`);
+  return node.killThreshold;
+}
 
 function validate(
   request: UpgradeActivationRequest,
@@ -77,7 +84,7 @@ describe('MP upgrade activation validation', () => {
       handleUpgradeActivationRequest(sessionId: string, data: UpgradeActivationRequest): UpgradeActivationResult;
     };
     room.playerUpgradeKillCounts = new Map([
-      ['p1', new Map([[WeaponType.Standard, 10]])],
+      ['p1', new Map([[WeaponType.Standard, threshold('standard_a_1')]])],
     ]);
     room.playerActiveUpgradeNodes = new Map();
     room.logger = { log: vi.fn() };
@@ -120,7 +127,7 @@ describe('MP upgrade activation validation', () => {
       nodeId: 'standard_a_1',
       weaponType: WeaponType.Standard,
       unlockedNodeIds: [],
-    }, [], 10)).toMatchObject({ accepted: false, reason: 'not_unlocked' });
+    }, [], threshold('standard_a_1'))).toMatchObject({ accepted: false, reason: 'not_unlocked' });
   });
 
   it('rejects activations before the server-observed kill threshold', () => {
@@ -128,7 +135,7 @@ describe('MP upgrade activation validation', () => {
       nodeId: 'standard_a_1',
       weaponType: WeaponType.Standard,
       unlockedNodeIds: ['standard_a_1'],
-    }, [], 9)).toMatchObject({ accepted: false, reason: 'threshold_unmet' });
+    }, [], threshold('standard_a_1') - 1)).toMatchObject({ accepted: false, reason: 'threshold_unmet' });
   });
 
   it('rejects activations with unmet prerequisites', () => {
@@ -136,7 +143,7 @@ describe('MP upgrade activation validation', () => {
       nodeId: 'standard_a_2',
       weaponType: WeaponType.Standard,
       unlockedNodeIds: ['standard_a_2'],
-    }, [], 25)).toMatchObject({ accepted: false, reason: 'prerequisite_unmet' });
+    }, [], threshold('standard_a_2'))).toMatchObject({ accepted: false, reason: 'prerequisite_unmet' });
   });
 
   it('accepts activations when prerequisites are active server-side', () => {
@@ -144,7 +151,7 @@ describe('MP upgrade activation validation', () => {
       nodeId: 'standard_a_2',
       weaponType: WeaponType.Standard,
       unlockedNodeIds: ['standard_a_2'],
-    }, ['standard_a_1'], 25)).toMatchObject({ accepted: true });
+    }, ['standard_a_1'], threshold('standard_a_2'))).toMatchObject({ accepted: true });
   });
 
   it('rejects unsupported Spread nodes after entitlement and prerequisites pass', () => {
@@ -163,7 +170,7 @@ describe('MP upgrade activation validation', () => {
       nodeId: 'standard_ar_5',
       weaponType: WeaponType.Standard,
       unlockedNodeIds: ['standard_ar_5'],
-    }, ['standard_a_4', 'standard_al_5'], 120)).toMatchObject({
+    }, ['standard_a_4', 'standard_al_5'], threshold('standard_ar_5'))).toMatchObject({
       accepted: false,
       reason: 'unsupported_runtime_effect',
     });

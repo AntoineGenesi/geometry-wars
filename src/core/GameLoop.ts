@@ -139,6 +139,10 @@ export class GameLoop {
     this.enemyStreakAnnouncer?.setVisible(visible);
   }
 
+  announceAutoUpgradeApplied(nodeId: string, weaponType: WeaponType): void {
+    this.enemyStreakAnnouncer?.announceUpgradeApplied(nodeId, weaponType);
+  }
+
   update(ctx: GameContext, dt: number): void {
     // Skip update if paused or game over
     if (ctx.state.isPaused || ctx.state.isGameOver || ctx.state.isLevelComplete) return;
