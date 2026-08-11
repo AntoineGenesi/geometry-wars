@@ -34,7 +34,7 @@ export const SHARED_WEAPON_CONFIGS: Record<string, SharedWeaponConfig> = {
   chain_lightning: { ammo: 50,  damage: 4,    fireRate: 3   },
   plasma_mortar:   { ammo: 12,  damage: 20,   fireRate: 1.0 },
   gravity_gun:     { ammo: 12,  damage: 8,    fireRate: 1   },
-  laser_beam:      { ammo: 200, damage: 2,    fireRate: 60  },
+  laser_beam:      { ammo: 6,   damage: 2,    fireRate: 0.8 },
   black_hole:      { ammo: 3,   damage: 999,  fireRate: 0.3 },
   tesla_coil:      { ammo: 150, damage: 1,    fireRate: 30  },
 } as const;
@@ -63,10 +63,13 @@ export const SERVER_WEAPON_CONFIGS: Record<string, ServerWeaponConfig> = {
   chain_lightning: { ammo: 25,  damageMultiplier: 1.0, damage: 4,   fireRate: 3   },
   plasma_mortar:   { ammo: 12,  damageMultiplier: 2.0, damage: 20,  fireRate: 1.0 },
   gravity_gun:     { ammo: 12,  damageMultiplier: 1.0, damage: 4,   fireRate: 1.0 },
-  laser_beam:      { ammo: 200, damageMultiplier: 0.6, damage: 2,   fireRate: 60  },
+  laser_beam:      { ammo: 6,   damageMultiplier: 0.6, damage: 2,   fireRate: 0.8 },
   black_hole:      { ammo: 3,   damageMultiplier: 5.0, damage: 999, fireRate: 0.3 },
   tesla_coil:      { ammo: 150, damageMultiplier: 0.7, damage: 1,   fireRate: 30  },
 } as const;
+
+/** Laser is charge-counted: one ammo creates one steerable beam for this many seconds. */
+export const LASER_CHARGE_DURATION = 1.25;
 
 // ---------------------------------------------------------------------------
 // Player level constants

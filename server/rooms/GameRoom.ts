@@ -42,6 +42,7 @@ import {
   HEALTH_PICKUP_HEAL_AMOUNT,
   HEALTH_PICKUP_LIFETIME,
   HEALTH_PICKUP_SPAWN_RADIUS,
+  LASER_CHARGE_DURATION,
   PVP_KILLS_TO_WIN,
   DIFFICULTY_PER_PLAYER_FACTOR,
 } from '../shared/GameConstants';
@@ -1149,6 +1150,7 @@ export class GameRoom extends Room<GameState> {
   private readonly _blackHoleMoveDirection = new THREE.Vector3();
   private readonly _blackHoleSpiralDirection = new THREE.Vector3();
   private readonly _blackHoleEnemyNormal = new THREE.Vector3();
+  private playerLaserCharges: Map<string, { remaining: number }> = new Map();
 
   /**
    * Latest input state per player. Updated on message receipt, consumed
@@ -2124,6 +2126,7 @@ export class GameRoom extends Room<GameState> {
       this.playerInputs.delete(client.sessionId);
       this.playerInvincibility.delete(client.sessionId);
       this.playerBoostStates.delete(client.sessionId);
+      this.playerLaserCharges?.delete(client.sessionId);
       this.playerWeaponInventory.delete(client.sessionId);
       this.playerWeaponIndex.delete(client.sessionId);
       this.playerUpgradeKillCounts.delete(client.sessionId);
@@ -2780,6 +2783,7 @@ export class GameRoom extends Room<GameState> {
     this.playerInvincibility.clear();
     this.lastNearMissLogTime.clear();
     this.pendingRespawns.clear();
+    this.playerLaserCharges?.clear();
 
     // Reset KotH zone state for each new game
     this.kothZoneU = Math.random();
@@ -3200,10 +3204,10 @@ export class GameRoom extends Room<GameState> {
       player.surfaceV = approxUV.v;
 
       // Handle shooting (continuous action, applied per tick)
-      if (input.shooting) {
-        if (player.weaponType === 'laser_beam') {
-          this.applyLaserDamage(player, dt);
-        } else if (player.weaponType === 'tesla_coil') {
+      if (player.weaponType === 'laser_beam' || this.playerLaserCharges?.has(player.id)) {
+        this.applyLaserDamage(player, dt, input.shooting);
+      } else if (input.shooting) {
+        if (player.weaponType === 'tesla_coil') {
           this.applyTeslaDamage(player, dt);
         } else if (player.weaponType !== 'tesla_coil') {
           this.tryShoot(player);
@@ -4665,21 +4669,48 @@ export class GameRoom extends Room<GameState> {
   }
 
   /**
-   * Laser beam: apply continuous area damage each tick (no projectile bullet).
+   * Laser beam: apply charge-based area damage while a beam charge is active.
    * Checks enemies within a cone in the aim direction and damages them directly.
    * Mirrors SP WeaponManager.fireLaser() behaviour.
    */
-  private applyLaserDamage(player: PlayerState, dt: number): void {
+  private applyLaserDamage(player: PlayerState, dt: number, shooting = true): void {
     if (!player.alive) return;
 
-    // Deduct ammo per tick. Laser ammo=200 at 60 ticks/sec ≈ 3.3 seconds duration.
-    if (player.weaponAmmo > 0) {
-      player.weaponAmmo--;
-      if (player.weaponAmmo <= 0) {
+    const laserCharges = this.playerLaserCharges ?? (this.playerLaserCharges = new Map());
+    let charge = laserCharges.get(player.id);
+    if (!charge && shooting && player.weaponType === 'laser_beam') {
+      const weaponConfig = WEAPON_CONFIGS.laser_beam;
+      const now = this.state.gameTime;
+      const fireInterval = 1 / weaponConfig.fireRate;
+      const rawLastShot = (player as unknown as { lastShotTime?: number }).lastShotTime;
+      const lastShot = Number.isFinite(rawLastShot) && rawLastShot! <= now
+        ? rawLastShot!
+        : -Infinity;
+      if (player.weaponAmmo > 0 && now - lastShot >= fireInterval) {
+        (player as unknown as { lastShotTime: number }).lastShotTime = now;
+        player.weaponAmmo--;
+        charge = { remaining: LASER_CHARGE_DURATION };
+        laserCharges.set(player.id, charge);
+      } else if (player.weaponAmmo <= 0) {
+        player.weaponType = 'standard';
+        player.weaponAmmo = -1;
+        return;
+      }
+    }
+
+    if (!charge) return;
+
+    charge.remaining -= dt;
+    if (charge.remaining <= 0) {
+      laserCharges.delete(player.id);
+      if (player.weaponAmmo <= 0 && player.weaponType === 'laser_beam') {
         player.weaponType = 'standard';
         player.weaponAmmo = -1;
       }
+      return;
     }
+
+    if (!shooting) return;
 
     // Laser parameters — tuned to match SP damage feel
     const LASER_RANGE_WORLD = 25;     // world reach, matching the SP surface-traced beam scale
@@ -4706,7 +4737,7 @@ export class GameRoom extends Room<GameState> {
       if (dot < LASER_DOT_THRESHOLD) return;
 
       // Apply continuous damage
-      this.applyPlayerOwnedEnemyDamage(enemy, damage, player.id, 'laser');
+      this.applyPlayerOwnedEnemyDamage(enemy, damage, player.id, 'laser_beam');
 
       if (enemy.health <= 0) {
         enemiesToKill.push(eIndex);

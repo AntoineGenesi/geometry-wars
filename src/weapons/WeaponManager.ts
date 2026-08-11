@@ -16,6 +16,7 @@ import {
 } from '../shared/BlackHoleModel';
 import { getSpreadUpgradePattern } from '../shared/WeaponUpgradeEffects';
 import { BlackHoleVisual } from '../effects/BlackHoleVisual';
+import { LASER_CHARGE_DURATION } from '../shared/GameBalanceConstants';
 
 // ---------------------------------------------------------------------------
 // Gas Cloud (Homing branch B node 3)
@@ -841,6 +842,7 @@ export class WeaponManager {
       const type = this.inventory[i];
       if (type === WeaponType.Standard) continue;
       const ammo = this.ammo.get(type) ?? 0;
+      if (type === WeaponType.LaserBeam && ammo <= 0 && this.getActiveLaserEffect()) continue;
       if (ammo <= 0) {
         this.inventory.splice(i, 1);
         this.ammo.delete(type);
@@ -933,8 +935,18 @@ export class WeaponManager {
       firedAnything = true;
     }
 
+    if (this.currentWeapon === WeaponType.LaserBeam) {
+      const activeLaser = this.getActiveLaserEffect();
+      if (activeLaser) {
+        this.updateLaserEffectPath(activeLaser, origin, direction);
+        firedAnything = true;
+      }
+    }
+
     // Primary weapon fires on its own cooldown (if not Standard, which is blaster)
-    if (this.currentWeapon !== WeaponType.Standard && this.canFire(currentTime)) {
+    if (this.currentWeapon !== WeaponType.Standard
+        && (this.currentWeapon !== WeaponType.LaserBeam || !this.getActiveLaserEffect())
+        && this.canFire(currentTime)) {
       this.lastFireTime = currentTime;
 
       // Consume ammo (Duration+ buff halves consumption)
@@ -1155,6 +1167,9 @@ export class WeaponManager {
           this.projectileRoot.remove(effect.mesh);
         }
         this.activeEffects.splice(i, 1);
+        if (effect.type === 'laser' && this.currentWeapon === WeaponType.LaserBeam) {
+          this.autoSwitchOnDepletion();
+        }
         continue;
       }
 
@@ -2014,15 +2029,8 @@ export class WeaponManager {
   }
 
   private fireLaser(origin: THREE.Vector3, direction: THREE.Vector3): void {
-    const rangeMult = this.getBuffMultiplier(BuffType.ExtendedRange);
-
-    // Trace beam path along the surface (or fallback to straight line)
-    const beamLen = 30 * rangeMult;
-    const beamPoints = this.traceBeamPath(origin, direction, beamLen, Math.ceil(45 * rangeMult));
-
-    // Build a TubeGeometry from the traced points
-    const curve = new THREE.CatmullRomCurve3(beamPoints, false, 'catmullrom', 0.5);
-    const tubeGeom = new THREE.TubeGeometry(curve, beamPoints.length * 2, 0.025, 6, false);
+    const beamPoints = this.traceLaserBeamPoints(origin, direction);
+    const tubeGeom = this.createLaserGeometry(beamPoints);
     const laserMat = new THREE.MeshBasicMaterial({
       color: WEAPON_CONFIGS[WeaponType.LaserBeam].color,
       transparent: true,
@@ -2040,7 +2048,7 @@ export class WeaponManager {
       (laserNodes.has('laser_beam_b_3') ? 0.70 : 0) +
       (laserNodes.has('laser_beam_b_4') ? 1.00 : 0) + // Wide beam: +100% duration
       (laserNodes.has('laser_beam_b_5') ? 1.50 : 0);  // Sweep beam: +150% duration
-    const laserDuration = 0.5 * (1.0 + durationBonus);
+    const laserDuration = LASER_CHARGE_DURATION * (1.0 + durationBonus);
 
     // b_4 = wide beam: hits enemies within 0.3 units of beam line instead of 0.35
     const wideBeam = laserNodes.has('laser_beam_b_4');
@@ -2059,6 +2067,33 @@ export class WeaponManager {
       sweepAngle: sweepMode ? 0 : undefined,
       sweepDir: sweepMode ? 1 : undefined,
     });
+  }
+
+  private getActiveLaserEffect(): ActiveEffect | undefined {
+    return this.activeEffects.find(effect => effect.type === 'laser');
+  }
+
+  private traceLaserBeamPoints(origin: THREE.Vector3, direction: THREE.Vector3): THREE.Vector3[] {
+    const rangeMult = this.getBuffMultiplier(BuffType.ExtendedRange);
+    const beamLen = 30 * rangeMult;
+    return this.traceBeamPath(origin, direction, beamLen, Math.ceil(45 * rangeMult));
+  }
+
+  private createLaserGeometry(beamPoints: THREE.Vector3[]): THREE.TubeGeometry {
+    const curve = new THREE.CatmullRomCurve3(beamPoints, false, 'catmullrom', 0.5);
+    return new THREE.TubeGeometry(curve, beamPoints.length * 2, 0.025, 6, false);
+  }
+
+  private updateLaserEffectPath(effect: ActiveEffect, origin: THREE.Vector3, direction: THREE.Vector3): void {
+    const beamPoints = this.traceLaserBeamPoints(origin, direction);
+    effect.position.copy(origin);
+    effect.direction = direction.clone();
+    effect.beamPoints = beamPoints;
+
+    if (effect.mesh instanceof THREE.Mesh) {
+      effect.mesh.geometry.dispose();
+      effect.mesh.geometry = this.createLaserGeometry(beamPoints);
+    }
   }
 
   /**
