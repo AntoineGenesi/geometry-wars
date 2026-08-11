@@ -328,6 +328,25 @@ describe('TouchInput', () => {
     input.dispose();
   });
 
+  it('left joystick: repeated small same-direction refinements converge instead of sticking', () => {
+    const input = new TouchInput();
+    const cx = W * 0.25;
+    const cy = H * 0.75;
+
+    fireWindowEvent('touchstart', [touch(1, cx, cy)]);
+    fireWindowEvent('touchmove', [touch(1, cx + 30, cy)]);
+    const held = input.getState();
+
+    fireWindowEvent('touchmove', [touch(1, cx + 35, cy)]);
+    let refined = input.getState();
+    for (let i = 0; i < 7; i++) refined = input.getState();
+
+    const unsmoothedTarget = ((35 / 60) - 0.15) / (1 - 0.15);
+    expect(refined.moveX).toBeGreaterThan(held.moveX + 0.06);
+    expect(refined.moveX).toBeLessThanOrEqual(unsmoothedTarget);
+    input.dispose();
+  });
+
   // -------------------------------------------------------------------------
   // Right joystick (aim + auto-fire — right half, bottom 65%)
   // -------------------------------------------------------------------------
@@ -358,6 +377,48 @@ describe('TouchInput', () => {
     const state = input.getState();
     expect(state.aimX).toBe(0);
     expect(state.shooting).toBe(false);
+    input.dispose();
+  });
+
+  it('right joystick: suppresses small held-thumb tremor before it reaches aim', () => {
+    const input = new TouchInput();
+    const cx = W * 0.75;
+    const cy = H * 0.75;
+
+    fireWindowEvent('touchstart', [touch(2, cx, cy)]);
+    fireWindowEvent('touchmove', [touch(2, cx + 30, cy)]);
+    const held = input.getState();
+
+    fireWindowEvent('touchmove', [touch(2, cx + 35, cy)]);
+    const tremorRight = input.getState();
+
+    fireWindowEvent('touchmove', [touch(2, cx + 30, cy)]);
+    const tremorLeft = input.getState();
+
+    expect(Math.abs(tremorRight.aimX - held.aimX)).toBeLessThanOrEqual(0.02);
+    expect(Math.abs(tremorLeft.aimX - held.aimX)).toBeLessThanOrEqual(0.02);
+    expect(held.aimX).toBeGreaterThan(0.3);
+    expect(tremorRight.shooting).toBe(true);
+    input.dispose();
+  });
+
+  it('right joystick: repeated small same-direction aim refinements converge instead of sticking', () => {
+    const input = new TouchInput();
+    const cx = W * 0.75;
+    const cy = H * 0.75;
+
+    fireWindowEvent('touchstart', [touch(2, cx, cy)]);
+    fireWindowEvent('touchmove', [touch(2, cx + 30, cy)]);
+    const held = input.getState();
+
+    fireWindowEvent('touchmove', [touch(2, cx + 35, cy)]);
+    let refined = input.getState();
+    for (let i = 0; i < 7; i++) refined = input.getState();
+
+    const unsmoothedTarget = ((35 / 60) - 0.15) / (1 - 0.15);
+    expect(refined.aimX).toBeGreaterThan(held.aimX + 0.06);
+    expect(refined.aimX).toBeLessThanOrEqual(unsmoothedTarget);
+    expect(refined.shooting).toBe(true);
     input.dispose();
   });
 

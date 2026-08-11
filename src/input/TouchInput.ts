@@ -32,6 +32,9 @@ const DEAD_ZONE_FRACTION = 0.15;
 /** Normalized joystick output changes smaller than this are treated as held-thumb tremor. */
 const OUTPUT_TREMOR_EPSILON = 0.12;
 
+/** Per-sample convergence rate for tremor-sized same-direction refinements. */
+const OUTPUT_TREMOR_LOW_PASS_ALPHA = 0.2;
+
 /** Size of the base circle visual (px). */
 const BASE_SIZE = 120;
 
@@ -453,7 +456,9 @@ export class TouchInput {
   private filterJoystickOutput(next: number, previous: number): number {
     if (next === 0 || previous === 0) return next;
     if (Math.sign(next) !== Math.sign(previous)) return next;
-    if (Math.abs(next - previous) <= OUTPUT_TREMOR_EPSILON) return previous;
+    if (Math.abs(next - previous) <= OUTPUT_TREMOR_EPSILON) {
+      return previous + (next - previous) * OUTPUT_TREMOR_LOW_PASS_ALPHA;
+    }
     return next;
   }
 
