@@ -344,6 +344,15 @@ const SPLITTING_TYPES = [
   'giant_wanderer', 'giant_rocket', 'giant_snake', 'giant_neutron',
   'titan_grunt', 'titan_spinner', 'titan_weaver', 'splitter',
 ];
+const COMMON_FODDER_TYPES = new Set<string>([
+  ...BASIC_TYPES,
+  'mayfly',
+  'rocket',
+  'neutron',
+  'weaver',
+  'spinner',
+  'approach_glow',
+]);
 
 function getSnakeMaxSegmentsForPressure(
   waveNum: number,
@@ -414,15 +423,14 @@ export function generateScaledEndlessWave(
   const baseCountCap = Math.round((difficultyLevel >= 6 ? 40 : 30) * playerCountMultiplier);
   const baseCount = Math.min(baseCountCap, Math.round((4 + Math.floor(Math.sqrt(waveNum) * 2) + difficultyCountBonus) * entityBrake * playerCountMultiplier));
 
-  // -- Basic enemies: always present, tier scales with difficulty --
+  // -- Basic enemies: always present as low-HP readable fodder. Difficulty
+  // pressure should come from visible variants and stronger enemy types, not
+  // secretly making the baseline basic group tanky.
   const basicType = BASIC_TYPES[waveNum % BASIC_TYPES.length];
-  const basicTier = difficultyLevel >= 1
-    ? Math.min(maxTier, Math.max(0, maxTier - 1))
-    : 0;
   enemies.push({
     type: basicType,
     count: baseCount, // capped by baseCountCap above (30 or 40 at high difficulty)
-    tier: basicTier,
+    tier: 0,
   });
 
   // -- Mid-tier from wave 2+ (earlier introduction) --
@@ -605,11 +613,14 @@ export function generateScaledEndlessWave(
     });
   }
 
-  // Super-tier: when difficulty exceeds MAX_TIER, tag all entries with the continuous
-  // difficulty level so EnemySpawner can apply getContinuousHealthMultiplier etc.
+  // Super-tier: when difficulty exceeds MAX_TIER, tag distinct threats with the
+  // continuous difficulty level. Common fodder keeps tier-only HP so basic-looking
+  // shapes don't become hidden or excessive health sponges.
   if (difficultyLevel > MAX_TIER) {
     for (const entry of enemies) {
-      entry.difficultyLevel = difficultyLevel;
+      if (!COMMON_FODDER_TYPES.has(entry.type)) {
+        entry.difficultyLevel = difficultyLevel;
+      }
     }
   }
 
