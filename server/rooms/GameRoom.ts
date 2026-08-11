@@ -4149,11 +4149,12 @@ export class GameRoom extends Room<GameState> {
     this.state.enemies.clear();
     this.enemyAI.clear();
     this.enemyWalkers.clear();
+    const blackHoleAmmo = WEAPON_CONFIGS.black_hole.ammo;
     player.weaponType = 'black_hole';
-    player.weaponAmmo = 5;
+    player.weaponAmmo = blackHoleAmmo;
     this.playerWeaponInventory.set(player.id, [
       { type: 'standard', ammo: -1 },
-      { type: 'black_hole', ammo: 5 },
+      { type: 'black_hole', ammo: blackHoleAmmo },
     ]);
     this.playerWeaponIndex.set(player.id, 1);
     (player as unknown as { lastBlasterShotTime: number }).lastBlasterShotTime = this.state.gameTime;

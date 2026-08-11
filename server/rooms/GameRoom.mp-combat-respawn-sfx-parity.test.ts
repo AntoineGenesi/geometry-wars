@@ -4,6 +4,7 @@ import { ServerMeshWalker } from '../movement/ServerMeshWalker';
 import type { ServerMeshLocation } from '../movement/ServerMeshLocation';
 import type { ServerSurfaceManager } from '../movement/ServerSurfaceManager';
 import { BlackHoleFieldState, EnemyState, GameState, PlayerState } from '../schema/GameState';
+import { WEAPON_CONFIGS } from '../shared/GameConstants';
 import { GameRoom } from './GameRoom';
 
 interface CombatRoomInternals {
@@ -44,7 +45,7 @@ function makeRoom(mode: string): { room: GameRoom; internals: CombatRoomInternal
   player.health = 100;
   player.maxHealth = 100;
   player.weaponType = 'black_hole';
-  player.weaponAmmo = 5;
+  player.weaponAmmo = WEAPON_CONFIGS.black_hole.ammo;
   player.aimAngle = 0;
   room.state.players.set(player.id, player);
 
