@@ -121,7 +121,7 @@ import {
   SurfaceContactPathingProofSetupResult,
 } from './network/NetworkClient';
 import {
-  filterMpBuildChoiceNodeIds,
+  handleMpBuildChoiceAvailability,
   reconcileActiveUpgradeSnapshot,
   reconcileUpgradeActivationResult,
   upgradeActivationKey,
@@ -1422,45 +1422,40 @@ async function main() {
 
   function wireBuildChoiceCallback(): void {
     matchUpgradeTracker.onBuildChoiceAvailable = (weaponType, availableNodeIds) => {
-      const supportFilter = filterMpBuildChoiceNodeIds(availableNodeIds);
-      if (supportFilter.unsupportedNodeIds.length > 0) {
-        netMainLog(`[NetworkMain] Filtered unsupported MP upgrade choices: ${supportFilter.unsupportedNodeIds.join(', ')}`);
-      }
-      if (!supportFilter.shouldShowChoiceScreen) {
-        matchUpgradeTracker.clearPendingChoice();
-        buildChoiceActive = false;
-        return;
-      }
-      if (supportFilter.autoApplyNodeId) {
-        sendUpgradeActivationRequest(supportFilter.autoApplyNodeId, weaponType, true);
-        buildChoiceActive = false;
-        return;
-      }
-
-      buildChoiceActive = true;
-
-      const activeIds = matchUpgradeTracker.getActiveUpgrades(weaponType);
-      const killCount = matchUpgradeTracker.getKillCount(weaponType);
-
-      buildChoiceScreen.show(
+      handleMpBuildChoiceAvailability({
         weaponType,
-        supportFilter.supportedNodeIds,
-        activeIds,
-        killCount,
-        (chosenNodeId) => {
-          sendUpgradeActivationRequest(chosenNodeId, weaponType);
-          buildChoiceActive = false;
+        availableNodeIds,
+        clearPendingChoice: () => matchUpgradeTracker.clearPendingChoice(),
+        setBuildChoiceActive: (active) => { buildChoiceActive = active; },
+        sendUpgradeActivationRequest,
+        logUnsupported: (unsupportedNodeIds) => {
+          netMainLog(`[NetworkMain] Filtered unsupported MP upgrade choices: ${unsupportedNodeIds.join(', ')}`);
         },
-        {
-          mode: 'mp',
-          unsupportedNodeIds: supportFilter.unsupportedNodeIds,
-          autoDismissMs: 6000,
-          onDismiss: () => {
-            matchUpgradeTracker.clearPendingChoice();
-            buildChoiceActive = false;
-          },
+        showChoiceScreen: (supportedNodeIds, unsupportedNodeIds) => {
+          const activeIds = matchUpgradeTracker.getActiveUpgrades(weaponType);
+          const killCount = matchUpgradeTracker.getKillCount(weaponType);
+
+          buildChoiceScreen.show(
+            weaponType,
+            supportedNodeIds,
+            activeIds,
+            killCount,
+            (chosenNodeId) => {
+              sendUpgradeActivationRequest(chosenNodeId, weaponType);
+              buildChoiceActive = false;
+            },
+            {
+              mode: 'mp',
+              unsupportedNodeIds,
+              autoDismissMs: 6000,
+              onDismiss: () => {
+                matchUpgradeTracker.clearPendingChoice();
+                buildChoiceActive = false;
+              },
+            },
+          );
         },
-      );
+      });
     };
     matchUpgradeTracker.onUpgradeActivated = (nodeId, weaponType) => {
       upgradeNotification.show(nodeId, weaponType);

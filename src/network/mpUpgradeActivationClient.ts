@@ -21,6 +21,18 @@ export interface MpBuildChoiceSupportFilterResult {
   shouldShowChoiceScreen: boolean;
 }
 
+export type MpBuildChoiceAvailabilityResult = 'auto_requested' | 'choice_screen' | 'no_supported_nodes';
+
+export interface MpBuildChoiceAvailabilityOptions {
+  weaponType: WeaponType;
+  availableNodeIds: readonly string[];
+  clearPendingChoice: () => void;
+  setBuildChoiceActive: (active: boolean) => void;
+  sendUpgradeActivationRequest: (nodeId: string, weaponType: WeaponType, autoApplied: boolean) => void;
+  showChoiceScreen: (supportedNodeIds: string[], unsupportedNodeIds: string[]) => void;
+  logUnsupported?: (unsupportedNodeIds: string[]) => void;
+}
+
 export function upgradeActivationKey(nodeId: string, weaponType: WeaponType): string {
   return `${weaponType}:${nodeId}`;
 }
@@ -37,6 +49,31 @@ export function filterMpBuildChoiceNodeIds(
     autoApplyNodeId: supportedNodeIds.length === 1 ? supportedNodeIds[0] : null,
     shouldShowChoiceScreen: supportedNodeIds.length > 1,
   };
+}
+
+export function handleMpBuildChoiceAvailability(
+  options: MpBuildChoiceAvailabilityOptions,
+): MpBuildChoiceAvailabilityResult {
+  const supportFilter = filterMpBuildChoiceNodeIds(options.availableNodeIds);
+  if (supportFilter.unsupportedNodeIds.length > 0) {
+    options.logUnsupported?.(supportFilter.unsupportedNodeIds);
+  }
+
+  if (supportFilter.autoApplyNodeId) {
+    options.sendUpgradeActivationRequest(supportFilter.autoApplyNodeId, options.weaponType, true);
+    options.setBuildChoiceActive(false);
+    return 'auto_requested';
+  }
+
+  if (!supportFilter.shouldShowChoiceScreen) {
+    options.clearPendingChoice();
+    options.setBuildChoiceActive(false);
+    return 'no_supported_nodes';
+  }
+
+  options.setBuildChoiceActive(true);
+  options.showChoiceScreen(supportFilter.supportedNodeIds, supportFilter.unsupportedNodeIds);
+  return 'choice_screen';
 }
 
 export function reconcileActiveUpgradeSnapshot(options: {
