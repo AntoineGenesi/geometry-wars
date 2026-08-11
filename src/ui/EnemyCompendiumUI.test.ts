@@ -134,8 +134,10 @@ describe('Enemy compendium UI', () => {
     expect(css).toContain('@media (max-width: 520px)');
     expect(css).toContain('top: max(10px, env(safe-area-inset-top))');
     expect(css).toContain('left: max(10px, env(safe-area-inset-left))');
-    expect(css).toContain('width: min(230px, calc(100vw - 20px))');
-    expect(css).toContain('font-size: 12px');
+    expect(css).toContain('width: min(150px, calc(100vw - 20px))');
+    expect(css).toContain('min-height: 38px');
+    expect(css).toContain('grid-template-columns: 28px minmax(0, 1fr)');
+    expect(css).toContain('font-size: 10px');
   });
 
   it('keeps Enemy Types entry points in StartMenu and PauseMenu markup', () => {

@@ -205,6 +205,21 @@ describe('KillLog', () => {
     });
   });
 
+  describe('mobile layout', () => {
+    it('suppresses per-enemy streak labels and emphasis on mobile', () => {
+      new KillLog();
+      const styleEl = headChildren[0];
+      const css = styleEl?.textContent ?? '';
+
+      expect(css).toContain('@media (pointer: coarse), (max-width: 640px)');
+      expect(css).toContain('.kill-entry .kill-streak-label.visible');
+      expect(css).toContain('display: none !important');
+      expect(css).toContain('.kill-entry .kill-count.streak-active');
+      expect(css).toContain('font-size: 11px');
+      expect(css).toContain('text-shadow: none !important');
+    });
+  });
+
   describe('onKill callback', () => {
     it('fires for every addKill call', () => {
       const log = new KillLog();

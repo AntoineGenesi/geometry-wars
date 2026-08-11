@@ -159,6 +159,40 @@ export class KillLog {
       .kill-entry.count-bump .kill-streak-label {
         animation: streak-pulse 0.2s ease-out;
       }
+
+      @media (pointer: coarse), (max-width: 640px) {
+        #kill-log {
+          width: 172px;
+          bottom: max(14px, env(safe-area-inset-bottom));
+          left: max(12px, env(safe-area-inset-left));
+        }
+
+        .kill-entry {
+          gap: 5px;
+          padding: 2px 6px;
+          background: rgba(0, 0, 20, 0.46) !important;
+          border-left-width: 2px !important;
+          font-size: 11px;
+          font-weight: 600;
+          text-shadow: none !important;
+        }
+
+        .kill-entry .kill-count,
+        .kill-entry .kill-count.streak-active {
+          font-size: 11px;
+          font-weight: 700;
+          text-shadow: none !important;
+        }
+
+        .kill-entry .kill-streak-label,
+        .kill-entry .kill-streak-label.visible {
+          display: none !important;
+        }
+
+        .kill-entry.count-bump .kill-streak-label {
+          animation: none;
+        }
+      }
     `;
     document.head.appendChild(this.styleEl);
 

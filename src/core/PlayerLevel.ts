@@ -241,63 +241,100 @@ export class PlayerLevel {
 
 export class LevelUpNotification {
   private container: HTMLDivElement;
+  private styleEl: HTMLStyleElement;
 
   constructor() {
-    this.container = document.createElement('div');
-    this.container.id = 'level-up-notification';
-    this.container.style.cssText = `
-      position: fixed;
-      top: 35%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      z-index: 500;
-      pointer-events: none;
-      text-align: center;
-      font-family: 'Segoe UI', Arial, sans-serif;
-      display: none;
-    `;
-    document.body.appendChild(this.container);
-  }
+    this.styleEl = document.createElement('style');
+    this.styleEl.id = 'level-up-notification-style';
+    this.styleEl.textContent = `
+      #level-up-notification {
+        position: fixed;
+        top: 35%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        z-index: 500;
+        pointer-events: none;
+        text-align: center;
+        font-family: 'Segoe UI', Arial, sans-serif;
+        display: none;
+        width: min(90vw, 640px);
+      }
 
-  show(level: number, perk: LevelPerk): void {
-    this.container.innerHTML = `
-      <div style="
+      #level-up-notification .level-up-title {
         font-size: 48px;
         font-weight: bold;
-        color: #${perk.auraColor.toString(16).padStart(6, '0')};
-        text-shadow: 0 0 15px #${perk.auraColor.toString(16).padStart(6, '0')},
-                     0 0 30px #${perk.auraColor.toString(16).padStart(6, '0')};
-        letter-spacing: 6px;
+        letter-spacing: 0;
         animation: levelUpPulse 0.5s ease-out;
-      ">LEVEL ${level}</div>
-      <div style="
+      }
+
+      #level-up-notification .level-up-perk {
         font-size: 24px;
         color: #ffffff;
         text-shadow: 0 0 8px #ffffff;
         margin-top: 8px;
-        letter-spacing: 3px;
-      ">${perk.name}</div>
-      <div style="
+        letter-spacing: 0;
+      }
+
+      #level-up-notification .level-up-description {
         font-size: 16px;
         color: #aaaacc;
         margin-top: 4px;
-        letter-spacing: 2px;
-      ">${perk.description}</div>
-    `;
+        letter-spacing: 0;
+      }
 
-    // Add animation keyframes if not present
-    if (!document.getElementById('level-up-keyframes')) {
-      const style = document.createElement('style');
-      style.id = 'level-up-keyframes';
-      style.textContent = `
-        @keyframes levelUpPulse {
-          0% { transform: scale(0.5); opacity: 0; }
-          50% { transform: scale(1.2); opacity: 1; }
-          100% { transform: scale(1.0); opacity: 1; }
+      @keyframes levelUpPulse {
+        0% { transform: scale(0.5); opacity: 0; }
+        50% { transform: scale(1.2); opacity: 1; }
+        100% { transform: scale(1.0); opacity: 1; }
+      }
+
+      @media (pointer: coarse), (max-width: 640px) {
+        #level-up-notification {
+          top: auto;
+          bottom: max(48px, calc(env(safe-area-inset-bottom) + 48px));
+          left: 50%;
+          transform: translateX(-50%);
+          width: min(76vw, 300px);
         }
-      `;
-      document.head.appendChild(style);
-    }
+
+        #level-up-notification .level-up-title {
+          font-size: 30px;
+          line-height: 1.05;
+          letter-spacing: 0;
+        }
+
+        #level-up-notification .level-up-perk {
+          margin-top: 4px;
+          font-size: 15px;
+          line-height: 1.12;
+          letter-spacing: 0;
+        }
+
+        #level-up-notification .level-up-description {
+          margin-top: 2px;
+          font-size: 11px;
+          line-height: 1.15;
+          letter-spacing: 0;
+        }
+      }
+    `;
+    document.head.appendChild(this.styleEl);
+
+    this.container = document.createElement('div');
+    this.container.id = 'level-up-notification';
+    document.body.appendChild(this.container);
+  }
+
+  show(level: number, perk: LevelPerk): void {
+    const auraHex = `#${perk.auraColor.toString(16).padStart(6, '0')}`;
+    this.container.innerHTML = `
+      <div class="level-up-title" style="
+        color: ${auraHex};
+        text-shadow: 0 0 15px ${auraHex}, 0 0 30px ${auraHex};
+      ">LEVEL ${level}</div>
+      <div class="level-up-perk">${perk.name}</div>
+      <div class="level-up-description">${perk.description}</div>
+    `;
 
     this.container.style.display = 'block';
 
@@ -315,5 +352,6 @@ export class LevelUpNotification {
 
   dispose(): void {
     this.container.remove();
+    this.styleEl.remove();
   }
 }

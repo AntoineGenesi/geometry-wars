@@ -208,35 +208,36 @@ export class EnemyDiscoveryToast {
         }
 
         #enemy-discovery-toast .edt-card {
-          width: min(230px, calc(100vw - 20px));
-          grid-template-columns: 42px minmax(0, 1fr);
-          min-height: 52px;
-          gap: 7px;
-          padding: 6px 8px 6px 6px;
+          width: min(150px, calc(100vw - 20px));
+          grid-template-columns: 28px minmax(0, 1fr);
+          min-height: 38px;
+          gap: 5px;
+          padding: 4px 6px 4px 4px;
           background: rgba(3, 7, 18, 0.84);
           border-color: rgba(90, 210, 255, 0.36);
-          box-shadow: 0 8px 18px rgba(0, 0, 0, 0.38), 0 0 12px rgba(0, 220, 255, 0.1);
+          box-shadow: 0 6px 12px rgba(0, 0, 0, 0.34), 0 0 8px rgba(0, 220, 255, 0.08);
         }
 
         #enemy-discovery-toast .edt-preview {
-          width: 42px;
-          height: 42px;
+          width: 28px;
+          height: 28px;
         }
 
         #enemy-discovery-toast .ap-enemy-preview,
         #enemy-discovery-toast .ap-enemy-preview-img {
-          width: 36px;
-          height: 36px;
+          width: 24px;
+          height: 24px;
         }
 
         #enemy-discovery-toast .edt-kicker {
-          font-size: 8px;
-          letter-spacing: 1px;
+          font-size: 6px;
+          letter-spacing: 0;
         }
 
         #enemy-discovery-toast .edt-name {
-          margin-top: 2px;
-          font-size: 12px;
+          margin-top: 1px;
+          font-size: 10px;
+          line-height: 1.08;
         }
       }
     `;

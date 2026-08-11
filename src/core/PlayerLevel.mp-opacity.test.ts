@@ -4,7 +4,7 @@
  * - level 0 and level 1+ keep the ring hidden in SP and MP
  * - kill-based level progression, callbacks, bonus bombs, and multipliers remain intact
  */
-import { describe, it, expect, vi } from 'vitest';
+import { afterEach, describe, it, expect, vi } from 'vitest';
 
 const levelConstants = vi.hoisted(() => ({
   thresholds: [0, 10, 25, 50, 80, 120, 175, 250, 350, 500],
@@ -88,7 +88,7 @@ vi.mock('three', () => {
   };
 });
 
-import { PlayerLevel, getLevelPerk } from './PlayerLevel';
+import { LevelUpNotification, PlayerLevel, getLevelPerk } from './PlayerLevel';
 import * as THREE from 'three';
 
 function addKills(pl: PlayerLevel, count: number): void {
@@ -177,5 +177,83 @@ describe('PlayerLevel — world-space ring cleanup', () => {
       expect(perk.fireRateMultiplier).toBe(levelConstants.fireRateMultipliers[level]);
       expect(perk.moveSpeedMultiplier).toBe(levelConstants.moveSpeedMultipliers[level]);
     }
+  });
+});
+
+class MockDomElement {
+  id = '';
+  textContent = '';
+  innerHTML = '';
+  style: Record<string, string> = {};
+  children: MockDomElement[] = [];
+  parentElement: MockDomElement | null = null;
+
+  appendChild(child: MockDomElement): MockDomElement {
+    child.parentElement = this;
+    this.children.push(child);
+    return child;
+  }
+
+  remove(): void {
+    if (!this.parentElement) return;
+    this.parentElement.children = this.parentElement.children.filter((child) => child !== this);
+    this.parentElement = null;
+  }
+}
+
+function installLevelNotificationDomMock(): { headChildren: MockDomElement[]; bodyChildren: MockDomElement[] } {
+  const head = new MockDomElement();
+  const body = new MockDomElement();
+  const headChildren: MockDomElement[] = [];
+  const bodyChildren: MockDomElement[] = [];
+
+  head.appendChild = (child: MockDomElement) => {
+    child.parentElement = head;
+    headChildren.push(child);
+    return child;
+  };
+
+  body.appendChild = (child: MockDomElement) => {
+    child.parentElement = body;
+    bodyChildren.push(child);
+    return child;
+  };
+
+  vi.stubGlobal('document', {
+    createElement: () => new MockDomElement(),
+    head,
+    body,
+  });
+
+  return { headChildren, bodyChildren };
+}
+
+describe('LevelUpNotification — mobile layout', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  it('moves level-up text to a lower, smaller mobile banner', () => {
+    vi.useFakeTimers();
+    const { headChildren, bodyChildren } = installLevelNotificationDomMock();
+    const notification = new LevelUpNotification();
+
+    const styleEl = headChildren.find((el) => el.id === 'level-up-notification-style');
+    const css = styleEl?.textContent ?? '';
+
+    expect(css).toContain('@media (pointer: coarse), (max-width: 640px)');
+    expect(css).toContain('top: auto');
+    expect(css).toContain('bottom: max(48px, calc(env(safe-area-inset-bottom) + 48px))');
+    expect(css).toContain('#level-up-notification .level-up-title');
+    expect(css).toContain('font-size: 30px');
+    expect(css).toContain('width: min(76vw, 300px)');
+
+    notification.show(2, getLevelPerk(2));
+    const container = bodyChildren.find((el) => el.id === 'level-up-notification');
+    expect(container?.innerHTML).toContain('class="level-up-title"');
+    expect(container?.innerHTML).toContain('LEVEL 2');
+
+    notification.dispose();
   });
 });
