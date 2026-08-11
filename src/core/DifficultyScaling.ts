@@ -449,7 +449,7 @@ export function generateScaledEndlessWave(
   // -- Mid-tier from wave 2+ (earlier introduction) --
   if (waveNum >= 2) {
     const midType = MID_TYPES[(waveNum - 2) % MID_TYPES.length];
-    const midTier = Math.min(maxTier, Math.max(0, maxTier - 1));
+    const midTier = Math.min(readableTierCap, Math.max(0, maxTier - 1));
     enemies.push({
       type: midType,
       count: Math.min(Math.floor(baseCount * 0.7 * fodderBrake), 15),
@@ -571,7 +571,7 @@ export function generateScaledEndlessWave(
     enemies.push({
       type: 'orbiter',
       count: Math.min(Math.round((1 + Math.floor((difficultyLevel - 1.5) * 0.5)) * specialistBrake), 4),
-      tier: Math.min(maxTier, Math.max(0, maxTier - 1)),
+      tier: Math.min(readableTierCap, Math.max(0, maxTier - 1)),
     });
   }
 
@@ -580,14 +580,14 @@ export function generateScaledEndlessWave(
     enemies.push({
       type: 'prism_lancer',
       count: Math.min(Math.round((1 + Math.floor((difficultyLevel - 1.2) * 0.5)) * specialistBrake), 5),
-      tier: Math.min(maxTier, Math.max(0, maxTier - 1)),
+      tier: Math.min(readableTierCap, Math.max(0, maxTier - 1)),
     });
   }
   if (waveNum >= 10 && difficultyLevel >= 2.5) {
     enemies.push({
       type: 'sentinel_orb',
       count: Math.min(Math.round((1 + Math.floor((difficultyLevel - 2.5) * 0.4)) * specialistBrake), 4),
-      tier: Math.min(maxTier, Math.max(0, maxTier - 1)),
+      tier: Math.min(readableTierCap, Math.max(0, maxTier - 1)),
     });
   }
   if (waveNum >= 12 && difficultyLevel >= 3.0) {
