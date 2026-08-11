@@ -189,8 +189,14 @@ export class KillLog {
           display: none !important;
         }
 
+        .kill-entry.count-bump .kill-count {
+          animation: none !important;
+          transform: none !important;
+        }
+
         .kill-entry.count-bump .kill-streak-label {
-          animation: none;
+          animation: none !important;
+          transform: none !important;
         }
       }
     `;

@@ -217,6 +217,10 @@ describe('KillLog', () => {
       expect(css).toContain('.kill-entry .kill-count.streak-active');
       expect(css).toContain('font-size: 11px');
       expect(css).toContain('text-shadow: none !important');
+
+      const mobileCss = css.slice(css.indexOf('@media (pointer: coarse), (max-width: 640px)'));
+      expect(mobileCss).toMatch(/\.kill-entry\.count-bump \.kill-count\s*\{[^}]*animation:\s*none\s*!important;/);
+      expect(mobileCss).not.toMatch(/\.kill-entry\.count-bump \.kill-count\s*\{[^}]*animation:\s*streak-pulse/);
     });
   });
 
