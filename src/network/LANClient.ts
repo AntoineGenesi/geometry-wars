@@ -84,8 +84,8 @@ export class LANClient {
       const host = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
       const frontendUrl = `http://${host}:3000`;
       const suffix = currentPort === '2567'
-        ? ` You are on the backend server port 2567; open ${frontendUrl} to host a LAN game.`
-        : ` Open ${frontendUrl} from the frontend dev server to host a LAN game.`;
+        ? ` You are on the backend server port 2567; open ${frontendUrl} from the downloadable/self-hosted version to host a LAN game.`
+        : ' LAN hosting requires the GitHub/downloadable self-hosted version; static web builds cannot start the local LAN server.';
       return `LAN hosting API unavailable (HTTP ${status}).${suffix}`;
     }
     const trimmed = text.trim();

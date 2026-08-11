@@ -1,4 +1,5 @@
 import { t, changeLanguage, getCurrentLanguage, onLanguageChange } from '../i18n';
+import { publicAssetUrl } from '../utils/PublicAssetUrl';
 
 const LANGUAGES = [
   { code: 'en', flag: '🇬🇧' },
@@ -47,7 +48,7 @@ export class LanguageSelector {
       if (code === currentLang) btn.classList.add('selected');
       btn.dataset.lang = code;
       // Set flag as background image
-      btn.style.backgroundImage = `url(/assets/flags/${code}.svg)`;
+      btn.style.backgroundImage = `url(${publicAssetUrl(`assets/flags/${code}.svg`)})`;
       btn.style.backgroundSize = 'cover';
       btn.style.backgroundPosition = 'center';
       // Display two-letter code as text overlay

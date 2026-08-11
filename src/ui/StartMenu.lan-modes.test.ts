@@ -9,7 +9,12 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { LAN_GAME_MODES, type LanGameMode } from './StartMenu';
+import {
+  LAN_GAME_MODES,
+  LAN_HOSTING_STATIC_BUILD_NOTICE,
+  LAN_SCAN_STATIC_BUILD_NOTICE,
+  type LanGameMode,
+} from './StartMenu';
 
 describe('LAN_GAME_MODES — s44r7-03 regression', () => {
   it('includes pvp mode', () => {
@@ -48,5 +53,17 @@ describe('LAN_GAME_MODES — s44r7-03 regression', () => {
     expect(pvp?.icon).toBeTruthy();
     expect(pvpve?.icon).toBeTruthy();
     expect(pvp?.icon).not.toEqual(pvpve?.icon);
+  });
+
+  it('warns static web players that LAN hosting requires the self-hosted version', () => {
+    expect(LAN_HOSTING_STATIC_BUILD_NOTICE).toContain('GitHub/self-hosted version');
+    expect(LAN_HOSTING_STATIC_BUILD_NOTICE).toContain('Static web builds');
+    expect(LAN_HOSTING_STATIC_BUILD_NOTICE).toContain('cannot start the local LAN server');
+  });
+
+  it('warns static web players that LAN scanning requires the self-hosted version', () => {
+    expect(LAN_SCAN_STATIC_BUILD_NOTICE).toContain('GitHub/self-hosted version');
+    expect(LAN_SCAN_STATIC_BUILD_NOTICE).toContain('Static web builds');
+    expect(LAN_SCAN_STATIC_BUILD_NOTICE).toContain('cannot discover local LAN servers');
   });
 });

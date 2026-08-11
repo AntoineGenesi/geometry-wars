@@ -148,7 +148,7 @@ const createdElements: MockElement[] = [];
 function setupDOMMock() {
   createdElements.length = 0;
   vi.stubGlobal('document', {
-    createElement: (tag: string): MockElement => {
+    createElement: (tag: string): HTMLElement => {
       const el = new MockElement(tag);
       createdElements.push(el);
       return el as unknown as HTMLElement;

@@ -36,6 +36,12 @@ export const LAN_GAME_MODES: Array<{ type: LanGameMode; name: string; icon: stri
   { type: 'pvpve',          name: 'PvPvE',          icon: '⚔️' },
 ];
 
+export const LAN_HOSTING_STATIC_BUILD_NOTICE =
+  'LAN hosting requires the GitHub/self-hosted version. Static web builds can play the game, but cannot start the local LAN server.';
+
+export const LAN_SCAN_STATIC_BUILD_NOTICE =
+  'LAN scanning requires the GitHub/self-hosted version. Static web builds cannot discover local LAN servers.';
+
 /**
  * Start menu UI for Geometry Wars.
  * Allows selecting game mode and surface type before starting.
@@ -392,6 +398,7 @@ export class StartMenu {
           <button class="lan-troubleshoot-btn" id="lan-troubleshoot-btn" title="LAN Troubleshooting">? Troubleshooting</button>
           <div class="scrollable-content">
             <h3>${t('menu.headings.lanGame')}</h3>
+            <p class="lan-static-hosting-note">${LAN_HOSTING_STATIC_BUILD_NOTICE}</p>
             <div id="lan-host-panel">
               <button class="lan-btn lan-host" id="lan-host-btn">${t('menu.buttons.hostGame')}</button>
               <div id="lan-host-surface-pick" class="hidden">
@@ -1250,6 +1257,17 @@ export class StartMenu {
       /* LAN section                                                          */
       /* ------------------------------------------------------------------- */
       #start-menu .lan-section { text-align: center; }
+
+      #start-menu .lan-static-hosting-note {
+        max-width: 560px;
+        margin: 4px auto 12px;
+        padding: 8px 12px;
+        color: #ffd98a;
+        background: rgba(70, 45, 8, 0.52);
+        border: 1px solid rgba(255, 190, 80, 0.5);
+        font: 12px/1.45 monospace;
+        text-align: left;
+      }
 
       #start-menu .lan-btn {
         background: rgba(18, 18, 45, 0.88);
@@ -2636,7 +2654,7 @@ export class StartMenu {
         const msg = err instanceof Error ? err.message : String(err);
         const isNetworkError = err instanceof TypeError || msg.includes('fetch');
         lanHostStatus.textContent = isNetworkError
-          ? 'LAN hosting requires dev mode (npm run dev)'
+          ? 'LAN hosting requires the GitHub/self-hosted version; static web builds cannot start the LAN server.'
           : `Failed to start: ${msg}`;
         lanHostBtn.style.display = '';
       }
@@ -2976,7 +2994,7 @@ export class StartMenu {
     } catch {
       const empty = this.container.querySelector('#lan-lobby-empty') as HTMLElement | null;
       if (empty) {
-        empty.innerHTML = '<p>Scan requires dev mode (npm run dev)</p>';
+        empty.innerHTML = `<p>${LAN_SCAN_STATIC_BUILD_NOTICE}</p>`;
         empty.style.display = '';
       }
     }

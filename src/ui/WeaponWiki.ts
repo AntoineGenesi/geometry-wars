@@ -14,6 +14,7 @@
 import { WeaponType, WEAPON_CONFIGS, type WeaponConfig } from '../weapons/WeaponTypes';
 import { BuffType, BUFF_CONFIGS, type BuffConfig } from '../weapons/BuffPickup';
 import { WeaponPlayground } from './WeaponPlayground';
+import { publicAssetUrl } from '../utils/PublicAssetUrl';
 
 /** Convert a numeric hex color (0xRRGGBB) to a CSS hex string */
 function hexColor(n: number): string {
@@ -817,7 +818,7 @@ export class WeaponWiki {
     const symbol = WEAPON_SYMBOLS[weaponType] ?? '?';
     const tactics = WEAPON_TACTICS[weaponType];
     const slug = weaponSlug(weaponType);
-    const screenshotPath = `/weapon-screenshots/${slug}.png`;
+    const screenshotPath = publicAssetUrl(`weapon-screenshots/${slug}.svg`);
 
     // Normalization maxes (same logic as card grid)
     const weapons = Object.values(WEAPON_CONFIGS);
