@@ -130,6 +130,9 @@ export interface WaveEnemy {
 const MIN_SPAWN_DISTANCE = 0.25;
 // Minimum distance between enemies (in UV space)
 const MIN_ENEMY_SEPARATION = 0.05;
+const MIN_WALKER_ENEMY_SEPARATION = 0.45;
+const WALKER_SEPARATION_RADIUS_SCALE = 1.15;
+const WALKER_SEPARATION_MAX_STEP_PER_FRAME = 0.06;
 
 /** Absolute hard cap on total enemy count to prevent O(n^2) separation from cratering FPS. */
 const MAX_ENEMY_COUNT = 400;
@@ -1128,6 +1131,96 @@ export class EnemySpawner {
   private readonly sepGrid = new Map<number, number[]>();
   private readonly sepCellSize = MIN_ENEMY_SEPARATION * 2; // cell slightly larger than sep dist
   private readonly sepActiveIndices: number[] = [];
+  private readonly sepWorldDelta = new THREE.Vector3();
+  private readonly sepWorldNormal = new THREE.Vector3();
+  private readonly sepWorldTargetA = new THREE.Vector3();
+  private readonly sepWorldTargetB = new THREE.Vector3();
+  private readonly sepLocalPosition = new THREE.Vector3();
+  private readonly sepInverseRotation = new THREE.Quaternion();
+
+  private setDeterministicWalkerSeparationDirection(
+    out: THREE.Vector3,
+    enemy: BaseEnemy,
+    i: number,
+    j: number,
+  ): void {
+    if (!enemy.walker) {
+      out.set(1, 0, 0);
+      return;
+    }
+
+    const hash = ((i + 1) * 73856093) ^ ((j + 1) * 19349663);
+    const angle = ((hash >>> 0) % 6283) / 1000;
+    out.copy(enemy.walker.tangent)
+      .multiplyScalar(Math.cos(angle))
+      .addScaledVector(enemy.walker.bitangent, Math.sin(angle));
+
+    if (out.lengthSq() < 0.000001) {
+      out.copy(enemy.walker.bitangent);
+    }
+    out.normalize();
+  }
+
+  private syncWalkerSeparatedEnemy(enemy: BaseEnemy, targetPosition: THREE.Vector3): void {
+    if (!enemy.walker) return;
+
+    const result = enemy.walker.surface.closestPointOnSurface(targetPosition);
+    if (!result) return;
+
+    enemy.walker.teleportTo(result.point, result.faceIndex, result.normal);
+    enemy.position.copy(enemy.walker.position);
+
+    if (enemy.surfaceRef) {
+      this.sepInverseRotation.copy(enemy.surfaceRef.worldRotation).invert();
+      this.sepLocalPosition.copy(enemy.walker.position).applyQuaternion(this.sepInverseRotation);
+      const uv = enemy.surfaceRef.worldToSurface(this.sepLocalPosition);
+      enemy.surfacePosition.u = uv.u;
+      enemy.surfacePosition.v = uv.v;
+    }
+
+    enemy.applySurfaceTransform((u: number, v: number) => this.getCachedTransform(u, v));
+    if (enemy.isInstanced && this.instanceManager) {
+      this.instanceManager.syncInstanceMatrix(enemy);
+    }
+  }
+
+  private applyWalkerSeparation(a: BaseEnemy, b: BaseEnemy, i: number, j: number, dt: number): boolean {
+    if (!a.walker || !b.walker) return false;
+    if (dt <= 0) return true;
+
+    this.sepWorldNormal.copy(a.walker.normal).add(b.walker.normal);
+    if (this.sepWorldNormal.lengthSq() < 0.000001) {
+      this.sepWorldNormal.copy(a.walker.normal);
+    }
+    this.sepWorldNormal.normalize();
+
+    this.sepWorldDelta.copy(a.walker.position).sub(b.walker.position);
+    this.sepWorldDelta.addScaledVector(this.sepWorldNormal, -this.sepWorldDelta.dot(this.sepWorldNormal));
+
+    let dist = this.sepWorldDelta.length();
+    if (dist < 0.0001) {
+      this.setDeterministicWalkerSeparationDirection(this.sepWorldDelta, a, i, j);
+      dist = 0;
+    } else {
+      this.sepWorldDelta.multiplyScalar(1 / dist);
+    }
+
+    const minWorldDist = Math.max(
+      MIN_WALKER_ENEMY_SEPARATION,
+      (a.radius + b.radius) * WALKER_SEPARATION_RADIUS_SCALE,
+    );
+    const overlap = minWorldDist - dist;
+    if (overlap <= 0) return true;
+
+    const dtScale = Math.min(2, Math.max(0.25, dt * 60));
+    const step = Math.min(overlap * 0.5, WALKER_SEPARATION_MAX_STEP_PER_FRAME * dtScale);
+    this.sepWorldTargetA.copy(a.walker.position).addScaledVector(this.sepWorldDelta, step);
+    this.sepWorldTargetB.copy(b.walker.position).addScaledVector(this.sepWorldDelta, -step);
+
+    this.syncWalkerSeparatedEnemy(a, this.sepWorldTargetA);
+    this.syncWalkerSeparatedEnemy(b, this.sepWorldTargetB);
+    return true;
+  }
 
   /** Apply gentle separation force between nearby enemies.
    *  Uses a spatial grid to avoid O(n^2) brute force — only checks neighbors.
@@ -1216,6 +1309,10 @@ export class EnemySpawner {
             if (j <= i) continue; // avoid double-processing pairs
 
             const b = this.enemies[j];
+
+            if (this.applyWalkerSeparation(a, b, i, j, dt)) {
+              continue;
+            }
 
             // Compute UV delta with wrapping awareness
             let du = a.surfacePosition.u - b.surfacePosition.u;
