@@ -89,6 +89,18 @@ describe('UPGRADE_TREES', () => {
     }
   });
 
+  it('Standard Blaster copy reports cumulative totals for counts and percentages', () => {
+    expect(getNodeById('standard_a_2')?.effect).toContain('Fires +1 bolt, 3 total');
+    expect(getNodeById('standard_a_2')?.effect).toContain('bolt damage totals +40% [+40%]');
+    expect(getNodeById('standard_a_3')?.effect).toContain('bolt damage totals +100% [+60%]');
+    expect(getNodeById('standard_al_6')?.effect).toContain('fires +4 bolts, 9 total');
+    expect(getNodeById('standard_ar_6')?.effect).toContain('fire rate totals +110% [+30%]');
+    expect(getNodeById('standard_b_3')?.effect).toContain('Fires +1 bolt, 4 tight total');
+    expect(getNodeById('standard_b_3')?.effect).toContain('fire rate totals +80% [+50%]');
+    expect(getNodeById('standard_br_7')?.effect).toContain('Bolt damage totals +140% [+40%]');
+    expect(getNodeById('standard_br_10')?.effect).toContain('bolt damage totals +190% [+50%]');
+  });
+
   it('Homing has two non-empty branches without pinning filler count', () => {
     const tree = UPGRADE_TREES[WeaponType.Homing];
     const branchA = tree.nodes.filter(n => n.branch === 'a');

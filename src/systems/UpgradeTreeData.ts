@@ -179,34 +179,34 @@ export const UPGRADE_TREES: Record<WeaponType, UpgradeTree> = {
     svgHeight: 318,
     nodes: [
       // Volley trunk: direct, readable extra-bolt progression.
-      node(WeaponType.Standard, 'a', 1, 'Dual bolts',    'Fires 2 bolts side by side (+1 bullet)',          { x: 103, y:  46 }),
-      node(WeaponType.Standard, 'a', 2, 'Triple spray',  'Fires 3 bolts in a narrow fan (+2 bullets)',      { x:  80, y:  78 }),
-      node(WeaponType.Standard, 'a', 3, 'Quad burst',    'Fires 4 bolts, fan widens slightly (+3 bullets)', { x:  57, y: 110 }),
-      node(WeaponType.Standard, 'a', 4, 'Rapid burst',   '+30% fire rate; fires 5 bolts in tight burst',    { x:  35, y: 142 }),
+      node(WeaponType.Standard, 'a', 1, 'Dual bolts',    'Fires +1 bolt, 2 total side by side',                                             { x: 103, y:  46 }),
+      node(WeaponType.Standard, 'a', 2, 'Triple spray',  'Fires +1 bolt, 3 total in a narrow fan; bolt damage totals +40% [+40%]',          { x:  80, y:  78 }),
+      node(WeaponType.Standard, 'a', 3, 'Quad burst',    'Fires +1 bolt, 4 total; fan widens; bolt damage totals +100% [+60%]',             { x:  57, y: 110 }),
+      node(WeaponType.Standard, 'a', 4, 'Rapid burst',   'Fires +1 bolt, 5 total in tight burst; fire rate totals +30% [+30%]',             { x:  35, y: 142 }),
 
       // Scatter: retain the proven fan shapes instead of speculative ring/final forms.
-      node(WeaponType.Standard, 'al', 5, 'Shotgun spread', 'Fires 5 bolts in a wider 35 deg arc (+4 bullets)', { parentId: 'standard_a_4', x:  10, y: 184 }),
-      node(WeaponType.Standard, 'al', 6, 'Nova fan',       'Capstone: fires 9 bolts in a 55 deg arc',    { parentId: 'standard_al_5', x:   8, y: 226 }),
+      node(WeaponType.Standard, 'al', 5, 'Shotgun spread', 'Keeps 5 total bolts and widens fan to a 35 deg arc',                            { parentId: 'standard_a_4', x:  10, y: 184 }),
+      node(WeaponType.Standard, 'al', 6, 'Nova fan',       'Capstone: fires +4 bolts, 9 total in a 55 deg arc',                             { parentId: 'standard_al_5', x:   8, y: 226 }),
 
       // Cadence: premium path for fire-rate players.
-      node(WeaponType.Standard, 'ar', 5, 'Overclock',  '+50% fire rate',                          { parentId: 'standard_a_4',  cost: 2, x:  63, y: 184 }),
-      node(WeaponType.Standard, 'ar', 6, 'Hyperclock', 'Capstone: +80% total fire-rate pressure', { parentId: 'standard_ar_5', cost: 2, x:  66, y: 226 }),
+      node(WeaponType.Standard, 'ar', 5, 'Overclock',  'Fire rate totals +80% [+50%]',                                               { parentId: 'standard_a_4',  cost: 2, x:  63, y: 184 }),
+      node(WeaponType.Standard, 'ar', 6, 'Hyperclock', 'Capstone: fire rate totals +110% [+30%]',                                   { parentId: 'standard_ar_5', cost: 2, x:  66, y: 226 }),
 
       // Focus trunk: tight extra bolts and a real damage step.
-      node(WeaponType.Standard, 'b', 1, 'Focused pair',   'Fires 2 bolts in a tight 5° cone (+1 bullet)',   { x: 177, y:  46 }),
-      node(WeaponType.Standard, 'b', 2, 'Triple needle',  'Fires 3 bolts in a 5° cone (+2 bullets)',        { x: 200, y:  78 }),
-      node(WeaponType.Standard, 'b', 3, 'Quad lance',     'Fires 4 tightly-grouped bolts (+3 bullets)',     { x: 223, y: 110 }),
-      node(WeaponType.Standard, 'b', 4, 'Heavy bolt',     'Bolts deal +40% damage',                                { x: 245, y: 142 }),
+      node(WeaponType.Standard, 'b', 1, 'Focused pair',   'Fires +1 bolt, 2 tight total in a 5 deg cone',                              { x: 177, y:  46 }),
+      node(WeaponType.Standard, 'b', 2, 'Triple needle',  'Fires +1 bolt, 3 tight total; fire rate totals +30% [+30%]',                { x: 200, y:  78 }),
+      node(WeaponType.Standard, 'b', 3, 'Quad lance',     'Fires +1 bolt, 4 tight total; fire rate totals +80% [+50%]',                { x: 223, y: 110 }),
+      node(WeaponType.Standard, 'b', 4, 'Heavy bolt',     'Bolt damage totals +40% [+40%]',                                           { x: 245, y: 142 }),
 
       // Guidance: fewer steps, each mapped to existing homing behavior.
-      node(WeaponType.Standard, 'bl', 5, 'Seeking bolts',   'Mild homing bias for focused bolts',                    { parentId: 'standard_b_4',  x: 217, y: 184 }),
-      node(WeaponType.Standard, 'bl', 7, 'Precision burst', 'Faster homing bolts with stronger correction',          { parentId: 'standard_bl_5', x: 222, y: 226 }),
-      node(WeaponType.Standard, 'bl', 10,'Apex hunter',     'Capstone: strongest homing with one loop-back on miss', { parentId: 'standard_bl_7', x: 224, y: 270 }),
+      node(WeaponType.Standard, 'bl', 5, 'Seeking bolts',   'Adds 4 mild-homing focused bolts',                                        { parentId: 'standard_b_4',  x: 217, y: 184 }),
+      node(WeaponType.Standard, 'bl', 7, 'Precision burst', 'Adds 6 faster homing focused bolts with stronger correction [+2]',        { parentId: 'standard_bl_5', x: 222, y: 226 }),
+      node(WeaponType.Standard, 'bl', 10,'Apex hunter',     'Capstone: 6 strongest-homing bolts with one loop-back on miss',           { parentId: 'standard_bl_7', x: 224, y: 270 }),
 
       // Payload: premium damage path with the speculative middle filler removed.
-      node(WeaponType.Standard, 'br', 5, 'Power shot',    '+60% damage per bolt',                          { parentId: 'standard_b_4',  cost: 2, x: 268, y: 184 }),
-      node(WeaponType.Standard, 'br', 7, 'Supercharged',  '+40% additional bolt damage',                  { parentId: 'standard_br_5', cost: 2, x: 270, y: 226 }),
-      node(WeaponType.Standard, 'br', 10,'Shockwave kill','Capstone: high damage; kills trigger shockwave',{ parentId: 'standard_br_7', cost: 2, x: 266, y: 270 }),
+      node(WeaponType.Standard, 'br', 5, 'Power shot',    'Bolt damage totals +100% [+60%]',                                         { parentId: 'standard_b_4',  cost: 2, x: 268, y: 184 }),
+      node(WeaponType.Standard, 'br', 7, 'Supercharged',  'Bolt damage totals +140% [+40%]',                                         { parentId: 'standard_br_5', cost: 2, x: 270, y: 226 }),
+      node(WeaponType.Standard, 'br', 10,'Shockwave kill','Capstone: bolt damage totals +190% [+50%]; kills trigger shockwave',       { parentId: 'standard_br_7', cost: 2, x: 266, y: 270 }),
     ],
     // Cross-branch shortcuts: Multi-Bolt trunk tier 2 → Damage trunk tier 3 (and vice versa).
     // Unlocking Triple spray (a_2) grants shortcut access to Quad lance (b_3),

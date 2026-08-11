@@ -310,6 +310,19 @@ describe('WeaponMasteryScreen — constellation UI', () => {
     expect(standardAr5).toContain('data-branch-name="Cadence"');
   });
 
+  it('show() exposes cumulative Standard Blaster copy for mastery tooltips', () => {
+    screen.show();
+    const html = mockBody.children[0].innerHTML;
+
+    expect(html).toContain('data-node-id="standard_a_2"');
+    expect(html).toContain('Fires +1 bolt, 3 total');
+    expect(html).toContain('bolt damage totals +40% [+40%]');
+    expect(html).toContain('data-node-id="standard_ar_6"');
+    expect(html).toContain('fire rate totals +110% [+30%]');
+    expect(html).toContain('data-node-id="standard_br_10"');
+    expect(html).toContain('bolt damage totals +190% [+50%]');
+  });
+
   it('show() HTML contains available points display', () => {
     screen.show();
     const html = mockBody.children[0].innerHTML;
