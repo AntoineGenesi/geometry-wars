@@ -62,7 +62,7 @@ export const SERVER_WEAPON_CONFIGS: Record<string, ServerWeaponConfig> = {
   homing:          { ammo: 20,  damageMultiplier: 1.2, damage: 6,   fireRate: 3   },
   chain_lightning: { ammo: 25,  damageMultiplier: 1.0, damage: 4,   fireRate: 3   },
   plasma_mortar:   { ammo: 12,  damageMultiplier: 2.0, damage: 20,  fireRate: 1.0 },
-  gravity_gun:     { ammo: 12,  damageMultiplier: 1.0, damage: 4,   fireRate: 1.0 },
+  gravity_gun:     { ammo: 12,  damageMultiplier: 1.0, damage: 8,   fireRate: 1.0 },
   laser_beam:      { ammo: 6,   damageMultiplier: 0.6, damage: 2,   fireRate: 0.8 },
   black_hole:      { ammo: 3,   damageMultiplier: 5.0, damage: 999, fireRate: 0.3 },
   tesla_coil:      { ammo: 150, damageMultiplier: 0.7, damage: 1,   fireRate: 30  },
