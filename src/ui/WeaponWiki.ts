@@ -135,12 +135,12 @@ const WEAPON_TACTICS: Record<WeaponType, { detail: string; tips: string[] }> = {
     ],
   },
   [WeaponType.LaserBeam]: {
-    detail: 'The Laser Beam projects a continuous high-energy ray that deals sustained damage to anything in its path. Hold fire to maintain the beam. Duration-based ammo drains while firing. Instant hit with no travel time.',
+    detail: 'The Laser Beam fires a short-lived high-energy charge that deals sustained damage along its path. Hold fire during the charge to steer the beam. Ammo is counted in charges instead of frame-by-frame drain.',
     tips: [
-      'Sustained DPS - hold fire to sweep across enemy groups',
+      'Each charge lasts long enough to sweep across enemy groups',
       'Instant beam with no projectile travel time',
-      'Duration: ~3.3 seconds of continuous fire',
-      'Sweep across groups for efficient ammo usage',
+      'Each pickup grants 6 beam charges',
+      'Keep aiming while a charge is active to steer the beam',
     ],
   },
   [WeaponType.BlackHole]: {

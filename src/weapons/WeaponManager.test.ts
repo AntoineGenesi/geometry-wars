@@ -37,6 +37,7 @@ import { WeaponManager, WeaponCallbacks } from './WeaponManager';
 import { WeaponType, WEAPON_CONFIGS } from './WeaponTypes';
 import { MatchUpgradeTracker } from '../systems/MatchUpgradeTracker';
 import { MasteryPointStore, weaponTypeFromNodeId } from '../systems/MasteryPointStore';
+import { LASER_CHARGE_DURATION } from '../shared/GameBalanceConstants';
 
 // ---------------------------------------------------------------------------
 // Test helpers
@@ -886,12 +887,60 @@ describe('WeaponManager', () => {
       expect(laserDamages.length).toBeGreaterThan(0);
     });
 
+    it('keeps one steerable beam charge while fire is held', () => {
+      expect(manager.fire(origin(), forward(), T)).toBe(true);
+      const ammoAfterCharge = manager.getCurrentAmmo();
+      const [effect] = manager['activeEffects'].filter(e => e.type === 'laser');
+      expect(effect).toBeDefined();
+      expect(manager.projectileRoot.children.length).toBe(1);
+      const yBeforeSteer = effect.beamPoints![1].y;
+
+      const newDirection = new THREE.Vector3(0, 1, 0);
+      // Before the independent blaster cooldown elapses, steering the active Laser
+      // should not report a new shot to the live SP feedback path.
+      expect(manager.fire(origin(), newDirection, T + 0.1)).toBe(false);
+
+      const laserEffects = manager['activeEffects'].filter(e => e.type === 'laser');
+      expect(laserEffects).toHaveLength(1);
+      expect(manager.projectileRoot.children.length).toBe(1);
+      expect(manager.getCurrentAmmo()).toBe(ammoAfterCharge);
+      expect(laserEffects[0].direction!.distanceTo(newDirection)).toBeLessThan(0.001);
+      expect(laserEffects[0].beamPoints![1].y).toBeGreaterThan(yBeforeSteer);
+    });
+
+    it('damages along the latest steered beam path', () => {
+      const steeredEnemy: MockEnemy = { position: new THREE.Vector3(8, 1.0, 0), index: 1, alive: true };
+      mock = createMockCallbacks([steeredEnemy]);
+      manager.setCallbacks(mock.callbacks);
+
+      manager.fire(origin(), forward(), T);
+      manager.fire(origin(), new THREE.Vector3(0, 1, 0), T + 0.1);
+      manager.update(0.05, true);
+
+      expect(mock.damages.some(d => d.index === 1 && d.type === WeaponType.LaserBeam)).toBe(true);
+    });
+
+    it('keeps the final zero-ammo charge active until it expires', () => {
+      const finalChargeManager = new WeaponManager();
+      finalChargeManager.setCallbacks(mock.callbacks);
+      finalChargeManager.forceSetWeapon(WeaponType.LaserBeam, 1);
+      finalChargeManager.fire(origin(), forward(), T);
+      expect(finalChargeManager.getCurrentAmmo()).toBe(0);
+      expect(finalChargeManager.getCurrentWeapon()).toBe(WeaponType.LaserBeam);
+      expect(finalChargeManager.getInventory().some(entry => entry.type === WeaponType.LaserBeam)).toBe(true);
+
+      finalChargeManager.update(LASER_CHARGE_DURATION + 0.1);
+      expect(finalChargeManager.getCurrentWeapon()).toBe(WeaponType.Standard);
+      expect(finalChargeManager.getInventory().some(entry => entry.type === WeaponType.LaserBeam)).toBe(false);
+      finalChargeManager.dispose();
+    });
+
     it('should fade out over time', () => {
       manager.fire(origin(), forward(), T);
       expect(manager.projectileRoot.children.length).toBe(1);
 
-      // Update past the laser's duration (0.5s)
-      manager.update(0.6);
+      // Update past the laser charge duration.
+      manager.update(LASER_CHARGE_DURATION + 0.1);
       expect(manager.projectileRoot.children.length).toBe(0);
     });
 
@@ -1276,7 +1325,8 @@ describe('WeaponManager', () => {
       expect(WEAPON_CONFIGS[WeaponType.GravityGun].ammo).toBe(12);
       expect(WEAPON_CONFIGS[WeaponType.PlasmaMortar].ammo).toBe(12);
       expect(WEAPON_CONFIGS[WeaponType.Homing].ammo).toBe(40);
-      expect(WEAPON_CONFIGS[WeaponType.LaserBeam].ammo).toBe(200);
+      expect(WEAPON_CONFIGS[WeaponType.LaserBeam].ammo).toBe(6);
+      expect(WEAPON_CONFIGS[WeaponType.LaserBeam].fireRate).toBe(0.8);
     });
 
     it('should have zero projectile speed for instant weapons', () => {
@@ -1813,7 +1863,7 @@ describe('WeaponManager LAN visual-only mode', () => {
       wm2.fire(origin(), forward(), T);
       const effect = wm2['activeEffects'].find(e => e.type === 'laser');
       expect(effect).toBeDefined();
-      expect(effect!.duration).toBeCloseTo(0.5 * 1.20, 3);
+      expect(effect!.duration).toBeCloseTo(LASER_CHARGE_DURATION * 1.20, 3);
       wm2.dispose();
     });
 
@@ -2584,8 +2634,8 @@ describe('Laser ramp-up mechanic', () => {
     for (let i = 0; i < 5; i++) wm.update(0.016); // ~80ms
     expect((wm as any).laserRampProgress).toBeGreaterThan(0);
 
-    // After laser effect expires (~0.5s duration), ramp resets to 0
-    for (let i = 0; i < 60; i++) wm.update(0.016); // ~1s total — well past expiry
+    // After laser charge expires, ramp resets to 0.
+    for (let i = 0; i < 90; i++) wm.update(0.016); // ~1.44s total — past base charge expiry
     expect((wm as any).laserRampProgress).toBe(0);
     wm.dispose();
   });

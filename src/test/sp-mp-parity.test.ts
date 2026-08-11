@@ -39,6 +39,7 @@ import {
   HEALTH_PICKUP_LIFETIME,
   HEALTH_PICKUP_SPAWN_RADIUS,
   DIFFICULTY_PER_PLAYER_FACTOR,
+  LASER_CHARGE_DURATION,
 } from '../shared/GameBalanceConstants';
 import { WEAPON_CONFIGS, WeaponType } from '../weapons/WeaponTypes';
 
@@ -90,12 +91,17 @@ describe('SP/MP Parity — Shared Constants', () => {
       expect(SERVER_WEAPON_CONFIGS.plasma_mortar.ammo).toBe(12);
     });
 
-    it('preserves audited Homing and Laser ammo semantics', () => {
+    it('preserves audited Homing ammo semantics', () => {
       expect(SHARED_WEAPON_CONFIGS.homing.ammo).toBe(40);
       expect(SERVER_WEAPON_CONFIGS.homing.ammo).toBe(20);
-      expect(SHARED_WEAPON_CONFIGS.laser_beam.ammo).toBe(200);
-      expect(SERVER_WEAPON_CONFIGS.laser_beam.ammo).toBe(200);
-      expect(SHARED_WEAPON_CONFIGS.laser_beam.ammo / SHARED_WEAPON_CONFIGS.laser_beam.fireRate).toBeCloseTo(3.333, 3);
+    });
+
+    it('documents aligned Laser charge semantics', () => {
+      expect(LASER_CHARGE_DURATION).toBe(1.25);
+      expect(SHARED_WEAPON_CONFIGS.laser_beam.ammo).toBe(6);
+      expect(SERVER_WEAPON_CONFIGS.laser_beam.ammo).toBe(6);
+      expect(SHARED_WEAPON_CONFIGS.laser_beam.fireRate).toBe(0.8);
+      expect(SERVER_WEAPON_CONFIGS.laser_beam.fireRate).toBe(0.8);
     });
   });
 

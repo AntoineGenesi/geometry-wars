@@ -6,6 +6,7 @@ import type { ServerMeshLocation } from '../movement/ServerMeshLocation';
 import { ServerMeshWalker } from '../movement/ServerMeshWalker';
 import type { ServerSurfaceManager } from '../movement/ServerSurfaceManager';
 import { BulletState, EnemyState, GameState, PlayerState } from '../schema/GameState';
+import { LASER_CHARGE_DURATION, WEAPON_CONFIGS } from '../shared/GameConstants';
 import { GameRoom, surfaceUVToWorld3D } from './GameRoom';
 
 interface EnemyAIState {
@@ -29,7 +30,7 @@ interface EnemyRoomInternals {
     sourcePlayerId: string,
     sourceKind: string,
   ): number;
-  applyLaserDamage(player: PlayerState, dt: number): void;
+  applyLaserDamage(player: PlayerState, dt: number, shooting?: boolean): void;
   applyTeslaDamage(player: PlayerState, dt: number): void;
   fireChainLightningMP(player: PlayerState): void;
   bulletWorldDistanceToEnemy(bullet: BulletState, enemy: EnemyState): number;
@@ -300,6 +301,8 @@ describe('GameRoom enemy target authority and damage aggro', () => {
     enemy.wy = player.wy + player.ty * 5;
     enemy.wz = player.wz + player.tz * 5;
     enemy.health = 5;
+    player.weaponType = 'laser_beam';
+    player.weaponAmmo = WEAPON_CONFIGS.laser_beam.ammo;
     player.aimAngle = 0;
     scenario.internals.applyLaserDamage(player, 1 / 60);
     expect(enemy.health).toBeLessThan(5);
@@ -348,6 +351,66 @@ describe('GameRoom enemy target authority and damage aggro', () => {
     } finally {
       Math.random = originalRandom;
     }
+  });
+
+  it('charges MP Laser ammo once per beam charge instead of every tick', () => {
+    const scenario = makeScenario('cube');
+    const player = scenario.player;
+    const enemy = scenario.enemy;
+    const startingAmmo = WEAPON_CONFIGS.laser_beam.ammo;
+    player.weaponType = 'laser_beam';
+    player.weaponAmmo = startingAmmo;
+    player.aimAngle = 0;
+    enemy.wx = player.wx + player.tx * 5;
+    enemy.wy = player.wy + player.ty * 5;
+    enemy.wz = player.wz + player.tz * 5;
+    enemy.health = 5;
+    scenario.room.state.gameTime = 10;
+
+    scenario.internals.applyLaserDamage(player, 1 / 60, true);
+    expect(player.weaponAmmo).toBe(startingAmmo - 1);
+    expect(enemy.health).toBeLessThan(5);
+
+    const ammoAfterChargeStart = player.weaponAmmo;
+    for (let i = 0; i < 10; i++) {
+      scenario.room.state.gameTime += 1 / 60;
+      scenario.internals.applyLaserDamage(player, 1 / 60, true);
+    }
+    expect(player.weaponAmmo).toBe(ammoAfterChargeStart);
+  });
+
+  it('uses current aim while an MP Laser charge is active and switches after the final charge expires', () => {
+    const scenario = makeScenario('cube');
+    const player = scenario.player;
+    const enemy = scenario.enemy;
+    player.weaponType = 'laser_beam';
+    player.weaponAmmo = 1;
+    player.aimAngle = 0;
+    enemy.wx = player.wx + player.tx * 5;
+    enemy.wy = player.wy + player.ty * 5;
+    enemy.wz = player.wz + player.tz * 5;
+    enemy.health = 5;
+    scenario.room.state.gameTime = 20;
+
+    scenario.internals.applyLaserDamage(player, 1 / 60, true);
+    expect(player.weaponAmmo).toBe(0);
+    expect(player.weaponType).toBe('laser_beam');
+
+    enemy.health = 5;
+    enemy.wx = player.wx + player.bx * 5;
+    enemy.wy = player.wy + player.by * 5;
+    enemy.wz = player.wz + player.bz * 5;
+    player.aimAngle = Math.PI / 2;
+    scenario.room.state.gameTime += 1 / 60;
+    scenario.internals.applyLaserDamage(player, 1 / 60, true);
+    expect(enemy.health).toBeLessThan(5);
+
+    for (let elapsed = 0; elapsed < LASER_CHARGE_DURATION + 0.1; elapsed += 1 / 30) {
+      scenario.room.state.gameTime += 1 / 30;
+      scenario.internals.applyLaserDamage(player, 1 / 30, false);
+    }
+    expect(player.weaponType).toBe('standard');
+    expect(player.weaponAmmo).toBe(-1);
   });
 });
 
