@@ -1271,6 +1271,14 @@ describe('WeaponManager', () => {
       }
     });
 
+    it('uses reduced ammo for high-impact special weapons', () => {
+      expect(WEAPON_CONFIGS[WeaponType.BlackHole].ammo).toBe(3);
+      expect(WEAPON_CONFIGS[WeaponType.GravityGun].ammo).toBe(12);
+      expect(WEAPON_CONFIGS[WeaponType.PlasmaMortar].ammo).toBe(12);
+      expect(WEAPON_CONFIGS[WeaponType.Homing].ammo).toBe(40);
+      expect(WEAPON_CONFIGS[WeaponType.LaserBeam].ammo).toBe(200);
+    });
+
     it('should have zero projectile speed for instant weapons', () => {
       expect(WEAPON_CONFIGS[WeaponType.ChainLightning].projectileSpeed).toBe(0);
       expect(WEAPON_CONFIGS[WeaponType.LaserBeam].projectileSpeed).toBe(0);

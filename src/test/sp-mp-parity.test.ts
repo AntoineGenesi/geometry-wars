@@ -80,6 +80,23 @@ describe('SP/MP Parity — Shared Constants', () => {
     it('standard weapon has unlimited ammo (-1)', () => {
       expect(SHARED_WEAPON_CONFIGS.standard.ammo).toBe(-1);
     });
+
+    it('aligns high-impact special ammo across SP and MP', () => {
+      expect(SHARED_WEAPON_CONFIGS.black_hole.ammo).toBe(3);
+      expect(SERVER_WEAPON_CONFIGS.black_hole.ammo).toBe(3);
+      expect(SHARED_WEAPON_CONFIGS.gravity_gun.ammo).toBe(12);
+      expect(SERVER_WEAPON_CONFIGS.gravity_gun.ammo).toBe(12);
+      expect(SHARED_WEAPON_CONFIGS.plasma_mortar.ammo).toBe(12);
+      expect(SERVER_WEAPON_CONFIGS.plasma_mortar.ammo).toBe(12);
+    });
+
+    it('preserves audited Homing and Laser ammo semantics', () => {
+      expect(SHARED_WEAPON_CONFIGS.homing.ammo).toBe(40);
+      expect(SERVER_WEAPON_CONFIGS.homing.ammo).toBe(20);
+      expect(SHARED_WEAPON_CONFIGS.laser_beam.ammo).toBe(200);
+      expect(SERVER_WEAPON_CONFIGS.laser_beam.ammo).toBe(200);
+      expect(SHARED_WEAPON_CONFIGS.laser_beam.ammo / SHARED_WEAPON_CONFIGS.laser_beam.fireRate).toBeCloseTo(3.333, 3);
+    });
   });
 
   // -----------------------------------------------------------------------

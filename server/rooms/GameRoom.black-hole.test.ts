@@ -13,6 +13,7 @@ import {
   GameState,
   PlayerState,
 } from '../schema/GameState';
+import { WEAPON_CONFIGS } from '../shared/GameConstants';
 import { GameRoom } from './GameRoom';
 
 interface BlackHoleRoomInternals {
@@ -29,6 +30,7 @@ interface BlackHoleRoomInternals {
   updateBlackHoleFields(dt: number): void;
   removeBlackHoleBoltsOwnedBy(ownerId: string): void;
   removeBlackHoleFieldsOwnedBy(ownerId: string): void;
+  setupBlackHoleProof(player: PlayerState): void;
   startGame(): void;
   softRestartRound(settings: typeof DEFAULT_GAME_SETTINGS): void;
   transitionToVoting(): void;
@@ -80,7 +82,7 @@ function makeRoom(options: {
   player.id = 'owner';
   player.name = 'Owner';
   player.weaponType = 'black_hole';
-  player.weaponAmmo = 5;
+  player.weaponAmmo = WEAPON_CONFIGS.black_hole.ammo;
   player.aimAngle = options.aimAngle ?? 0;
   room.state.players.set(player.id, player);
   const playerWalker = internals.surfaceManager.createWalker(
@@ -437,5 +439,17 @@ describe('GameRoom authoritative Black Hole vortex', () => {
     scenario.room.onDispose();
     expect(scenario.room.state.blackHoleBolts).toHaveLength(0);
     expect(scenario.room.state.blackHoleFields).toHaveLength(0);
+  });
+
+  it('proof setup grants the configured Black Hole ammo', () => {
+    const scenario = makeRoom();
+    rooms.push(scenario.room);
+
+    scenario.player.weaponType = 'standard';
+    scenario.player.weaponAmmo = -1;
+    scenario.internals.setupBlackHoleProof(scenario.player);
+
+    expect(scenario.player.weaponType).toBe('black_hole');
+    expect(scenario.player.weaponAmmo).toBe(WEAPON_CONFIGS.black_hole.ammo);
   });
 });

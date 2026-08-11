@@ -32,10 +32,10 @@ export const SHARED_WEAPON_CONFIGS: Record<string, SharedWeaponConfig> = {
   piercing:        { ammo: 50,  damage: 3,    fireRate: 3   },
   homing:          { ammo: 40,  damage: 6,    fireRate: 3   },
   chain_lightning: { ammo: 50,  damage: 4,    fireRate: 3   },
-  plasma_mortar:   { ammo: 18,  damage: 20,   fireRate: 1.0 },
-  gravity_gun:     { ammo: 20,  damage: 8,    fireRate: 1   },
+  plasma_mortar:   { ammo: 12,  damage: 20,   fireRate: 1.0 },
+  gravity_gun:     { ammo: 12,  damage: 8,    fireRate: 1   },
   laser_beam:      { ammo: 200, damage: 2,    fireRate: 60  },
-  black_hole:      { ammo: 6,   damage: 999,  fireRate: 0.3 },
+  black_hole:      { ammo: 3,   damage: 999,  fireRate: 0.3 },
   tesla_coil:      { ammo: 150, damage: 1,    fireRate: 30  },
 } as const;
 
@@ -61,10 +61,10 @@ export const SERVER_WEAPON_CONFIGS: Record<string, ServerWeaponConfig> = {
   piercing:        { ammo: 30,  damageMultiplier: 1.5, damage: 3,   fireRate: 3   },
   homing:          { ammo: 20,  damageMultiplier: 1.2, damage: 6,   fireRate: 3   },
   chain_lightning: { ammo: 25,  damageMultiplier: 1.0, damage: 4,   fireRate: 3   },
-  plasma_mortar:   { ammo: 15,  damageMultiplier: 2.0, damage: 20,  fireRate: 1.0 },
-  gravity_gun:     { ammo: 20,  damageMultiplier: 1.0, damage: 4,   fireRate: 1.0 },
+  plasma_mortar:   { ammo: 12,  damageMultiplier: 2.0, damage: 20,  fireRate: 1.0 },
+  gravity_gun:     { ammo: 12,  damageMultiplier: 1.0, damage: 4,   fireRate: 1.0 },
   laser_beam:      { ammo: 200, damageMultiplier: 0.6, damage: 2,   fireRate: 60  },
-  black_hole:      { ammo: 5,   damageMultiplier: 5.0, damage: 999, fireRate: 0.3 },
+  black_hole:      { ammo: 3,   damageMultiplier: 5.0, damage: 999, fireRate: 0.3 },
   tesla_coil:      { ammo: 150, damageMultiplier: 0.7, damage: 1,   fireRate: 30  },
 } as const;
 

@@ -144,10 +144,10 @@ const WEAPON_TACTICS: Record<WeaponType, { detail: string; tips: string[] }> = {
     ],
   },
   [WeaponType.BlackHole]: {
-    detail: 'The Black Hole launcher creates a slow-moving singularity that destroys everything it touches. With 999 damage, nothing survives contact. Extremely limited ammo (6 shots) and slow fire rate demand strategic deployment.',
+    detail: 'The Black Hole launcher creates a slow-moving singularity that destroys everything it touches. With 999 damage, nothing survives contact. Extremely limited ammo (3 shots) and slow fire rate demand strategic deployment.',
     tips: [
       'One-hit kills everything including Titans and Bosses',
-      'Only 6 shots - use them wisely on the biggest threats',
+      'Only 3 shots - use them wisely on the biggest threats',
       'Slow projectile acts as area denial while traveling',
       'Save for Boss phases or overwhelming wave spawns',
     ],
