@@ -19,6 +19,21 @@ import {
   type VisualMode,
 } from './VisualStyleSettings';
 
+export interface MultiplayerPauseModeState {
+  gameMode?: string;
+  pvpMode?: string;
+  pvpEnabled?: boolean;
+}
+
+export function getMultiplayerPauseModeLabel(state: MultiplayerPauseModeState): string {
+  const gameMode = state.gameMode ?? '';
+  const pvpMode = state.pvpMode ?? '';
+
+  if (pvpMode === 'pvpve' || gameMode === 'pvpve') return 'PvPvE';
+  if (pvpMode === 'pvp' || gameMode === 'pvp' || state.pvpEnabled) return 'PvP';
+  return 'Co-op';
+}
+
 /**
  * Pause menu overlay.
  * Shows when Escape is pressed, allows resuming or returning to main menu.
@@ -80,6 +95,8 @@ export interface PauseMenuGameData {
   currentScore?: number;
   /** Current game mode display label (e.g., '👑 KING', '〰️ WAVES') */
   currentMode?: string;
+  /** Multiplayer identity display label (e.g., 'Co-op', 'PvP', 'PvPvE') */
+  multiplayerMode?: string;
   /** Total kills across all enemy types */
   totalKills: number;
   /** Current weapon info */
@@ -238,6 +255,10 @@ export class PauseMenu {
             <div class="stats-weapon-section">
               <div class="stats-section-title">${t('pauseMenu.stats.weapon')}</div>
               <div class="stats-weapon-info"></div>
+            </div>
+            <div class="stats-multiplayer-mode-section" style="display:none">
+              <div class="stats-section-title">MULTIPLAYER</div>
+              <div class="stats-multiplayer-mode-name"></div>
             </div>
             <div class="stats-mode-section" style="display:none">
               <div class="stats-section-title">GAME MODE</div>
@@ -563,6 +584,15 @@ export class PauseMenu {
         color: #ff8;
         text-shadow: 0 0 8px rgba(255, 255, 136, 0.5);
         letter-spacing: 2px;
+        font-family: monospace;
+      }
+
+      #pause-menu .stats-multiplayer-mode-name {
+        font-size: 20px;
+        font-weight: bold;
+        color: #66ffff;
+        text-shadow: 0 0 8px rgba(102, 255, 255, 0.5);
+        letter-spacing: 1px;
         font-family: monospace;
       }
 
@@ -1553,6 +1583,7 @@ export class PauseMenu {
     this.updateWeaponInfo(data.weapon);
     this.updateScore(data.currentScore);
     this.updateMode(data.currentMode);
+    this.updateMultiplayerMode(data.multiplayerMode);
     this.updateKillCount(data.totalKills);
     this.updateBuffsList(data.buffs);
   }
@@ -1685,6 +1716,18 @@ export class PauseMenu {
   private updateMode(mode?: string): void {
     const section = this.container.querySelector('.stats-mode-section') as HTMLElement | null;
     const nameEl = this.container.querySelector('.stats-mode-name');
+    if (!section || !nameEl) return;
+    if (mode) {
+      nameEl.textContent = mode;
+      section.style.display = '';
+    } else {
+      section.style.display = 'none';
+    }
+  }
+
+  private updateMultiplayerMode(mode?: string): void {
+    const section = this.container.querySelector('.stats-multiplayer-mode-section') as HTMLElement | null;
+    const nameEl = this.container.querySelector('.stats-multiplayer-mode-name');
     if (!section || !nameEl) return;
     if (mode) {
       nameEl.textContent = mode;
