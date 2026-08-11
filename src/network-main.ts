@@ -94,6 +94,7 @@ import {
   createShieldIconSprite,
   createSuperPickupIconSprite,
 } from './pickups/PickupIconSprite';
+import { LocalRenderTargetTracker } from './network/LocalRenderTargetTracker';
 import { BulletInstanceManager, BulletVisualType } from './rendering/BulletInstanceManager';
 import { SharedGeometries } from './rendering/GeometryCache';
 import { LODManager, DEFAULT_LOD_CONFIG } from './rendering/LODManager';
@@ -1548,30 +1549,15 @@ async function main() {
     valid: false,
   };
   const LOCAL_PLAYER_RENDER_OFFSET = 0.15;
-  const LOCAL_RENDER_EXTRAPOLATE_MS = 80;
-  const LOCAL_RENDER_STALE_FADE_MS = 120;
-  const _localRenderPrevServerPos = new THREE.Vector3();
-  const _localRenderLatestServerPos = new THREE.Vector3();
-  const _localRenderVelocity = new THREE.Vector3();
+  const _localRenderTargetTracker = new LocalRenderTargetTracker();
   const _localRenderFrameTarget = new THREE.Vector3();
   const _localRenderAuthoritativeSnapTarget = new THREE.Vector3();
   const _localRenderPrevTarget = new THREE.Vector3();
   const _localRenderPrevCameraPos = new THREE.Vector3();
   const _localRenderTelemetryTarget = new THREE.Vector3();
-  let _localRenderPrevServerTimeMs = 0;
-  let _localRenderLatestServerTimeMs = 0;
-  let _localRenderValid = false;
-  let _localRenderPrevSampleValid = false;
   let _localRenderPrevTargetValid = false;
   let _localRenderPrevCameraValid = false;
-  let _localRenderSampleCount = 0;
-  let _localRenderResetCount = 0;
   let _localRenderSnapCount = 0;
-  let _localRenderServerSampleDelta = 0;
-  let _localRenderServerSampleIntervalMs = 0;
-  let _localRenderLastSampleAgeMs = -1;
-  let _localRenderLastExtrapolatedMs = 0;
-  let _localRenderLastStaleScale = 1;
   let _localRenderLastTargetDelta = 0;
   let _localRenderLastCameraDelta = 0;
   let _localRenderLastDistanceToPlayer = -1;
@@ -1589,16 +1575,12 @@ async function main() {
   }
 
   function resetLocalRenderTargetTo(pos: THREE.Vector3, nowMs: number, countReset = true): void {
-    _localRenderPrevServerPos.copy(pos);
-    _localRenderLatestServerPos.copy(pos);
-    _localRenderVelocity.set(0, 0, 0);
-    _localRenderPrevServerTimeMs = nowMs;
-    _localRenderLatestServerTimeMs = nowMs;
-    _localRenderValid = true;
-    _localRenderPrevSampleValid = true;
-    _localRenderServerSampleDelta = 0;
-    _localRenderServerSampleIntervalMs = 0;
-    if (countReset) _localRenderResetCount++;
+    _localRenderTargetTracker.resetTo(
+      pos,
+      nowMs,
+      _localServerFrameValid ? _localServerNormal : undefined,
+      countReset,
+    );
   }
 
   function resetLocalRenderTargetToServer(nowMs = performance.now(), countReset = true): boolean {
@@ -1608,14 +1590,9 @@ async function main() {
   }
 
   function clearLocalRenderTarget(): void {
-    _localRenderValid = false;
-    _localRenderPrevSampleValid = false;
+    _localRenderTargetTracker.clear();
     _localRenderPrevTargetValid = false;
     _localRenderPrevCameraValid = false;
-    _localRenderVelocity.set(0, 0, 0);
-    _localRenderLastSampleAgeMs = -1;
-    _localRenderLastExtrapolatedMs = 0;
-    _localRenderLastStaleScale = 1;
     _localRenderLastTargetDelta = 0;
     _localRenderLastCameraDelta = 0;
     _localRenderLastDistanceToPlayer = -1;
@@ -1624,45 +1601,19 @@ async function main() {
 
   function recordLocalRenderTargetSample(nowMs = performance.now()): void {
     if (!getLocalServerRenderPosition(_localRenderFrameTarget)) return;
-    if (!_localRenderValid) {
-      resetLocalRenderTargetTo(_localRenderFrameTarget, nowMs, false);
-      _localRenderSampleCount++;
-      return;
-    }
-
-    _localRenderPrevServerPos.copy(_localRenderLatestServerPos);
-    _localRenderPrevServerTimeMs = _localRenderLatestServerTimeMs;
-    _localRenderLatestServerPos.copy(_localRenderFrameTarget);
-    _localRenderLatestServerTimeMs = nowMs;
-    _localRenderPrevSampleValid = true;
-    _localRenderSampleCount++;
-
-    _localRenderServerSampleDelta = _localRenderLatestServerPos.distanceTo(_localRenderPrevServerPos);
-    _localRenderServerSampleIntervalMs = Math.max(1, _localRenderLatestServerTimeMs - _localRenderPrevServerTimeMs);
-    _localRenderVelocity.copy(_localRenderLatestServerPos)
-      .sub(_localRenderPrevServerPos)
-      .multiplyScalar(1000 / _localRenderServerSampleIntervalMs);
+    _localRenderTargetTracker.sample(
+      _localRenderFrameTarget,
+      nowMs,
+      _localServerFrameValid ? _localServerNormal : undefined,
+    );
   }
 
   function getLocalRenderTarget(nowMs: number, out: THREE.Vector3): boolean {
-    if (!_localRenderValid) {
+    if (!_localRenderTargetTracker.getTarget(nowMs, out)) {
       if (!getLocalServerRenderPosition(out)) return false;
       resetLocalRenderTargetTo(out, nowMs, false);
       return true;
     }
-
-    const ageMs = Math.max(0, nowMs - _localRenderLatestServerTimeMs);
-    const extrapolatedMs = Math.min(ageMs, LOCAL_RENDER_EXTRAPOLATE_MS);
-    const staleScale = ageMs <= LOCAL_RENDER_EXTRAPOLATE_MS
-      ? 1
-      : Math.max(0, 1 - (ageMs - LOCAL_RENDER_EXTRAPOLATE_MS) / LOCAL_RENDER_STALE_FADE_MS);
-
-    out.copy(_localRenderLatestServerPos)
-      .addScaledVector(_localRenderVelocity, (extrapolatedMs / 1000) * staleScale);
-
-    _localRenderLastSampleAgeMs = ageMs;
-    _localRenderLastExtrapolatedMs = extrapolatedMs;
-    _localRenderLastStaleScale = staleScale;
     return true;
   }
 
@@ -1697,7 +1648,7 @@ async function main() {
 
     _localRenderLastDistanceToPlayer = localPlayer.mesh.position.distanceTo(game.camera.position);
     _localRenderLastTargetToPlayer = localPlayer.mesh.position.distanceTo(target);
-    _localRenderLastSampleAgeMs = _localRenderValid ? Math.max(0, nowMs - _localRenderLatestServerTimeMs) : -1;
+    _localRenderTargetTracker.getTarget(nowMs, _localRenderFrameTarget);
   }
   // Track previous health per enemy to detect damage and spawn damage number popups
   const enemyPrevHealth = new Map<string, number>();
@@ -4713,7 +4664,6 @@ async function main() {
               );
               clearLocalRenderTarget();
               _localRenderSnapCount++;
-              _localRenderResetCount++;
             }
           }
         }
@@ -8233,6 +8183,7 @@ async function main() {
       }
       _mpTelPrevAlive = localAlive;
       _mpTelFrameCount++;
+      const _localRenderTrackerTelemetry = _localRenderTargetTracker.getTelemetry();
 
       (window as any).__GAME_TELEMETRY = {
         player: {
@@ -8390,7 +8341,7 @@ async function main() {
             tz: _localPlayerWorldTarget.tz,
           },
           renderTarget: {
-            valid: _localRenderValid,
+            valid: _localRenderTrackerTelemetry.valid,
             x: _localRenderTelemetryTarget.x,
             y: _localRenderTelemetryTarget.y,
             z: _localRenderTelemetryTarget.z,
@@ -8398,15 +8349,16 @@ async function main() {
             cameraDelta: _localRenderLastCameraDelta,
             distanceToPlayer: _localRenderLastDistanceToPlayer,
             targetToPlayer: _localRenderLastTargetToPlayer,
-            serverSampleAgeMs: _localRenderLastSampleAgeMs,
-            extrapolatedMs: _localRenderLastExtrapolatedMs,
-            staleScale: _localRenderLastStaleScale,
-            serverSampleDelta: _localRenderServerSampleDelta,
-            serverSampleIntervalMs: _localRenderServerSampleIntervalMs,
-            sampleCount: _localRenderSampleCount,
+            serverSampleAgeMs: _localRenderTrackerTelemetry.sampleAgeMs,
+            extrapolatedMs: _localRenderTrackerTelemetry.extrapolatedMs,
+            staleScale: _localRenderTrackerTelemetry.staleScale,
+            frameBendScale: _localRenderTrackerTelemetry.frameBendScale,
+            serverSampleDelta: _localRenderTrackerTelemetry.serverSampleDelta,
+            serverSampleIntervalMs: _localRenderTrackerTelemetry.serverSampleIntervalMs,
+            sampleCount: _localRenderTrackerTelemetry.sampleCount,
             snapCount: _localRenderSnapCount,
-            resetCount: _localRenderResetCount,
-            prevSampleValid: _localRenderPrevSampleValid,
+            resetCount: _localRenderTrackerTelemetry.resetCount,
+            prevSampleValid: _localRenderTrackerTelemetry.prevSampleValid,
           },
         },
         cameraUp: (() => {
