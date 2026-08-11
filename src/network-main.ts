@@ -134,7 +134,7 @@ import { enemyDiscoveryStore } from './ui/EnemyDiscoveryStore';
 import { EnemyDiscoveryToast } from './ui/EnemyDiscoveryToast';
 import { shouldShowBottomPlayerHealthHud } from './ui/PlayerHealthHudVisibility';
 import { VotingScreen } from './ui/VotingScreen';
-import { PauseMenu, PauseMenuGameData } from './ui/PauseMenu';
+import { PauseMenu, getMultiplayerPauseModeLabel, type PauseMenuGameData } from './ui/PauseMenu';
 import { UIHelpers } from './ui/UIHelpers';
 import { DDAPerformanceTracker } from './difficulty/DDAPerformanceTracker';
 import { DDADecisionEngine } from './difficulty/DDADecisionEngine';
@@ -2269,6 +2269,11 @@ async function main() {
     modeIndicatorEl.textContent = MODE_DISPLAY_LABELS[mode] ?? mode.toUpperCase();
   }
 
+  function getPauseGameModeDisplayLabel(mode: string): string {
+    const gameMode = mode === 'pvp' || mode === 'pvpve' ? 'waves' : mode;
+    return MODE_DISPLAY_LABELS[gameMode] ?? gameMode.toUpperCase();
+  }
+
   // ---- Game mode selector (host only, shown in lobby) ----
   const LOBBY_MODES: Array<{ id: string; label: string; icon: string }> = [
     { id: 'waves',          label: 'WAVES',          icon: '〰' },
@@ -3033,7 +3038,12 @@ async function main() {
       },
       buffs,
       currentScore: localPlayerState?.score ?? 0,
-      currentMode: MODE_DISPLAY_LABELS[latestGameMode] ?? latestGameMode.toUpperCase(),
+      currentMode: getPauseGameModeDisplayLabel(latestGameMode),
+      multiplayerMode: getMultiplayerPauseModeLabel({
+        gameMode: latestGameMode,
+        pvpMode: latestPvpMode,
+        pvpEnabled: latestPvpEnabled,
+      }),
       totalKills: totalKillCounter.getTotalKills(),
       weapon: {
         name: weaponConfig?.name ?? 'Standard',
