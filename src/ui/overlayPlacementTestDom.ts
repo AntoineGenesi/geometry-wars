@@ -24,7 +24,6 @@ class MockClassList {
     return shouldAdd;
   }
 }
-
 class MockElement {
   id = '';
   className = '';
@@ -143,4 +142,3 @@ export function installOverlayTestDom(): OverlayTestDom {
     styles: () => head.children.map(child => child.textContent),
   };
 }
-

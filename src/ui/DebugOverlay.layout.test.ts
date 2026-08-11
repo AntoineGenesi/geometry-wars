@@ -45,4 +45,3 @@ describe('DebugOverlay placement', () => {
     overlay.dispose();
   });
 });
-

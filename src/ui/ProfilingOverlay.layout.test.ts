@@ -43,4 +43,3 @@ describe('ProfilingOverlay placement', () => {
     overlay.dispose();
   });
 });
-
