@@ -409,6 +409,26 @@ export interface SurfaceContactPathingProofSetupResult {
   contactDistance?: number;
 }
 
+export interface HomingProofSetupResult {
+  ok: boolean;
+  reason?: string;
+  surface?: string;
+  mode?: string;
+  player?: {
+    faceIndex: number;
+    world: [number, number, number];
+    normal: [number, number, number];
+  };
+  enemy?: {
+    faceIndex: number;
+    world: [number, number, number];
+    normal: [number, number, number];
+  };
+  enemyId?: string;
+  enemyHealth?: number;
+  aimAngle?: number;
+}
+
 export interface MpScoringProofPlayerSnapshot {
   id: string;
   score: number;
@@ -527,6 +547,8 @@ export interface NetworkCallbacks {
   onPoleCrossingProofSetupResult?: (data: PoleCrossingProofSetupResult) => void;
   /** Fired after the opt-in MP surface enemy/contact proof setup request. */
   onSurfaceContactPathingProofSetupResult?: (data: SurfaceContactPathingProofSetupResult) => void;
+  /** Fired after the opt-in MP homing browser proof setup request. */
+  onHomingProofSetupResult?: (data: HomingProofSetupResult) => void;
   /** Fired after the opt-in MP scoring proof run request. */
   onMpScoringProofResult?: (data: MpScoringProofResult) => void;
   onPortalLocations?: (data: NetworkPortalLocations) => void;
@@ -956,6 +978,11 @@ export class NetworkClient {
       this.callbacks.onSurfaceContactPathingProofSetupResult?.(data);
     });
 
+    this.room.onMessage('homing_proof_setup_result', (data: HomingProofSetupResult) => {
+      netLog(`[Network] homing_proof_setup_result: ok=${data.ok} enemy=${data.enemyId ?? ''} reason=${data.reason ?? ''}`);
+      this.callbacks.onHomingProofSetupResult?.(data);
+    });
+
     this.room.onMessage('mp_scoring_proof_result', (data: MpScoringProofResult) => {
       netLog(`[Network] mp_scoring_proof_result: ok=${data.ok} scenario=${data.scenario} reason=${data.reason ?? ''}`);
       this.callbacks.onMpScoringProofResult?.(data);
@@ -1283,6 +1310,12 @@ export class NetworkClient {
   } = {}): void {
     if (!this.room || !this.connected) return;
     this.room.send('surface_contact_pathing_proof_setup', data);
+  }
+
+  /** Request deterministic setup for the opt-in MP homing browser proof. */
+  sendHomingProofSetup(data: { targetDistance?: number; targetAngle?: number; enemyHealth?: number } = {}): void {
+    if (!this.room || !this.connected) return;
+    this.room.send('homing_proof_setup', data);
   }
 
   /** Run one deterministic MP scoring scenario on the opt-in server proof path. */

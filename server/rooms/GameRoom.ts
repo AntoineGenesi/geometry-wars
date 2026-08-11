@@ -1488,6 +1488,19 @@ export class GameRoom extends Room<GameState> {
       client.send('surface_contact_pathing_proof_setup_result', result);
     });
 
+    this.onMessage('homing_proof_setup', (client, data: {
+      targetDistance?: unknown;
+      targetAngle?: unknown;
+      enemyHealth?: unknown;
+    }) => {
+      if (process.env.GEOMETRY_WARS_MP_PROOF_CONTROLS !== '1') {
+        client.send('homing_proof_setup_result', { ok: false, reason: 'proof_controls_disabled' });
+        return;
+      }
+      const result = this.setupHomingProof(client.sessionId, data);
+      client.send('homing_proof_setup_result', result);
+    });
+
     this.onMessage('mp_scoring_proof_run', (client, data: { scenario?: unknown }) => {
       if (process.env.GEOMETRY_WARS_MP_PROOF_CONTROLS !== '1') {
         client.send('mp_scoring_proof_result', {
@@ -4371,6 +4384,119 @@ export class GameRoom extends Room<GameState> {
       enemyId: enemy.id,
       enemyType: enemy.type,
       contactDistance: kind === 'contact' ? contactDistance : undefined,
+    };
+  }
+
+  /** Build a deterministic one-enemy homing scene for the opt-in browser proof. */
+  private setupHomingProof(
+    sessionId: string,
+    data?: {
+      targetDistance?: unknown;
+      targetAngle?: unknown;
+      enemyHealth?: unknown;
+    },
+  ): {
+    ok: boolean;
+    reason?: string;
+    surface?: string;
+    mode?: string;
+    player?: ReturnType<GameRoom['locationSummary']>;
+    enemy?: ReturnType<GameRoom['locationSummary']>;
+    enemyId?: string;
+    enemyHealth?: number;
+    aimAngle?: number;
+  } {
+    if (sessionId !== this.state.hostId) return { ok: false, reason: 'not_host' };
+    if (this.state.roomPhase !== 'playing') return { ok: false, reason: 'not_playing' };
+
+    const player = this.state.players.get(sessionId);
+    const surface = this.surfaceManager.getMeshSurface();
+    if (!player || !surface) return { ok: false, reason: 'missing_player_or_surface' };
+
+    const playerU = 0.5;
+    const playerV = 0.55;
+    const aimAngle = 0;
+    const targetDistance = typeof data?.targetDistance === 'number' && Number.isFinite(data.targetDistance)
+      ? Math.max(1.0, Math.min(4.0, data.targetDistance))
+      : 2.2;
+    const targetAngle = typeof data?.targetAngle === 'number' && Number.isFinite(data.targetAngle)
+      ? Math.max(-Math.PI, Math.min(Math.PI, data.targetAngle))
+      : 1.05;
+    const enemyHealth = typeof data?.enemyHealth === 'number' && Number.isFinite(data.enemyHealth)
+      ? Math.max(1, Math.min(20, data.enemyHealth))
+      : WEAPON_CONFIGS.homing.damage;
+
+    this.spawnGeneration++;
+    this.pendingEnemyCount = 0;
+    this.waveElapsed = 0;
+    this.nextWaveAt = Number.POSITIVE_INFINITY;
+    this.state.bullets.clear();
+    this.clearBlackHoleBolts();
+    this.state.blackHoleFields?.clear();
+    this.bulletDamageTracker.clear();
+    this.state.enemies.clear();
+    this.enemyAI.clear();
+    this.enemyWalkers.clear();
+    this.playerInputs.delete(sessionId);
+    this.playerInvincibility.delete(sessionId);
+
+    this.surfaceManager.teleportWalkerToUV(sessionId, playerU, playerV);
+    const playerLocation = this.surfaceManager.getWalkerLocation(sessionId);
+    if (!playerLocation) return { ok: false, reason: 'player_teleport_failed' };
+    this.applyWalkerStateToPlayer(player, playerLocation);
+    player.surfaceU = playerU;
+    player.surfaceV = playerV;
+    player.aimAngle = aimAngle;
+    player.alive = true;
+    player.lives = 3;
+    player.health = player.maxHealth || PLAYER_PVP_MAX_HEALTH;
+    player.weaponType = 'homing';
+    player.weaponAmmo = 999;
+    this.playerWeaponInventory.set(sessionId, [
+      { type: 'standard', ammo: -1 },
+      { type: 'homing', ammo: 999 },
+    ]);
+    this.playerWeaponIndex.set(sessionId, 1);
+    (player as unknown as { lastBlasterShotTime?: number; lastShotTime?: number }).lastBlasterShotTime = this.state.gameTime;
+    (player as unknown as { lastBlasterShotTime?: number; lastShotTime?: number }).lastShotTime = -Infinity;
+
+    const targetLocation = this.surfaceManager.createLocationNearWalker(sessionId, targetDistance, targetAngle);
+    if (!targetLocation) return { ok: false, reason: 'target_location_failed' };
+
+    const enemy = this.makeEnemyState('wanderer', playerU, playerV);
+    enemy.health = enemyHealth;
+    enemy.maxHealth = enemyHealth;
+    const enemyWalker = new ServerMeshWalker(
+      surface,
+      new THREE.Vector3(targetLocation.wx, targetLocation.wy, targetLocation.wz),
+      1,
+    );
+    enemyWalker.teleportToLocation(targetLocation);
+    this.enemyWalkers.set(enemy.id, enemyWalker);
+    this.applyWalkerStateToEnemy(enemy, enemyWalker.getLocation());
+    this.enemyAI.set(enemy.id, {
+      directionU: 0,
+      directionV: 0,
+      directionChangeTimer: 0,
+      nextDirectionChange: 999,
+    });
+    this.state.enemies.push(enemy);
+
+    this.logger.log(
+      `[GameRoom] Homing proof setup: player=${sessionId} enemy=${enemy.id} `
+      + `health=${enemyHealth.toFixed(1)} targetDistance=${targetDistance.toFixed(2)} `
+      + `targetAngle=${targetAngle.toFixed(3)}`,
+    );
+
+    return {
+      ok: true,
+      surface: this.state.surfaceType,
+      mode: this.state.gameMode,
+      player: this.locationSummary(playerLocation),
+      enemy: this.locationSummary(enemyWalker.getLocation()),
+      enemyId: enemy.id,
+      enemyHealth,
+      aimAngle,
     };
   }
 

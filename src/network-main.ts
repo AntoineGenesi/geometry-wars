@@ -124,6 +124,7 @@ import {
   CubeFaceTransitionAimProofSetupResult,
   PoleCrossingProofSetupResult,
   SurfaceContactPathingProofSetupResult,
+  HomingProofSetupResult,
   MpScoringProofResult,
 } from './network/NetworkClient';
 import {
@@ -259,6 +260,9 @@ interface GameDebugAPI {
     contactDistance?: number;
     enemyType?: string;
   }) => boolean;
+  setupHomingProof: (options?: { targetDistance?: number; targetAngle?: number; enemyHealth?: number }) => boolean;
+  fireHomingProofShot: () => boolean;
+  getHomingProofState: () => Record<string, unknown>;
   startMpScoringProofGame: (surfaceType: string, mode: 'waves' | 'king' | 'pvp' | 'pvpve') => boolean;
   runMpScoringProof: (mode: 'waves' | 'king' | 'pvp' | 'pvpve') => boolean;
   getMpScoringProofState: () => Record<string, unknown>;
@@ -1408,6 +1412,7 @@ async function main() {
   let lastCubeFaceTransitionAimProofSetupResult: CubeFaceTransitionAimProofSetupResult | null = null;
   let lastPoleCrossingProofSetupResult: PoleCrossingProofSetupResult | null = null;
   let lastSurfaceContactPathingProofSetupResult: SurfaceContactPathingProofSetupResult | null = null;
+  let lastHomingProofSetupResult: HomingProofSetupResult | null = null;
   let lastMpScoringProofResult: MpScoringProofResult | null = null;
   let cubeFaceTransitionAimProofForcedAimAngle: number | null = null;
   let poleCrossingProofInputOverride: {
@@ -6741,6 +6746,27 @@ async function main() {
           console.warn(`[NetworkMain] Surface contact/pathing proof setup rejected: ${data.reason ?? 'unknown'}`);
         }
       },
+      onHomingProofSetupResult: (data) => {
+        lastHomingProofSetupResult = { ...data };
+        if (data.ok) {
+          const aimAngle = Number.isFinite(data.aimAngle) ? data.aimAngle! : 0;
+          const idle = {
+            ...(lastSentInput ?? { moveX: 0, moveY: 0, shooting: false, bomb: false, boost: false }),
+            moveX: 0,
+            moveY: 0,
+            aimAngle,
+            shooting: false,
+          };
+          lastSentInput = idle;
+          network.sendInput(idle);
+          _mpTelBulletSpawns.length = 0;
+          _mpTelBulletTrajectorySamples.clear();
+          _mpTelBulletHitReports.length = 0;
+          netMainLog(`[NetworkMain] Homing proof setup accepted: enemy=${data.enemyId ?? 'none'} surface=${data.surface ?? 'unknown'}`);
+        } else {
+          console.warn(`[NetworkMain] Homing proof setup rejected: ${data.reason ?? 'unknown'}`);
+        }
+      },
       onMpScoringProofResult: (data) => {
         lastMpScoringProofResult = { ...data };
         if (data.ok) {
@@ -9893,6 +9919,130 @@ async function main() {
         lastSurfaceContactPathingProofSetupResult = null;
         network.sendSurfaceContactPathingProofSetup(options);
         return true;
+      },
+      setupHomingProof: (options = {}) => {
+        if (!_netMainTestMode || !isHost || !network.isConnected()) return false;
+        lastHomingProofSetupResult = null;
+        _mpTelBulletSpawns.length = 0;
+        _mpTelBulletTrajectorySamples.clear();
+        _mpTelBulletHitReports.length = 0;
+        network.sendHomingProofSetup(options);
+        return true;
+      },
+      fireHomingProofShot: () => {
+        if (!_netMainTestMode || !network.isConnected()) return false;
+        const aimAngle = Number.isFinite(lastHomingProofSetupResult?.aimAngle)
+          ? lastHomingProofSetupResult!.aimAngle!
+          : 0;
+        const proofInput = {
+          ...(lastSentInput ?? { moveX: 0, moveY: 0, bomb: false, boost: false }),
+          moveX: 0,
+          moveY: 0,
+          aimAngle,
+          shooting: true,
+        };
+        lastSentInput = proofInput;
+        network.sendInput(proofInput);
+        setTimeout(() => network.sendInput(proofInput), 75);
+        setTimeout(() => {
+          const stopInput = { ...proofInput, shooting: false };
+          lastSentInput = stopInput;
+          network.sendInput(stopInput);
+        }, 150);
+        return true;
+      },
+      getHomingProofState: () => {
+        const targetEnemyId = lastHomingProofSetupResult?.enemyId ?? null;
+        const serverEnemies: Record<string, unknown>[] = [];
+        latestGameState?.enemies.forEach((enemy) => {
+          serverEnemies.push({
+            id: enemy.id,
+            type: enemy.type,
+            health: enemy.health,
+            maxHealth: enemy.maxHealth,
+            alive: enemy.alive,
+            queued: enemy.queued,
+            uv: { u: enemy.surfaceU, v: enemy.surfaceV },
+            world: { x: enemy.wx, y: enemy.wy, z: enemy.wz },
+          });
+        });
+        const renderedEnemies: Record<string, unknown>[] = [];
+        networkEnemies.forEach((enemy, id) => {
+          renderedEnemies.push({
+            id,
+            type: enemy.baseTypeName || enemy.constructor.name || 'unknown',
+            alive: enemy.alive,
+            health: enemy.health,
+            radius: enemy.radius,
+            world: enemy.mesh?.position.toArray() ?? enemy.position.toArray(),
+          });
+        });
+        const bullets: Record<string, unknown>[] = [];
+        latestGameState?.bullets.forEach((bullet) => {
+          const geoState = bulletGeodesicState.get(bullet.id);
+          const poolIndex = bulletIdToIndex.get(bullet.id);
+          const poolData = poolIndex !== undefined ? bulletPool.getBulletData(poolIndex) : null;
+          const serverSurfacePoint = surface?.getPoint(bullet.x, bullet.y);
+          const serverWorld = serverSurfacePoint
+            ? serverSurfacePoint.position.clone().multiplyScalar(currentMapSizeScaleFactor)
+            : new THREE.Vector3();
+          const target = targetEnemyId ? serverEnemies.find((enemy) => enemy.id === targetEnemyId) : null;
+          const targetWorld = target?.world as { x: number; y: number; z: number } | undefined;
+          const distanceToTarget = targetWorld
+            ? serverWorld.distanceTo(new THREE.Vector3(targetWorld.x, targetWorld.y, targetWorld.z))
+            : null;
+          bullets.push({
+            id: bullet.id,
+            ownerId: bullet.ownerId,
+            weaponType: bullet.weaponType,
+            age: bullet.age,
+            serverUV: { u: bullet.x, v: bullet.y },
+            serverDir: { x: bullet.dirX, y: bullet.dirY, z: bullet.dirZ },
+            serverWorld: { x: serverWorld.x, y: serverWorld.y, z: serverWorld.z },
+            distanceToTarget,
+            pool: poolData ? {
+              alive: poolData.alive,
+              surfaceU: poolData.surfaceU,
+              surfaceV: poolData.surfaceV,
+              dirX: poolData.dirX,
+              dirY: poolData.dirY,
+            } : null,
+            clientGeo: geoState ? {
+              world: geoState.positionWorld.toArray(),
+              dirWorld: geoState.dirWorld.toArray(),
+              faceIndex: geoState.facePos.faceIndex,
+            } : null,
+          });
+        });
+        return {
+          frame: _mpTelFrameCount,
+          time: game.clock.totalTime,
+          roomPhase: currentRoomPhase,
+          surface: lastCreatedSurfaceType,
+          gameMode: latestGameMode,
+          localPlayerId,
+          setup: lastHomingProofSetupResult,
+          owner: localPlayerId ? (() => {
+            const owner = latestGameState?.players.get(localPlayerId);
+            return owner ? {
+              weaponType: owner.weaponType,
+              weaponAmmo: owner.weaponAmmo,
+              aimAngle: owner.aimAngle,
+              score: owner.score,
+              kills: owner.kills,
+              enemyKills: owner.enemyKills ?? 0,
+              world: [owner.wx, owner.wy, owner.wz],
+            } : null;
+          })() : null,
+          serverEnemies,
+          renderedEnemies,
+          bullets,
+          recentServerBulletSpawns: _mpTelBulletSpawns.slice(-50),
+          recentClientBulletTrajectorySamples: Array.from(_mpTelBulletTrajectorySamples.entries())
+            .slice(-20)
+            .map(([bulletId, samples]) => ({ bulletId, samples })),
+          recentClientBulletHitReports: _mpTelBulletHitReports.slice(-30),
+        };
       },
       startMpScoringProofGame: (surfaceType, mode) => {
         if (!_netMainTestMode || !isHost || !network.isConnected()) return false;
