@@ -93,7 +93,10 @@ import {
   resolveAndApplyPickupVisibility,
 } from './pickups/PickupSurfaceVisual';
 import { resolveEnemyRenderTargetFrame } from './network/EnemyFrameSync';
-import { mpBulletWorldDirectionFromServerPatch } from './network/mpBulletDirection';
+import {
+  mpBulletWorldDirectionFromServerPatch,
+  mpReconcileHomingBulletGeodesicFromServerPatch,
+} from './network/mpBulletDirection';
 import {
   createHealthIconSprite,
   createShieldIconSprite,
@@ -5153,14 +5156,28 @@ async function main() {
             const geoState = bulletGeodesicState.get(bullet.id);
             if (geoState) {
               const sp = surface.getPoint(bullet.x, bullet.y);
-              mpBulletWorldDirectionFromServerPatch(
-                sp.tangentU,
-                sp.tangentV,
-                bullet.dirX,
-                bullet.dirY,
-                lastCreatedSurfaceType,
-                geoState.dirWorld,
-              );
+              if (meshSurface) {
+                mpReconcileHomingBulletGeodesicFromServerPatch(
+                  meshSurface,
+                  geoState,
+                  sp.position,
+                  sp.tangentU,
+                  sp.tangentV,
+                  bullet.dirX,
+                  bullet.dirY,
+                  lastCreatedSurfaceType,
+                  currentMapSizeScaleFactor,
+                );
+              } else {
+                mpBulletWorldDirectionFromServerPatch(
+                  sp.tangentU,
+                  sp.tangentV,
+                  bullet.dirX,
+                  bullet.dirY,
+                  lastCreatedSurfaceType,
+                  geoState.dirWorld,
+                );
+              }
             }
           }
         }
