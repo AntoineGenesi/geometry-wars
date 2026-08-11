@@ -409,6 +409,44 @@ export interface SurfaceContactPathingProofSetupResult {
   contactDistance?: number;
 }
 
+export interface MpScoringProofPlayerSnapshot {
+  id: string;
+  score: number;
+  kills: number;
+  enemyKills: number;
+  playerKills: number;
+  totalDamageDealt: number;
+  zoneTime: number;
+  deaths: number;
+  health: number;
+  alive: boolean;
+}
+
+export interface MpScoringProofResult {
+  ok: boolean;
+  scenario: 'waves' | 'king' | 'pvp' | 'pvpve';
+  reason?: string;
+  mode: {
+    gameMode: string;
+    pvpMode: string;
+    pvpEnabled: boolean;
+    expectedGameMode: string;
+    expectedPvpMode: string;
+    expectedPvpEnabled: boolean;
+    modeMatches: boolean;
+  };
+  actor?: {
+    before: MpScoringProofPlayerSnapshot;
+    after: MpScoringProofPlayerSnapshot;
+    delta: Record<string, number>;
+  };
+  other?: {
+    before: MpScoringProofPlayerSnapshot;
+    after: MpScoringProofPlayerSnapshot;
+    delta: Record<string, number>;
+  };
+}
+
 /** Event callbacks */
 export interface NetworkCallbacks {
   onStateChange?: (state: NetworkGameState) => void;
@@ -489,6 +527,8 @@ export interface NetworkCallbacks {
   onPoleCrossingProofSetupResult?: (data: PoleCrossingProofSetupResult) => void;
   /** Fired after the opt-in MP surface enemy/contact proof setup request. */
   onSurfaceContactPathingProofSetupResult?: (data: SurfaceContactPathingProofSetupResult) => void;
+  /** Fired after the opt-in MP scoring proof run request. */
+  onMpScoringProofResult?: (data: MpScoringProofResult) => void;
   onPortalLocations?: (data: NetworkPortalLocations) => void;
 }
 
@@ -916,6 +956,11 @@ export class NetworkClient {
       this.callbacks.onSurfaceContactPathingProofSetupResult?.(data);
     });
 
+    this.room.onMessage('mp_scoring_proof_result', (data: MpScoringProofResult) => {
+      netLog(`[Network] mp_scoring_proof_result: ok=${data.ok} scenario=${data.scenario} reason=${data.reason ?? ''}`);
+      this.callbacks.onMpScoringProofResult?.(data);
+    });
+
     // Disconnection
     this.room.onLeave((code) => {
       netLog(`[Network] Left room with code: ${code}`);
@@ -1238,6 +1283,12 @@ export class NetworkClient {
   } = {}): void {
     if (!this.room || !this.connected) return;
     this.room.send('surface_contact_pathing_proof_setup', data);
+  }
+
+  /** Run one deterministic MP scoring scenario on the opt-in server proof path. */
+  sendMpScoringProofRun(data: { scenario: 'waves' | 'king' | 'pvp' | 'pvpve' }): void {
+    if (!this.room || !this.connected) return;
+    this.room.send('mp_scoring_proof_run', data);
   }
 
   /** Request the opt-in authoritative Black Hole browser proof scene. */

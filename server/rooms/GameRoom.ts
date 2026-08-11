@@ -82,6 +82,46 @@ import {
   getBlackHolePullSpeed,
   getBlackHoleState,
 } from '../../src/shared/BlackHoleModel';
+
+type MpScoringProofScenario = 'waves' | 'king' | 'pvp' | 'pvpve';
+
+interface MpScoringProofPlayerSnapshot {
+  id: string;
+  score: number;
+  kills: number;
+  enemyKills: number;
+  playerKills: number;
+  totalDamageDealt: number;
+  zoneTime: number;
+  deaths: number;
+  health: number;
+  alive: boolean;
+}
+
+interface MpScoringProofResult {
+  ok: boolean;
+  scenario: MpScoringProofScenario;
+  reason?: string;
+  mode: {
+    gameMode: string;
+    pvpMode: string;
+    pvpEnabled: boolean;
+    expectedGameMode: string;
+    expectedPvpMode: string;
+    expectedPvpEnabled: boolean;
+    modeMatches: boolean;
+  };
+  actor?: {
+    before: MpScoringProofPlayerSnapshot;
+    after: MpScoringProofPlayerSnapshot;
+    delta: Record<string, number>;
+  };
+  other?: {
+    before: MpScoringProofPlayerSnapshot;
+    after: MpScoringProofPlayerSnapshot;
+    delta: Record<string, number>;
+  };
+}
 // NOTE: InterestManager and PriorityQueue exist in ../systems/ but are not
 // currently used. Interest management was disabled because Colyseus's state
 // patching doesn't consume shouldSyncEntity() results. If re-enabled, import
@@ -1080,6 +1120,7 @@ export class GameRoom extends Room<GameState> {
   private playerLastShotTime: Map<string, number> = new Map();
   /** Last aimAngle per player — used to detect rotation delta in handleInput. */
   private playerLastAimAngle: Map<string, number> = new Map();
+  private mpScoringProofCounter = 0;
 
   // KotH zone state (server-authoritative — mirrors KingMode.ts client logic)
   private kothZoneU = 0.5;
@@ -1442,6 +1483,20 @@ export class GameRoom extends Room<GameState> {
       }
       const result = this.setupSurfaceContactPathingProof(client.sessionId, data);
       client.send('surface_contact_pathing_proof_setup_result', result);
+    });
+
+    this.onMessage('mp_scoring_proof_run', (client, data: { scenario?: unknown }) => {
+      if (process.env.GEOMETRY_WARS_MP_PROOF_CONTROLS !== '1') {
+        client.send('mp_scoring_proof_result', {
+          ok: false,
+          scenario: 'waves',
+          reason: 'proof_controls_disabled',
+          mode: this.getMpScoringProofModeState('waves'),
+        } satisfies MpScoringProofResult);
+        return;
+      }
+      const result = this.runMpScoringProofScenario(client.sessionId, data);
+      client.send('mp_scoring_proof_result', result);
     });
 
     this.onMessage('start', (client, data?: { choice?: string; settings?: Partial<GameSettings> }) => {
@@ -2451,6 +2506,184 @@ export class GameRoom extends Room<GameState> {
       });
       this.logger.log(`[GameRoom] PvP (client-auth): ${owner.name} killed ${target.name} (streak: ${streakCount}${isSurvivalMode ? ', eliminated' : ', respawned'})`);
     }
+  }
+
+  private runMpScoringProofScenario(
+    sessionId: string,
+    data: { scenario?: unknown },
+  ): MpScoringProofResult {
+    const scenario = this.normalizeMpScoringProofScenario(data?.scenario);
+    const mode = this.getMpScoringProofModeState(scenario);
+    const fail = (reason: string): MpScoringProofResult => ({
+      ok: false,
+      scenario,
+      reason,
+      mode,
+    });
+
+    if (this.state.roomPhase !== 'playing') return fail('room_not_playing');
+
+    const actor = this.state.players.get(sessionId) ?? this.state.players.get(this.state.hostId);
+    if (!actor) return fail('actor_not_found');
+
+    let other: PlayerState | undefined;
+    this.state.players.forEach((player) => {
+      if (!other && player.id !== actor.id) other = player;
+    });
+    if ((scenario === 'king' || scenario === 'pvp' || scenario === 'pvpve') && !other) {
+      return fail('second_player_required');
+    }
+
+    this.resetMpScoringProofPlayer(actor);
+    if (other) this.resetMpScoringProofPlayer(other);
+
+    const beforeActor = this.snapshotMpScoringProofPlayer(actor);
+    const beforeOther = other ? this.snapshotMpScoringProofPlayer(other) : undefined;
+
+    if (!mode.modeMatches) {
+      return {
+        ok: false,
+        scenario,
+        reason: 'mode_mismatch',
+        mode,
+        actor: {
+          before: beforeActor,
+          after: this.snapshotMpScoringProofPlayer(actor),
+          delta: this.diffMpScoringProofPlayer(beforeActor, this.snapshotMpScoringProofPlayer(actor)),
+        },
+        ...(other && beforeOther ? {
+          other: {
+            before: beforeOther,
+            after: this.snapshotMpScoringProofPlayer(other),
+            delta: this.diffMpScoringProofPlayer(beforeOther, this.snapshotMpScoringProofPlayer(other)),
+          },
+        } : {}),
+      };
+    }
+
+    const proofRunId = ++this.mpScoringProofCounter;
+
+    if (scenario === 'king') {
+      const zoneDt = 1.25;
+      actor.wx = this.kothZoneWorldX;
+      actor.wy = this.kothZoneWorldY;
+      actor.wz = this.kothZoneWorldZ;
+      other!.wx = this.kothZoneWorldX + this.kothZoneWorldRadiusBase * 3;
+      other!.wy = this.kothZoneWorldY;
+      other!.wz = this.kothZoneWorldZ;
+      this.updateZoneTimeScoring(zoneDt);
+    } else {
+      if (scenario === 'waves' || scenario === 'pvpve') {
+        const enemy = this.makeEnemyState('grunt', actor.surfaceU, actor.surfaceV);
+        this.state.enemies.push(enemy);
+        this.handleClientBulletHit(actor.id, {
+          bulletId: `mp-scoring-proof-enemy-${scenario}-${proofRunId}`,
+          enemyId: enemy.id,
+          weaponType: 'plasma_mortar',
+          ownerId: actor.id,
+        });
+      }
+
+      if (scenario === 'pvpve' || scenario === 'pvp') {
+        this.handleClientPvpBulletHit(actor.id, {
+          bulletId: `mp-scoring-proof-pvp-${scenario}-${proofRunId}`,
+          targetId: other!.id,
+          weaponType: 'plasma_mortar',
+          ownerId: actor.id,
+        });
+      }
+    }
+
+    const afterActor = this.snapshotMpScoringProofPlayer(actor);
+    const afterOther = other ? this.snapshotMpScoringProofPlayer(other) : undefined;
+    const result: MpScoringProofResult = {
+      ok: true,
+      scenario,
+      mode,
+      actor: {
+        before: beforeActor,
+        after: afterActor,
+        delta: this.diffMpScoringProofPlayer(beforeActor, afterActor),
+      },
+    };
+    if (other && beforeOther && afterOther) {
+      result.other = {
+        before: beforeOther,
+        after: afterOther,
+        delta: this.diffMpScoringProofPlayer(beforeOther, afterOther),
+      };
+    }
+    return result;
+  }
+
+  private normalizeMpScoringProofScenario(value: unknown): MpScoringProofScenario {
+    return value === 'king' || value === 'pvp' || value === 'pvpve' ? value : 'waves';
+  }
+
+  private getMpScoringProofModeState(scenario: MpScoringProofScenario): MpScoringProofResult['mode'] {
+    const expectedGameMode = scenario;
+    const expectedPvpMode = scenario === 'pvp' || scenario === 'pvpve' ? scenario : '';
+    const expectedPvpEnabled = scenario === 'pvp' || scenario === 'pvpve';
+    const gameMode = this.state.gameMode || 'waves';
+    const pvpMode = this.state.pvpMode || '';
+    const pvpEnabled = this.state.pvpEnabled === true && this.pvpEnabled === true;
+    return {
+      gameMode,
+      pvpMode,
+      pvpEnabled,
+      expectedGameMode,
+      expectedPvpMode,
+      expectedPvpEnabled,
+      modeMatches: gameMode === expectedGameMode
+        && pvpMode === expectedPvpMode
+        && pvpEnabled === expectedPvpEnabled,
+    };
+  }
+
+  private resetMpScoringProofPlayer(player: PlayerState): void {
+    player.score = 0;
+    player.kills = 0;
+    player.enemyKills = 0;
+    player.playerKills = 0;
+    player.totalDamageDealt = 0;
+    player.zoneTime = 0;
+    player.deaths = 0;
+    player.multiplier = 1;
+    player.alive = true;
+    player.health = player.maxHealth || PLAYER_PVP_MAX_HEALTH;
+    player.shieldCount = 0;
+    this.playerInvincibility.set(player.id, 0);
+  }
+
+  private snapshotMpScoringProofPlayer(player: PlayerState): MpScoringProofPlayerSnapshot {
+    return {
+      id: player.id,
+      score: player.score,
+      kills: player.kills,
+      enemyKills: player.enemyKills,
+      playerKills: player.playerKills,
+      totalDamageDealt: player.totalDamageDealt,
+      zoneTime: player.zoneTime,
+      deaths: player.deaths,
+      health: player.health,
+      alive: player.alive,
+    };
+  }
+
+  private diffMpScoringProofPlayer(
+    before: MpScoringProofPlayerSnapshot,
+    after: MpScoringProofPlayerSnapshot,
+  ): Record<string, number> {
+    return {
+      score: after.score - before.score,
+      kills: after.kills - before.kills,
+      enemyKills: after.enemyKills - before.enemyKills,
+      playerKills: after.playerKills - before.playerKills,
+      totalDamageDealt: after.totalDamageDealt - before.totalDamageDealt,
+      zoneTime: after.zoneTime - before.zoneTime,
+      deaths: after.deaths - before.deaths,
+      health: after.health - before.health,
+    };
   }
 
   private recordUpgradeKill(sessionId: string, weaponType: string, count = 1): void {

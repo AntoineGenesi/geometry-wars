@@ -119,6 +119,7 @@ import {
   CubeFaceTransitionAimProofSetupResult,
   PoleCrossingProofSetupResult,
   SurfaceContactPathingProofSetupResult,
+  MpScoringProofResult,
 } from './network/NetworkClient';
 import {
   handleMpBuildChoiceAvailability,
@@ -253,6 +254,9 @@ interface GameDebugAPI {
     contactDistance?: number;
     enemyType?: string;
   }) => boolean;
+  startMpScoringProofGame: (surfaceType: string, mode: 'waves' | 'king' | 'pvp' | 'pvpve') => boolean;
+  runMpScoringProof: (mode: 'waves' | 'king' | 'pvp' | 'pvpve') => boolean;
+  getMpScoringProofState: () => Record<string, unknown>;
   getUpgradeProofState: () => Record<string, unknown>;
   setupUpgradeProof: (weaponType: string, killCount: number) => boolean;
   requestUpgradeProofActivation: (weaponType: string, nodeId: string, unlockedNodeIds: string[]) => boolean;
@@ -1399,6 +1403,7 @@ async function main() {
   let lastCubeFaceTransitionAimProofSetupResult: CubeFaceTransitionAimProofSetupResult | null = null;
   let lastPoleCrossingProofSetupResult: PoleCrossingProofSetupResult | null = null;
   let lastSurfaceContactPathingProofSetupResult: SurfaceContactPathingProofSetupResult | null = null;
+  let lastMpScoringProofResult: MpScoringProofResult | null = null;
   let cubeFaceTransitionAimProofForcedAimAngle: number | null = null;
   let poleCrossingProofInputOverride: {
     moveX: number;
@@ -6700,6 +6705,14 @@ async function main() {
           console.warn(`[NetworkMain] Surface contact/pathing proof setup rejected: ${data.reason ?? 'unknown'}`);
         }
       },
+      onMpScoringProofResult: (data) => {
+        lastMpScoringProofResult = { ...data };
+        if (data.ok) {
+          netMainLog(`[NetworkMain] MP scoring proof result accepted: scenario=${data.scenario}`);
+        } else {
+          console.warn(`[NetworkMain] MP scoring proof result rejected: ${data.reason ?? 'unknown'}`);
+        }
+      },
       onPvpKill: (data) => {
         netMainLog(`[PvP] ${data.killerName} killed ${data.victimName} (streak: ${data.streakCount})`);
         mpPerfLogger.recordPvpKill({
@@ -9719,6 +9732,7 @@ async function main() {
           cubeFaceTransitionAimProofSetup: lastCubeFaceTransitionAimProofSetupResult,
           poleCrossingProofSetup: lastPoleCrossingProofSetupResult,
           surfaceContactPathingProofSetup: lastSurfaceContactPathingProofSetupResult,
+          mpScoringProof: lastMpScoringProofResult,
           players,
           proofEnemies,
           recentServerBulletSpawns: _mpTelBulletSpawns.slice(-50).map((spawn) => {
@@ -9838,6 +9852,52 @@ async function main() {
         network.sendSurfaceContactPathingProofSetup(options);
         return true;
       },
+      startMpScoringProofGame: (surfaceType, mode) => {
+        if (!_netMainTestMode || !isHost || !network.isConnected()) return false;
+        const proofSurfaces: readonly GameSurface[] = ['sphere', 'cube', 'pill', 'torus'];
+        const requestedSurface: GameSurface = (proofSurfaces as readonly string[]).includes(surfaceType)
+          ? surfaceType as GameSurface
+          : 'sphere';
+        const requestedMode = mode === 'king' || mode === 'pvp' || mode === 'pvpve' ? mode : 'waves';
+        const proofSettings: GameSettings = {
+          ...currentGameSettings,
+          surface: requestedSurface,
+          mode: requestedMode,
+          pvpEnabled: requestedMode === 'pvp' || requestedMode === 'pvpve',
+          infiniteLives: true,
+        };
+        const choice = `${requestedSurface}:${requestedMode}:medium:infinite`;
+        lastMpScoringProofResult = null;
+        if (requestedMode === 'pvp' || requestedMode === 'pvpve') {
+          network.startGameWithOptions({
+            pvpMode: requestedMode,
+            winCondition: lobbyWinCondition,
+            killTarget: lobbyKillTarget,
+            timeLimit: lobbyTimeLimit,
+            livesCount: lobbyLivesCount,
+            choice,
+            settings: proofSettings,
+          });
+        } else {
+          network.startGame(choice, proofSettings);
+        }
+        return true;
+      },
+      runMpScoringProof: (mode) => {
+        if (!_netMainTestMode || !network.isConnected()) return false;
+        const requestedMode = mode === 'king' || mode === 'pvp' || mode === 'pvpve' ? mode : 'waves';
+        lastMpScoringProofResult = null;
+        network.sendMpScoringProofRun({ scenario: requestedMode });
+        return true;
+      },
+      getMpScoringProofState: () => ({
+        roomPhase: currentRoomPhase,
+        surface: lastCreatedSurfaceType,
+        gameMode: latestGameMode,
+        pvpMode: latestPvpMode,
+        pvpEnabled: latestPvpEnabled,
+        result: lastMpScoringProofResult,
+      }),
       fireCubeFaceTransitionAimProofShot: () => {
         if (!_netMainTestMode || !network.isConnected()) return false;
         const localServerPlayer = localPlayerId ? latestGameState?.players.get(localPlayerId) : null;

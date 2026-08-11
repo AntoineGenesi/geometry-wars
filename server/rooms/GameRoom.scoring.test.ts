@@ -12,7 +12,9 @@
  * from GameRoom.ts:5062 — fixed in s44r16-02b), not the old UV-space check.
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+import { GameRoom } from './GameRoom';
+import { GameState, PlayerState } from '../schema/GameState';
 
 // ---------------------------------------------------------------------------
 // World-space zone detection (mirrors GameRoom.ts updateZoneTimeScoring)
@@ -433,3 +435,122 @@ describe('Mode-to-scoring-field isolation', () => {
 function makeScorer(id: string): PlayerScoreState {
   return { id, score: 0, multiplier: 1, enemyKills: 0 };
 }
+
+// ---------------------------------------------------------------------------
+// Real GameRoom proof-control path
+// ---------------------------------------------------------------------------
+
+function makeRealProofRoom(scenario: 'waves' | 'king' | 'pvp' | 'pvpve') {
+  const room = new GameRoom();
+  (room as any).setState(new GameState());
+  (room as any).setMetadata = vi.fn();
+  (room as any).broadcast = vi.fn();
+  (room as any).logger = { log: vi.fn() };
+
+  room.state.roomPhase = 'playing';
+  room.state.gameStarted = true;
+  room.state.gameTime = 10;
+  room.state.hostId = 'host';
+  room.state.gameMode = scenario;
+  room.state.pvpMode = scenario === 'pvp' || scenario === 'pvpve' ? scenario : '';
+  room.state.pvpEnabled = scenario === 'pvp' || scenario === 'pvpve';
+  room.state.pvpDamageMultiplier = 1;
+  (room as any).pvpEnabled = room.state.pvpEnabled;
+
+  const host = new PlayerState();
+  host.id = 'host';
+  host.name = 'Host';
+  host.surfaceU = 0.5;
+  host.surfaceV = 0.5;
+  host.wx = 0;
+  host.wy = 10;
+  host.wz = 0;
+
+  const join = new PlayerState();
+  join.id = 'join';
+  join.name = 'Join';
+  join.surfaceU = 0.8;
+  join.surfaceV = 0.5;
+  join.wx = 8;
+  join.wy = 10;
+  join.wz = 0;
+
+  room.state.players.set(host.id, host);
+  room.state.players.set(join.id, join);
+  return { room: room as any, host, join };
+}
+
+describe('MP scoring proof-control path uses real GameRoom scoring helpers', () => {
+  it('waves proof kills a real server enemy and credits only the actor', () => {
+    const { room } = makeRealProofRoom('waves');
+
+    const result = room.runMpScoringProofScenario('host', { scenario: 'waves' });
+
+    expect(result.ok).toBe(true);
+    expect(result.mode.modeMatches).toBe(true);
+    expect(result.actor.delta.score).toBeGreaterThan(0);
+    expect(result.actor.delta.enemyKills).toBe(1);
+    expect(result.actor.delta.playerKills).toBe(1);
+    expect(result.other.delta.score).toBe(0);
+    expect(result.other.delta.enemyKills).toBe(0);
+    expect(result.other.delta.kills).toBe(0);
+  });
+
+  it('king proof increments actor zoneTime through updateZoneTimeScoring only', () => {
+    const { room } = makeRealProofRoom('king');
+
+    const result = room.runMpScoringProofScenario('host', { scenario: 'king' });
+
+    expect(result.ok).toBe(true);
+    expect(result.mode.modeMatches).toBe(true);
+    expect(result.actor.delta.zoneTime).toBeGreaterThan(0);
+    expect(result.actor.delta.score).toBe(0);
+    expect(result.actor.delta.kills).toBe(0);
+    expect(result.other.delta.zoneTime).toBe(0);
+  });
+
+  it('pvp proof credits shooter damage/kills without enemy score or victim credit', () => {
+    const { room } = makeRealProofRoom('pvp');
+
+    const result = room.runMpScoringProofScenario('host', { scenario: 'pvp' });
+
+    expect(result.ok).toBe(true);
+    expect(result.mode.modeMatches).toBe(true);
+    expect(result.actor.delta.kills).toBeGreaterThan(0);
+    expect(result.actor.delta.totalDamageDealt).toBeGreaterThan(0);
+    expect(result.actor.delta.score).toBe(0);
+    expect(result.actor.delta.enemyKills).toBe(0);
+    expect(result.other.delta.kills).toBe(0);
+    expect(result.other.delta.totalDamageDealt).toBe(0);
+  });
+
+  it('pvpve proof keeps enemy scoring and PvP damage scoring in separate fields', () => {
+    const { room } = makeRealProofRoom('pvpve');
+
+    const result = room.runMpScoringProofScenario('host', { scenario: 'pvpve' });
+
+    expect(result.ok).toBe(true);
+    expect(result.mode.modeMatches).toBe(true);
+    expect(result.actor.delta.score).toBeGreaterThan(0);
+    expect(result.actor.delta.enemyKills).toBe(1);
+    expect(result.actor.delta.kills).toBeGreaterThan(0);
+    expect(result.actor.delta.totalDamageDealt).toBeGreaterThan(0);
+    expect(result.other.delta.score).toBe(0);
+    expect(result.other.delta.enemyKills).toBe(0);
+    expect(result.other.delta.kills).toBe(0);
+  });
+
+  it('fails hard when requested PvP mode is actually running as waves', () => {
+    const { room } = makeRealProofRoom('waves');
+
+    const result = room.runMpScoringProofScenario('host', { scenario: 'pvp' });
+
+    expect(result.ok).toBe(false);
+    expect(result.reason).toBe('mode_mismatch');
+    expect(result.mode.gameMode).toBe('waves');
+    expect(result.mode.expectedGameMode).toBe('pvp');
+    expect(result.mode.modeMatches).toBe(false);
+    expect(result.actor.delta.kills).toBe(0);
+    expect(result.actor.delta.score).toBe(0);
+  });
+});

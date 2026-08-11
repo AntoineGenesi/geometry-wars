@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * mp-scoring-scenarios.mjs — Rigorous MP scoring tests for all 5 modes (s44r17-03).
+ * mp-scoring-scenarios.mjs — Rigorous MP scoring proof for scoped MP modes (s44r17-03).
  *
  * Tests per-player scoring isolation and mode-appropriate scoring logic.
  * Requires a Vite dev server running at BASE_URL.
@@ -11,7 +11,7 @@
  *   2. KOTH: only player in zone gets zoneTime; other player stays at 0
  *   3. PvP: kills attributed to the shooter (kills field increases for killer only)
  *   4. PvPvE: enemy kills → score field; PvP kills → kills field (both tracked)
- *   5. Rainbow: scoring same as Waves (SP-side color multiplier not in MP scoring)
+ * Rainbow is intentionally out of this narrowed proof loop.
  *
  * Usage:
  *   node tests/visual/mp-scoring-scenarios.mjs
@@ -118,6 +118,7 @@ function startColyseusServer() {
       PATH: `${NVM_PATH}:/usr/bin:/bin`,
       PORT: String(COLYSEUS_PORT),
       SHUTDOWN_TIMEOUT: '0',
+      GEOMETRY_WARS_MP_PROOF_CONTROLS: '1',
     };
     const proc = spawn(`${NVM_PATH}/npx`, ['tsx', 'server/index.ts'], {
       cwd: PROJECT_ROOT, env, stdio: ['ignore', 'pipe', 'pipe'],
@@ -169,8 +170,9 @@ async function createPage(browser) {
 
 async function navigateMP(page, surface, label, opts = {}) {
   await page.evaluateOnNewDocument(() => { localStorage.clear(); });
-  let url = `${BASE_URL}?mode=network&surface=${surface}&server=${encodeURIComponent(`ws://localhost:${COLYSEUS_PORT}`)}&debug=true&name=${label}`;
+  let url = `${BASE_URL}?mode=network&surface=${surface}&server=${encodeURIComponent(`ws://localhost:${COLYSEUS_PORT}`)}&debug=true&testMode=true&name=${label}`;
   if (opts && opts.gameMode) url += `&gameMode=${opts.gameMode}`;
+  if (opts && (opts.gameMode === 'pvp' || opts.gameMode === 'pvpve')) url += `&pvpMode=${opts.gameMode}`;
   await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
   await sleep(12000); // Extra time for SwiftShader WebGL init + network connection
 }
@@ -233,7 +235,7 @@ async function dismissOverlays(page) {
   });
 }
 
-async function waitForGame(hostPage, joinPage) {
+async function waitForGame(hostPage, joinPage, surface, gameMode) {
   // Wait for connection (both clients must be connected)
   const connected = await waitForCondition(async () => {
     const h = await getDebug(hostPage, 'isConnected');
@@ -256,18 +258,30 @@ async function waitForGame(hostPage, joinPage) {
     return hc >= 2 && jc >= 2;
   }, 20000);
 
-  // Start game
-  let started = false;
-  for (let i = 0; i < 8 && !started; i++) {
-    await dismissOverlays(hostPage);
-    await dismissOverlays(joinPage);
-    started = await clickStartGame(hostPage);
-    if (!started) await sleep(2000);
+  let started = await hostPage.evaluate((s, m) => {
+    const debug = window.__gameDebug;
+    if (!debug || typeof debug.startMpScoringProofGame !== 'function') return false;
+    return debug.startMpScoringProofGame(s, m);
+  }, surface, gameMode);
+  if (!started) {
+    // Legacy fallback for older branches; the strengthened assertions below
+    // still fail if the requested mode does not actually start.
+    for (let i = 0; i < 8 && !started; i++) {
+      await dismissOverlays(hostPage);
+      await dismissOverlays(joinPage);
+      started = await clickStartGame(hostPage);
+      if (!started) await sleep(2000);
+    }
   }
 
   return await waitForCondition(async () => {
-    const text = await getDebug(hostPage, 'getWaveText');
-    return text && !text.includes('Waiting') && !text.includes('Connecting');
+    const tel = await getTelemetry(hostPage);
+    if (!tel) return false;
+    const expectedPvpMode = gameMode === 'pvp' || gameMode === 'pvpve' ? gameMode : '';
+    const expectedPvpEnabled = gameMode === 'pvp' || gameMode === 'pvpve';
+    return tel.gameMode === gameMode
+      && (tel.pvpMode ?? '') === expectedPvpMode
+      && (tel.pvpEnabled ?? false) === expectedPvpEnabled;
   }, 20000);
 }
 
@@ -282,63 +296,81 @@ async function screenshot(page, name) {
 // Scoring scenario runners
 // ---------------------------------------------------------------------------
 
+async function runServerScoringProof(hostPage, scenario) {
+  const requested = await hostPage.evaluate((m) => {
+    const debug = window.__gameDebug;
+    if (!debug || typeof debug.runMpScoringProof !== 'function') return false;
+    return debug.runMpScoringProof(m);
+  }, scenario);
+  if (!requested) {
+    return {
+      ok: false,
+      scenario,
+      reason: 'debug_api_unavailable',
+      mode: {
+        gameMode: 'unknown',
+        pvpMode: '',
+        pvpEnabled: false,
+        expectedGameMode: scenario,
+        expectedPvpMode: scenario === 'pvp' || scenario === 'pvpve' ? scenario : '',
+        expectedPvpEnabled: scenario === 'pvp' || scenario === 'pvpve',
+        modeMatches: false,
+      },
+    };
+  }
+
+  let latest = null;
+  await waitForCondition(async () => {
+    latest = await getDebug(hostPage, 'getMpScoringProofState');
+    return latest?.result?.scenario === scenario;
+  }, 10000, 250);
+  return latest?.result ?? {
+    ok: false,
+    scenario,
+    reason: 'proof_result_timeout',
+    mode: {
+      gameMode: latest?.gameMode ?? 'unknown',
+      pvpMode: latest?.pvpMode ?? '',
+      pvpEnabled: latest?.pvpEnabled ?? false,
+      expectedGameMode: scenario,
+      expectedPvpMode: scenario === 'pvp' || scenario === 'pvpve' ? scenario : '',
+      expectedPvpEnabled: scenario === 'pvp' || scenario === 'pvpve',
+      modeMatches: false,
+    },
+  };
+}
+
+function proofDetails(result, extra = {}) {
+  return {
+    ok: result.ok,
+    reason: result.reason ?? '',
+    gameMode: result.mode?.gameMode ?? 'unknown',
+    pvpMode: result.mode?.pvpMode ?? '',
+    pvpEnabled: result.mode?.pvpEnabled ?? false,
+    modeMatches: result.mode?.modeMatches ?? false,
+    actorDelta: JSON.stringify(result.actor?.delta ?? {}),
+    otherDelta: JSON.stringify(result.other?.delta ?? {}),
+    ...extra,
+  };
+}
+
 /**
  * Waves mode: two players, let them play, verify they have DIFFERENT scores
  * (per-player isolation — not shared/pooled).
  */
 async function runWavesScoreIsolation(hostPage, joinPage, surface) {
   console.log(`  [waves] Starting score isolation test on ${surface}...`);
-
-  // Collect telemetry samples for 15 seconds
-  const samples = { host: [], join: [] };
-  for (let i = 0; i < 15; i++) {
-    const h = await getTelemetry(hostPage);
-    const j = await getTelemetry(joinPage);
-    if (h) samples.host.push(h);
-    if (j) samples.join.push(j);
-    await sleep(1000);
-  }
-
-  const hostFinalTel = samples.host[samples.host.length - 1];
-  const joinFinalTel = samples.join[samples.join.length - 1];
-
-  const hostScore = hostFinalTel?.player?.score ?? 0;
-  const joinScore = joinFinalTel?.player?.score ?? 0;
-  const hostKills = hostFinalTel?.player?.enemyKills ?? 0;
-  const joinKills = joinFinalTel?.player?.enemyKills ?? 0;
-
-  // Verify: gameMode is correct
-  const gameMode = hostFinalTel?.gameMode ?? 'unknown';
-
-  // Verify: both players have scored something (game is running)
-  const eitherScored = hostScore > 0 || joinScore > 0;
-
-  // Verify: scores are NOT the same (or both zero — headless may not kill many)
-  // In headless, both players might score 0 if aiming is off. That's OK.
-  // Key: scores are not *shared* (they're tracked independently per-player).
-  // We verify this structurally: each player has their OWN score in __GAME_TELEMETRY.
-  const scoresAreIndependent = typeof hostFinalTel?.player?.score === 'number'
-    && typeof joinFinalTel?.player?.score === 'number';
-
-  // Verify scores aren't impossibly equal AND non-zero (would suggest sharing)
-  const notSuspiciouslyShared = hostScore === 0 || joinScore === 0
-    || Math.abs(hostScore - joinScore) > 0 // Different scores (normal)
-    || (hostScore > 0 && joinScore > 0);   // Both scored but may be coincidentally equal
+  const result = await runServerScoringProof(hostPage, 'waves');
+  const actorDelta = result.actor?.delta ?? {};
+  const otherDelta = result.other?.delta ?? {};
+  const scoringDelta = actorDelta.score > 0 && actorDelta.enemyKills > 0;
+  const otherUnchanged = (otherDelta.score ?? 0) === 0
+    && (otherDelta.enemyKills ?? 0) === 0
+    && (otherDelta.kills ?? 0) === 0;
 
   return {
-    passed: scoresAreIndependent,
-    details: {
-      gameMode,
-      hostScore,
-      joinScore,
-      hostKills,
-      joinKills,
-      scoresAreIndependent,
-      eitherScored,
-      note: eitherScored
-        ? 'Both players have independent score tracking'
-        : 'No scoring observed (headless aim imprecision — structural check only)',
-    },
+    passed: result.ok && result.mode?.modeMatches && scoringDelta && otherUnchanged,
+    details: proofDetails(result, { scoringDelta, otherUnchanged }),
   };
 }
 
@@ -348,61 +380,15 @@ async function runWavesScoreIsolation(hostPage, joinPage, surface) {
  */
 async function runKothZoneTimeIsolation(hostPage, joinPage, surface) {
   console.log(`  [koth] Starting zone time isolation test on ${surface}...`);
-
-  // Collect telemetry over 15 seconds
-  const samples = { host: [], join: [] };
-  for (let i = 0; i < 15; i++) {
-    const h = await getTelemetry(hostPage);
-    const j = await getTelemetry(joinPage);
-    if (h) samples.host.push(h);
-    if (j) samples.join.push(j);
-    await sleep(1000);
-  }
-
-  const hostFirst = samples.host[0];
-  const joinFirst = samples.join[0];
-  const hostLast = samples.host[samples.host.length - 1];
-  const joinLast = samples.join[samples.join.length - 1];
-
-  const gameMode = hostLast?.gameMode ?? 'unknown';
-  const isKothMode = gameMode === 'king';
-
-  const hostZoneStart = hostFirst?.player?.zoneTime ?? 0;
-  const joinZoneStart = joinFirst?.player?.zoneTime ?? 0;
-  const hostZoneFinal = hostLast?.player?.zoneTime ?? 0;
-  const joinZoneFinal = joinLast?.player?.zoneTime ?? 0;
-
-  // Check zoneTime is in telemetry (structural check)
-  const zoneTimeExposed = typeof hostLast?.player?.zoneTime === 'number'
-    && typeof joinLast?.player?.zoneTime === 'number';
-
-  // Check: zoneTime values are independent (different for each player)
-  const eitherAccumulated = hostZoneFinal > hostZoneStart || joinZoneFinal > joinZoneStart;
-
-  // Verify per-player tracking: each player has their own zoneTime
-  const perPlayerTracking = zoneTimeExposed;
-
-  // If both players are in zone, both times should increase
-  // If neither: no zone detection — WARN but don't fail (headless positioning)
-  const hostAllPlayers = hostLast?.players ?? [];
-  const localPlayerInHost = hostAllPlayers.find(p => p.isLocal);
-  const remotePlayerInHost = hostAllPlayers.find(p => !p.isLocal);
+  const result = await runServerScoringProof(hostPage, 'king');
+  const actorDelta = result.actor?.delta ?? {};
+  const otherDelta = result.other?.delta ?? {};
+  const zoneDelta = actorDelta.zoneTime > 0;
+  const otherUnchanged = (otherDelta.zoneTime ?? 0) === 0;
 
   return {
-    passed: zoneTimeExposed && isKothMode,
-    details: {
-      gameMode,
-      isKothMode,
-      zoneTimeExposed,
-      hostZoneFinal: hostZoneFinal.toFixed(2),
-      joinZoneFinal: joinZoneFinal.toFixed(2),
-      eitherAccumulated,
-      hostPlayerCount: (hostLast?.players?.length ?? 0) + 1,
-      remoteZoneTime: remotePlayerInHost?.zoneTime?.toFixed(2) ?? 'N/A',
-      note: eitherAccumulated
-        ? 'Zone time accumulating (players in zone)'
-        : 'No zone time (headless players may not be positioned in zone)',
-    },
+    passed: result.ok && result.mode?.modeMatches && zoneDelta && otherUnchanged,
+    details: proofDetails(result, { zoneDelta, otherUnchanged }),
   };
 }
 
@@ -413,53 +399,18 @@ async function runKothZoneTimeIsolation(hostPage, joinPage, surface) {
  */
 async function runPvpKillAttribution(hostPage, joinPage, surface) {
   console.log(`  [pvp] Starting kill attribution test on ${surface}...`);
-
-  const samples = { host: [], join: [] };
-  for (let i = 0; i < 15; i++) {
-    const h = await getTelemetry(hostPage);
-    const j = await getTelemetry(joinPage);
-    if (h) samples.host.push(h);
-    if (j) samples.join.push(j);
-    await sleep(1000);
-  }
-
-  const hostLast = samples.host[samples.host.length - 1];
-  const joinLast = samples.join[samples.join.length - 1];
-
-  const gameMode = hostLast?.gameMode ?? 'unknown';
-  const pvpEnabled = hostLast?.pvpEnabled ?? false;
-
-  const hostKills = hostLast?.player?.kills ?? 0;
-  const joinKills = joinLast?.player?.kills ?? 0;
-  const hostEnemyKills = hostLast?.player?.enemyKills ?? 0;
-  const joinEnemyKills = joinLast?.player?.enemyKills ?? 0;
-
-  // Structural check: kills field is exposed in telemetry
-  const killsFieldExposed = typeof hostLast?.player?.kills === 'number'
-    && typeof joinLast?.player?.kills === 'number';
-
-  // Check kills are NOT impossibly shared (both non-zero AND identical would be suspicious)
-  const killsNotShared = hostKills !== joinKills || (hostKills === 0 && joinKills === 0);
-
-  // PvP mode should have pvpEnabled=true
-  const pvpModeActive = pvpEnabled && (gameMode === 'pvp' || gameMode === 'pvpve');
+  const result = await runServerScoringProof(hostPage, 'pvp');
+  const actorDelta = result.actor?.delta ?? {};
+  const otherDelta = result.other?.delta ?? {};
+  const pvpCredit = actorDelta.kills > 0 && actorDelta.totalDamageDealt > 0;
+  const victimNoCredit = (otherDelta.kills ?? 0) === 0
+    && (otherDelta.totalDamageDealt ?? 0) === 0
+    && (actorDelta.score ?? 0) === 0
+    && (actorDelta.enemyKills ?? 0) === 0;
 
   return {
-    passed: killsFieldExposed,
-    details: {
-      gameMode,
-      pvpEnabled,
-      pvpModeActive,
-      killsFieldExposed,
-      hostKills: hostKills.toFixed(2),
-      joinKills: joinKills.toFixed(2),
-      hostEnemyKills,
-      joinEnemyKills,
-      killsNotShared,
-      note: pvpModeActive
-        ? 'PvP active — kills tracked per-player'
-        : 'PvP mode check: pvpEnabled=' + pvpEnabled + ' gameMode=' + gameMode,
-    },
+    passed: result.ok && result.mode?.modeMatches && pvpCredit && victimNoCredit,
+    details: proofDetails(result, { pvpCredit, victimNoCredit }),
   };
 }
 
@@ -468,43 +419,19 @@ async function runPvpKillAttribution(hostPage, joinPage, surface) {
  */
 async function runPvpveScoring(hostPage, joinPage, surface) {
   console.log(`  [pvpve] Starting PvPvE scoring test on ${surface}...`);
-
-  const samples = { host: [], join: [] };
-  for (let i = 0; i < 15; i++) {
-    const h = await getTelemetry(hostPage);
-    const j = await getTelemetry(joinPage);
-    if (h) samples.host.push(h);
-    if (j) samples.join.push(j);
-    await sleep(1000);
-  }
-
-  const hostLast = samples.host[samples.host.length - 1];
-  const joinLast = samples.join[samples.join.length - 1];
-
-  const gameMode = hostLast?.gameMode ?? 'unknown';
-  const pvpEnabled = hostLast?.pvpEnabled ?? false;
-
-  // Structural: all scoring fields exposed
-  const scoreFieldExposed = typeof hostLast?.player?.score === 'number';
-  const killsFieldExposed = typeof hostLast?.player?.kills === 'number';
-  const enemyKillsExposed = typeof hostLast?.player?.enemyKills === 'number';
-
-  const allFieldsExposed = scoreFieldExposed && killsFieldExposed && enemyKillsExposed;
+  const result = await runServerScoringProof(hostPage, 'pvpve');
+  const actorDelta = result.actor?.delta ?? {};
+  const otherDelta = result.other?.delta ?? {};
+  const enemyScoring = actorDelta.score > 0 && actorDelta.enemyKills > 0;
+  const pvpScoring = actorDelta.kills > 0 && actorDelta.totalDamageDealt > 0;
+  const separateFields = enemyScoring && pvpScoring;
+  const otherUnchanged = (otherDelta.score ?? 0) === 0
+    && (otherDelta.enemyKills ?? 0) === 0
+    && (otherDelta.kills ?? 0) === 0;
 
   return {
-    passed: allFieldsExposed,
-    details: {
-      gameMode,
-      pvpEnabled,
-      allFieldsExposed,
-      scoreFieldExposed,
-      killsFieldExposed,
-      enemyKillsExposed,
-      hostScore: hostLast?.player?.score ?? 0,
-      hostKills: (hostLast?.player?.kills ?? 0).toFixed(2),
-      hostEnemyKills: hostLast?.player?.enemyKills ?? 0,
-      note: 'PvPvE: score=enemy kills, kills=PvP kills — both tracked independently',
-    },
+    passed: result.ok && result.mode?.modeMatches && separateFields && otherUnchanged,
+    details: proofDetails(result, { enemyScoring, pvpScoring, separateFields, otherUnchanged }),
   };
 }
 
@@ -572,7 +499,7 @@ async function runScenario(scenarioName, scenarioFn, surface, gameModeOverride) 
     await navigateMP(joinPage, surface, 'Join', opts);
 
     // Wait for game to start
-    const gameStarted = await waitForGame(hostPage, joinPage);
+    const gameStarted = await waitForGame(hostPage, joinPage, surface, gameModeOverride || 'waves');
     if (!gameStarted) {
       console.log('  [FAIL] Game did not start within timeout');
       return {
@@ -638,7 +565,6 @@ async function main() {
       ['koth', 'koth_zone_time_isolation', runKothZoneTimeIsolation, 'king'],
       ['pvp', 'pvp_kill_attribution', runPvpKillAttribution, 'pvp'],
       ['pvpve', 'pvpve_scoring_fields', runPvpveScoring, 'pvpve'],
-      ['rainbow', 'rainbow_score_same_as_waves', runRainbowScoring, 'rainbow'],
     ];
 
     for (const [modeKey, name, fn, modeOverride] of scenarios) {
@@ -741,7 +667,6 @@ function generateHtmlReport(results) {
   <tr><td>King (KOTH)</td><td>player.zoneTime</td><td>Seconds in zone, per-player. Kill score also tracked.</td></tr>
   <tr><td>PvP</td><td>player.kills</td><td>Fractional kills (damage/maxHealth), attributed to shooter</td></tr>
   <tr><td>PvPvE</td><td>player.kills + player.score</td><td>PvP kills → kills field; enemy kills → score field</td></tr>
-  <tr><td>Rainbow</td><td>player.score</td><td>Same as Waves in MP. Color multiplier is SP-side only.</td></tr>
 </table>
 </body>
 </html>`;
