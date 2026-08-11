@@ -97,6 +97,7 @@ import {
   mpBulletWorldDirectionFromServerPatch,
   mpReconcileHomingBulletGeodesicFromServerPatch,
 } from './network/mpBulletDirection';
+import { planMatchBoundaryPauseUiClear } from './network/mpPauseBoundary';
 import {
   createHealthIconSprite,
   createShieldIconSprite,
@@ -248,6 +249,9 @@ interface GameDebugAPI {
   startChevronAimProofGame: (surfaceType: string) => boolean;
   resumeChevronAimProofGame: () => boolean;
   fireChevronAimProofShot: () => boolean;
+  forceOpenPauseBoundaryProofMenu: () => boolean;
+  forceExitToVotingProofGame: () => boolean;
+  getPauseBoundaryProofState: () => Record<string, unknown>;
   setupCubeFaceTransitionAimProof: (targetDistance?: number) => boolean;
   fireCubeFaceTransitionAimProofShot: () => boolean;
   startPoleCrossingProofGame: (surfaceType: string) => boolean;
@@ -3109,6 +3113,33 @@ async function main() {
       pauseMenu.hide();
       game.resume(); // Resync game clock to avoid massive dt spike on first frame after resume
     }
+  }
+
+  function isPauseOrLocalMenuVisible(): boolean {
+    return pauseMenu.visible
+      || localMenuEl.style.display !== 'none'
+      || localMenuOpen
+      || isPaused
+      || isInLookMode;
+  }
+
+  function forceClearPauseUiForMatchBoundary(reason: string, authoritativePauseRevision?: number): void {
+    const plan = planMatchBoundaryPauseUiClear(currentRoomPhase, lastPauseRevision, authoritativePauseRevision);
+    isPaused = plan.isPaused;
+    lastAuthoritativePaused = plan.lastAuthoritativePaused;
+    pausedByName = plan.pausedByName;
+    isInLookMode = plan.isInLookMode;
+    localMenuOpen = plan.localMenuOpen;
+    lastPauseRevision = plan.lastPauseRevision;
+    pauseMenu.setServerPaused(false);
+    pauseMenu.hide();
+    localMenuEl.style.display = 'none';
+    game.resume();
+    if (input instanceof TouchInput) {
+      input.setGamePaused(plan.touchGamePaused);
+    }
+    publishPauseTelemetryState();
+    netMainLog(`[NetworkMain] cleared pause UI for match boundary: ${reason} (pauseRevision=${lastPauseRevision})`);
   }
 
   function publishPauseTelemetryState(): void {
@@ -6067,8 +6098,7 @@ async function main() {
         // Game ended — transition to voting screen.
         // Hide GameOverScreen if it snuck in (from the old gameOver bool path).
         gameOverScreen.hide();
-        // Re-enable pass-through so mastery/voting screen buttons work on mobile.
-        if (input instanceof TouchInput) input.setGamePaused(true);
+        forceClearPauseUiForMatchBoundary('enter-voting', state.pauseRevision ?? undefined);
 
         // Compute weapon XP now (before any delay) so the XP is attributed correctly.
         const killsByWeapon = weaponMastery.getKillsByWeapon();
@@ -6167,6 +6197,7 @@ async function main() {
         }
       } else if (newPhase === 'playing' && prevRoomPhase === 'voting') {
         // New game starting after vote — reset and launch.
+        forceClearPauseUiForMatchBoundary('voting-to-playing', state.pauseRevision ?? undefined);
         startActiveGameMode();
         votingScreen.hide();
         // Dismiss any open mastery overlay from the voting screen.
@@ -6206,9 +6237,7 @@ async function main() {
         if (state.surfaceType) {
           initSurface(state.surfaceType, true, state.mapSize || undefined);
         }
-        // Fix: respect isPaused so joining mid-paused-game doesn't enable joystick
-        // while pause menu is shown (which blocks scroll via preventDefault).
-        if (input instanceof TouchInput) input.setGamePaused(isPaused);
+        if (input instanceof TouchInput) input.setGamePaused(isPauseOrLocalMenuVisible());
       } else if (newPhase === 'playing' && prevRoomPhase === 'lobby') {
         // Initial game start: lobby → playing.
         startActiveGameMode();
@@ -6222,9 +6251,7 @@ async function main() {
         resetGameEntities();
         gameOverScreen.hide();
         votingScreen.hide();
-        // Fix: respect isPaused so joining mid-paused-game doesn't enable joystick
-        // while pause menu is shown (which blocks scroll via preventDefault).
-        if (input instanceof TouchInput) input.setGamePaused(isPaused);
+        if (input instanceof TouchInput) input.setGamePaused(isPauseOrLocalMenuVisible());
       } else if (newPhase === 'lobby') {
         disposeActiveGameMode();
         votingScreen.hide();
@@ -6534,8 +6561,10 @@ async function main() {
         localPlayerFinalDeathTime = null; // Reset final-death hold for new round
         gameOverScreen.hide(); // Dismiss any lingering game over screen
         votingScreen.hide();  // Dismiss voting screen (roomPhase → playing)
-        // Game is now active — enable joystick touch capture.
-        if (input instanceof TouchInput) input.setGamePaused(false);
+        // Phase handling owns gameplay touch capture after stale overlays are cleared.
+        if (input instanceof TouchInput && (currentRoomPhase !== 'playing' || isPauseOrLocalMenuVisible())) {
+          input.setGamePaused(true);
+        }
         // Host god mode: if ?godMode=true, tell server to make host permanently invincible
         if (isHost && new URLSearchParams(window.location.search).get('godMode') === 'true') {
           network.sendHostGodMode();
@@ -9842,11 +9871,18 @@ async function main() {
       startChevronAimProofGame: (surfaceType) => {
         if (!_netMainTestMode || !isHost || !network.isConnected()) return false;
         if (surfaceType !== 'cube' && surfaceType !== 'sphere') return false;
-        network.startGame(`${surfaceType}:waves:medium:infinite`, {
+        const requestedSurface: GameSettings['surface'] = surfaceType === 'cube' ? 'cube' : 'sphere';
+        const choice = `${requestedSurface}:waves:medium:infinite`;
+        const proofSettings: GameSettings = {
           ...currentGameSettings,
-          surface: surfaceType,
+          surface: requestedSurface,
           infiniteLives: true,
-        });
+        };
+        if (currentRoomPhase === 'lobby') {
+          network.startGame(choice, proofSettings);
+        } else {
+          network.sendHostLaunch(choice, proofSettings);
+        }
         return true;
       },
       resumeChevronAimProofGame: () => {
@@ -9856,6 +9892,41 @@ async function main() {
         showPauseOverlay(false);
         return true;
       },
+      forceOpenPauseBoundaryProofMenu: () => {
+        if (!_netMainTestMode || !network.isConnected()) return false;
+        isPaused = false;
+        lastAuthoritativePaused = false;
+        pausedByName = '';
+        isInLookMode = false;
+        localMenuOpen = true;
+        pauseMenu.setServerPaused(false);
+        pauseMenu.setIsHost(isHost);
+        pauseMenu.setGameData(buildPauseMenuGameData());
+        pauseMenu.setPerformanceHTML(debugOverlay.getSummaryHTML());
+        pauseMenu.show();
+        localMenuEl.style.display = 'flex';
+        if (input instanceof TouchInput) input.setGamePaused(true);
+        publishPauseTelemetryState();
+        return true;
+      },
+      forceExitToVotingProofGame: () => {
+        if (!_netMainTestMode || !isHost || !network.isConnected()) return false;
+        network.sendExitToVoting();
+        return true;
+      },
+      getPauseBoundaryProofState: () => ({
+        roomPhase: currentRoomPhase,
+        isPaused,
+        lastAuthoritativePaused,
+        lastPauseRevision,
+        pausedByName,
+        isInLookMode,
+        localMenuOpen,
+        pauseMenuVisible: pauseMenu.visible,
+        showingServerPause: pauseMenu.showingServerPause,
+        localMenuDisplay: localMenuEl.style.display,
+        touchGamePaused: input instanceof TouchInput ? input.pausedForGame : false,
+      }),
       fireChevronAimProofShot: () => {
         if (!_netMainTestMode || !network.isConnected() || !lastSentInput) return false;
         const proofInput = { ...lastSentInput, moveX: 0, moveY: 0, shooting: true };

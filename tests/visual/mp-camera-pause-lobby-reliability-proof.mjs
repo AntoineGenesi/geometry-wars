@@ -21,6 +21,8 @@ const SURFACE = getArg('surface') || 'sphere';
 const MODE = getArg('mode') || 'waves';
 const DURATION_SECONDS = Number(getArg('duration') || 12);
 const INCLUDE_SP_CONTROL = getArg('include-sp-control') === 'true';
+const INCLUDE_REMATCH = getArg('include-rematch') === 'true';
+const SKIP_PAUSE_PROBE = getArg('skip-pause-probe') === 'true';
 const RUN_ID = new Date().toISOString().replace(/[:.]/g, '-');
 const ARTIFACT_DIR = resolve(ROOT, 'test-screenshots/mp-camera-pause-lobby-reliability-proof', `${PHASE}-${RUN_ID}`);
 const JSON_PATH = resolve(ROOT, 'reports', `mp-camera-pause-lobby-reliability-${PHASE}-${RUN_ID}.json`);
@@ -315,6 +317,7 @@ async function sampleMp(page) {
       cameraDistanceToPlayer: telemetry?.camera?.distanceToPlayer ?? telemetry?.player?.distanceToCamera ?? null,
       renderTarget: telemetry?.camera?.renderTarget ?? null,
       input: proof?.lastSentInput ?? null,
+      pauseBoundary: window.__gameDebug?.getPauseBoundaryProofState?.() ?? null,
       pauseMenuVisible,
       allowAllPlayersPause: telemetry?.allowAllPlayersPause ?? null,
       visiblePausedText: /\bPAUSED\b/i.test(visibleText),
@@ -423,6 +426,80 @@ async function pauseUnpauseProbe(host, joiner) {
   };
 }
 
+async function rematchPauseBoundaryProbe(host, joiner) {
+  const before = {
+    host: await sampleMp(host),
+    joiner: await sampleMp(joiner),
+  };
+
+  const exitSent = await host.evaluate(() => window.__gameDebug?.forceExitToVotingProofGame?.() ?? false);
+  await joiner.bringToFront();
+  const joinerVoting = await waitForPage(joiner, () => window.__gameDebug?.getChevronAimProofState?.()?.roomPhase === 'voting', 45000);
+  await host.bringToFront();
+  const hostVoting = await waitForPage(host, () => window.__gameDebug?.getChevronAimProofState?.()?.roomPhase === 'voting', 10000);
+  await sleep(600);
+
+  await joiner.bringToFront();
+  const staleInjected = await joiner.evaluate(() => window.__gameDebug?.forceOpenPauseBoundaryProofMenu?.() ?? false);
+  const injected = await sampleMp(joiner);
+  const injectedScreenshot = relative(ROOT, resolve(ARTIFACT_DIR, 'joiner-rematch-stale-menu-injected.png'));
+  await joiner.screenshot({ path: resolve(ROOT, injectedScreenshot) }).catch(() => {});
+
+  await host.bringToFront();
+  const launchSent = await host.evaluate((surface) => window.__gameDebug?.startChevronAimProofGame?.(surface) ?? false, SURFACE);
+  const hostPlaying = await waitForPage(host, () => window.__gameDebug?.getChevronAimProofState?.()?.roomPhase === 'playing', 30000);
+  await joiner.bringToFront();
+  const joinerPlaying = await waitForPage(joiner, () => window.__gameDebug?.getChevronAimProofState?.()?.roomPhase === 'playing', 30000);
+  await joiner.evaluate(() => window.__gameDebug?.resumeChevronAimProofGame?.());
+  await sleep(900);
+
+  const afterStart = {
+    host: await sampleMp(host),
+    joiner: await sampleMp(joiner),
+  };
+  const beforePos = afterStart.joiner.playerWorld;
+  await keyDown(joiner, 'd');
+  await sleep(1800);
+  await keyUp(joiner, 'd');
+  await sleep(300);
+  const afterMove = await sampleMp(joiner);
+  const joinerTravel = vectorDistance(beforePos, afterMove.playerWorld) ?? 0;
+  const afterScreenshot = relative(ROOT, resolve(ARTIFACT_DIR, 'joiner-rematch-after-start.png'));
+  await joiner.screenshot({ path: resolve(ROOT, afterScreenshot) }).catch(() => {});
+
+  return {
+    exitSent,
+    hostVoting: Boolean(hostVoting),
+    joinerVoting: Boolean(joinerVoting),
+    staleInjected,
+    launchSent,
+    hostPlaying: Boolean(hostPlaying),
+    joinerPlaying: Boolean(joinerPlaying),
+    before,
+    injected,
+    afterStart,
+    afterMove,
+    joinerTravel,
+    screenshots: { injected: injectedScreenshot, afterStart: afterScreenshot },
+    pass: exitSent
+      && Boolean(joinerVoting)
+      && staleInjected
+      && injected.pauseMenuVisible === true
+      && injected.pauseBoundary?.localMenuOpen === true
+      && injected.pauseBoundary?.touchGamePaused === true
+      && launchSent
+      && Boolean(hostPlaying)
+      && Boolean(joinerPlaying)
+      && afterStart.joiner.roomPhase === 'playing'
+      && afterStart.joiner.isPaused === false
+      && afterStart.joiner.pauseMenuVisible === false
+      && afterStart.joiner.pauseBoundary?.localMenuOpen === false
+      && afterStart.joiner.pauseBoundary?.isInLookMode === false
+      && afterStart.joiner.pauseBoundary?.touchGamePaused === false
+      && afterStart.joiner.visiblePausedText === false
+  };
+}
+
 async function inspectPauseMenuAndQr(host) {
   await host.bringToFront();
   await host.keyboard.press('Escape');
@@ -492,6 +569,7 @@ function makeMarkdown(report) {
     `- verdict: ${report.verdict}`,
     `- camera verdict: ${report.cameraComparison?.verdict ?? 'n/a'}`,
     `- pause recovery pass: ${report.pauseProbe?.pass ?? 'n/a'}`,
+    `- rematch pause boundary pass: ${report.rematchPauseProbe?.pass ?? 'n/a'}`,
     `- host pause/QR UI pass: ${report.pauseMenuAndQr?.pass ?? 'n/a'}`,
     `- proof boundary: ${report.proofBoundary}`,
     `- json: ${relative(ROOT, JSON_PATH)}`,
@@ -511,6 +589,14 @@ function makeMarkdown(report) {
     `- joiner post-resume travel: ${report.pauseProbe?.joinerPostResumeTravel ?? 'n/a'}`,
     `- joiner pause menu visible after unpause: ${report.pauseProbe?.afterUnpauseBeforeMove?.joiner?.pauseMenuVisible ?? 'n/a'}`,
     `- joiner paused text after unpause: ${report.pauseProbe?.afterUnpauseBeforeMove?.joiner?.visiblePausedText ?? 'n/a'}`,
+    '',
+    '## Rematch Pause Boundary',
+    '',
+    `- stale menu injected: ${report.rematchPauseProbe?.staleInjected ?? 'n/a'}`,
+    `- next match playing: ${report.rematchPauseProbe?.joinerPlaying ?? 'n/a'}`,
+    `- joiner pause menu visible after next start: ${report.rematchPauseProbe?.afterStart?.joiner?.pauseMenuVisible ?? 'n/a'}`,
+    `- joiner local menu open after next start: ${report.rematchPauseProbe?.afterStart?.joiner?.pauseBoundary?.localMenuOpen ?? 'n/a'}`,
+    `- joiner touch gamePaused after next start: ${report.rematchPauseProbe?.afterStart?.joiner?.pauseBoundary?.touchGamePaused ?? 'n/a'}`,
     '',
     '## UI',
     '',
@@ -592,7 +678,8 @@ async function main() {
       await sp.close().catch(() => {});
     }
 
-    const pauseProbe = await pauseUnpauseProbe(host, joiner);
+    const pauseProbe = SKIP_PAUSE_PROBE ? null : await pauseUnpauseProbe(host, joiner);
+    const rematchPauseProbe = INCLUDE_REMATCH ? await rematchPauseBoundaryProbe(host, joiner) : null;
     const pauseMenuAndQr = await inspectPauseMenuAndQr(host);
     const cameraComparison = classifyCamera(mpMovement, spMovement);
     const pageErrors = [
@@ -606,13 +693,13 @@ async function main() {
     let verdict = 'PASS';
     if (pageErrors.length || serverErrors.length) verdict = 'ERROR';
     else if (PHASE === 'baseline') verdict = 'BASELINE_RECORDED';
-    else if ((pauseExpectedPass && !pauseProbe.pass) || (uiExpectedPass && !pauseMenuAndQr.pass)) verdict = 'FAIL';
+    else if ((pauseExpectedPass && !SKIP_PAUSE_PROBE && !pauseProbe?.pass) || (INCLUDE_REMATCH && !rematchPauseProbe?.pass) || (uiExpectedPass && !pauseMenuAndQr.pass)) verdict = 'FAIL';
 
     report = {
       verdict,
       phase: PHASE,
       runId: RUN_ID,
-      command: `CHROME_PATH=${chrome} node tests/visual/mp-camera-pause-lobby-reliability-proof.mjs --phase=${PHASE} --port=${DEV_PORT} --server-port=${SERVER_PORT} --surface=${SURFACE} --mode=${MODE} --duration=${DURATION_SECONDS} --include-sp-control=${INCLUDE_SP_CONTROL}`,
+      command: `CHROME_PATH=${chrome} node tests/visual/mp-camera-pause-lobby-reliability-proof.mjs --phase=${PHASE} --port=${DEV_PORT} --server-port=${SERVER_PORT} --surface=${SURFACE} --mode=${MODE} --duration=${DURATION_SECONDS} --include-sp-control=${INCLUDE_SP_CONTROL} --include-rematch=${INCLUDE_REMATCH} --skip-pause-probe=${SKIP_PAUSE_PROBE}`,
       proofBoundary: 'Linux headless Chrome with SwiftShader WebGL2, one real Vite server, one real Colyseus server, host + joiner pages in one Chrome process. No WebGPU, Windows browser, or physical LAN comfort claim.',
       surface: SURFACE,
       mode: MODE,
@@ -622,6 +709,7 @@ async function main() {
       spMovement,
       cameraComparison,
       pauseProbe,
+      rematchPauseProbe,
       pauseMenuAndQr,
       pageErrors,
       serverErrors,
@@ -665,6 +753,7 @@ async function main() {
       verdict: report.verdict,
       camera: report.cameraComparison?.verdict ?? null,
       pausePass: report.pauseProbe?.pass ?? null,
+      rematchPass: report.rematchPauseProbe?.pass ?? null,
       uiPass: report.pauseMenuAndQr?.pass ?? null,
       report: relative(ROOT, JSON_PATH),
       markdown: relative(ROOT, MD_PATH),

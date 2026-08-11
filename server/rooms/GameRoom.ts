@@ -3020,7 +3020,7 @@ export class GameRoom extends Room<GameState> {
     this.state.roomPhase = 'playing';
     this.state.gameStarted = true;   // backward compat
     this.state.gameOver = false;     // backward compat
-    this.state.isPaused = false;     // always start unpaused (guards stale pause from previous round)
+    this.clearPauseStateForPhaseBoundary('startGame'); // always start unpaused
     this.state.waveNumber = 0;
     this.state.gameTime = 0;
     this.state.countdownPaused = true;  // timer paused by default; host must resume to start countdown
@@ -8919,7 +8919,7 @@ export class GameRoom extends Room<GameState> {
   private transitionToVoting() {
     this.state.roomPhase = 'voting';
     this.state.gameOver = true;  // backward compat: existing client code reads gameOver
-    this.state.isPaused = false; // clear any in-game pause so voting screen shows cleanly
+    this.clearPauseStateForPhaseBoundary('transitionToVoting');
     this.state.votingCountdown = VOTING_COUNTDOWN_SECS;
     this.state.voteDivergenceCountdown = 0; // reset vote divergence timer for new voting phase
     this.state.voteMap.clear();
@@ -8960,6 +8960,20 @@ export class GameRoom extends Room<GameState> {
       wave: this.waveNumber,
     });
     this.logger.log('[GameRoom] Game Over — entering voting phase');
+  }
+
+  private clearPauseStateForPhaseBoundary(reason: string) {
+    const wasPaused = this.state.isPaused === true;
+    this.state.isPaused = false;
+    this.state.pausedById = '';
+    if (!wasPaused) return;
+    this.state.pauseRevision++;
+    this.broadcast('pause_sync', {
+      isPaused: false,
+      pauseRevision: this.state.pauseRevision,
+      pausedById: '',
+    });
+    this.logger.log(`[GameRoom] Cleared pause for ${reason} (pauseRevision=${this.state.pauseRevision})`);
   }
 
   private spawnWeaponPickup(u: number, v: number) {
