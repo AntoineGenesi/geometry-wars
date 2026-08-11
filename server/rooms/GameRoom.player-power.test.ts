@@ -1,4 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
+import {
+  computeDifficultyLevel as computeSpDifficultyLevel,
+  generateScaledEndlessWave,
+  getDifficultyTier,
+} from '../../src/core/DifficultyScaling';
+import { computePlayerPower } from '../../src/shared/PlayerPowerModel';
 import { GameRoom } from './GameRoom';
 
 function makePlayer(overrides: Record<string, unknown> = {}) {
@@ -152,5 +158,62 @@ describe('GameRoom authoritative player-power integration', () => {
     expect(dominance.rawScore).toBe(75);
     expect(dominance.multipliedScore).toBe(300);
     expect(dominance.killPressure).toBeGreaterThan(0);
+  });
+
+  it('keeps SP early-mid ramp tier pressure closer to MP flat-health waves', () => {
+    const player = makePlayer({
+      score: 300_000,
+      enemyKills: 220,
+    });
+    const room = makeRoom(player);
+    room.state.gameTime = 240;
+    room.waveNumber = 8;
+    room.playerPowerStreaks.set(player.id, 120);
+    room.playerPowerLastDeathAt.set(player.id, 0);
+    room.playerPowerRawScores.set(player.id, 300_000);
+
+    const spPower = computePlayerPower({
+      score: 300_000,
+      rawScore: 300_000,
+      multipliedScore: 300_000,
+      totalKills: 220,
+      survivalSeconds: 240,
+      streak: 120,
+      blaster: { damage: 1, shotsPerSecond: 6, projectilesPerShot: 1 },
+    });
+    const spDifficulty = computeSpDifficultyLevel({
+      score: 300_000,
+      rawScore: 300_000,
+      multipliedScore: 300_000,
+      elapsedTime: 240,
+      combo: 120,
+      totalKills: 220,
+      playerLevel: 0,
+      playerPower: spPower,
+    });
+    const spWave = generateScaledEndlessWave(8, spDifficulty, 0, 1);
+    const spMaxTier = Math.max(...spWave.map(entry => entry.tier));
+    const spTierTwoPlusCount = spWave
+      .filter(entry => entry.tier >= 2)
+      .reduce((sum, entry) => sum + entry.count, 0);
+    const spNonBasicCount = spWave
+      .filter(entry => !['grunt', 'wanderer', 'duck'].includes(entry.type))
+      .reduce((sum, entry) => sum + entry.count, 0);
+
+    const mpDifficulty = room.computeDifficultyLevel();
+    const mpBaselineRoom = makeRoom(makePlayer());
+    mpBaselineRoom.state.gameTime = 240;
+    mpBaselineRoom.waveNumber = 8;
+    const mpBaseHealth = mpBaselineRoom.getEnemyHealth('grunt');
+    const mpEarlyMidHealth = room.getEnemyHealth('grunt');
+
+    expect(spDifficulty).toBeGreaterThan(2);
+    expect(mpDifficulty).toBeGreaterThan(spDifficulty);
+    expect(mpDifficulty).toBeLessThan(8);
+    expect(mpEarlyMidHealth).toBe(mpBaseHealth);
+    expect(spNonBasicCount).toBeGreaterThan(20);
+    expect(spMaxTier).toBeLessThanOrEqual(1);
+    expect(spTierTwoPlusCount).toBe(0);
+    expect(getDifficultyTier(spMaxTier).healthMultiplier).toBeLessThanOrEqual(3);
   });
 });

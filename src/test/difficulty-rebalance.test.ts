@@ -247,6 +247,40 @@ describe('Enemy Type Introduction', () => {
     expect(hasOrbiter).toBe(true);
   });
 
+  it('early-mid SP waves cap visible tier pressure while keeping varied threats', () => {
+    for (const difficulty of [2.3, 3.0, 3.9]) {
+      const entries = generateScaledEndlessWave(8, difficulty);
+      const maxTier = Math.max(...entries.map(entry => entry.tier));
+      const tierTwoPlus = entries.filter(entry => entry.tier >= 2);
+      const nonBasicCount = entries
+        .filter(entry => !['grunt', 'wanderer', 'duck'].includes(entry.type))
+        .reduce((sum, entry) => sum + entry.count, 0);
+
+      expect(maxTier).toBeLessThanOrEqual(1);
+      expect(tierTwoPlus).toEqual([]);
+      expect(nonBasicCount).toBeGreaterThan(20);
+      expect(entries.some(entry => entry.type === 'orbiter')).toBe(true);
+      expect(entries.some(entry => entry.type === 'prism_lancer')).toBe(true);
+      expect(entries.some(entry => entry.type === 'sentinel_orb')).toBe(false);
+    }
+  });
+
+  it('wave 8 can break through the readable tier cap at difficulty 4+', () => {
+    const entries = generateScaledEndlessWave(8, 4.0);
+    const tierTwoPlus = entries.filter(entry => entry.tier >= 2);
+
+    expect(tierTwoPlus.length).toBeGreaterThan(0);
+    expect(Math.max(...entries.map(entry => entry.tier))).toBeGreaterThan(1);
+  });
+
+  it('composite fractal snake pressure waits past the first low-difficulty waves', () => {
+    const earlyEntries = generateScaledEndlessWave(3, 0);
+    const pressuredEntries = generateScaledEndlessWave(7, 1.2);
+
+    expect(earlyEntries.some(entry => entry.type === 'fractal_snake')).toBe(false);
+    expect(pressuredEntries.some(entry => entry.type === 'fractal_snake')).toBe(true);
+  });
+
   it('high difficulty waves should have multiple enemy categories', () => {
     const entries = generateScaledEndlessWave(20, 4.0);
     const categories = new Set<string>();
