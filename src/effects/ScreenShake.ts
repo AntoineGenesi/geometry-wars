@@ -6,19 +6,26 @@ export class ScreenShake {
   // Cap concurrent shakes so rapid kills don't stack into continuous jitter
   private static readonly MAX_CONCURRENT_SHAKES = 4;
   private static readonly MAX_CONCURRENT_KILL_SHAKES = 2;
+  private static readonly MAX_CONCURRENT_SPECIAL_SHAKES = 2;
   private static readonly KILL_SHAKE_MAX_INTENSITY = 0.08;
   private static readonly KILL_SHAKE_MIN_INTERVAL = 0.06;
+  private static readonly SPECIAL_SHAKE_MAX_INTENSITY = 0.18;
+  private static readonly SPECIAL_SHAKE_MAX_DURATION = 0.22;
+  private static readonly SPECIAL_SHAKE_MIN_INTERVAL = 0.08;
 
   private shakes: Array<{
     intensity: number;
     duration: number;
     elapsed: number;
-    kind: 'event' | 'kill';
+    kind: 'event' | 'kill' | 'special';
   }>;
   private time = 0;
   private lastKillShakeTime = -Infinity;
+  private lastSpecialShakeTime = -Infinity;
   private acceptedKillShakes = 0;
   private suppressedKillShakes = 0;
+  private acceptedSpecialShakes = 0;
+  private suppressedSpecialShakes = 0;
 
   constructor() {
     this.offset = new THREE.Vector3();
@@ -59,6 +66,30 @@ export class ScreenShake {
     });
   }
 
+  shakeSpecial(intensity: number, duration: number): void {
+    const activeSpecialShakes = this.shakes.reduce(
+      (count, shake) => count + (shake.kind === 'special' ? 1 : 0),
+      0,
+    );
+    if (
+      this.shakes.length >= ScreenShake.MAX_CONCURRENT_SHAKES
+      || activeSpecialShakes >= ScreenShake.MAX_CONCURRENT_SPECIAL_SHAKES
+      || this.time - this.lastSpecialShakeTime < ScreenShake.SPECIAL_SHAKE_MIN_INTERVAL
+    ) {
+      this.suppressedSpecialShakes++;
+      return;
+    }
+
+    this.lastSpecialShakeTime = this.time;
+    this.acceptedSpecialShakes++;
+    this.shakes.push({
+      intensity: Math.min(intensity, ScreenShake.SPECIAL_SHAKE_MAX_INTENSITY),
+      duration: Math.min(duration, ScreenShake.SPECIAL_SHAKE_MAX_DURATION),
+      elapsed: 0,
+      kind: 'special',
+    });
+  }
+
   update(dt: number): void {
     this.time += dt;
     this.offset.set(0, 0, 0);
@@ -94,15 +125,21 @@ export class ScreenShake {
   getDebugState(): {
     activeCount: number;
     activeKillCount: number;
+    activeSpecialCount: number;
     acceptedKillShakes: number;
     suppressedKillShakes: number;
+    acceptedSpecialShakes: number;
+    suppressedSpecialShakes: number;
     offsetLength: number;
   } {
     return {
       activeCount: this.shakes.length,
       activeKillCount: this.shakes.filter((shake) => shake.kind === 'kill').length,
+      activeSpecialCount: this.shakes.filter((shake) => shake.kind === 'special').length,
       acceptedKillShakes: this.acceptedKillShakes,
       suppressedKillShakes: this.suppressedKillShakes,
+      acceptedSpecialShakes: this.acceptedSpecialShakes,
+      suppressedSpecialShakes: this.suppressedSpecialShakes,
       offsetLength: this.offset.length(),
     };
   }

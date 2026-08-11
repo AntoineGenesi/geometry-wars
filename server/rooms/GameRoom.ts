@@ -4368,6 +4368,7 @@ export class GameRoom extends Room<GameState> {
       }
 
       if (bolt.age >= bolt.maxAge) {
+        this.spawnBlackHoleFieldFromLocation(bolt.ownerId, nextLocation);
         this.removeBlackHoleBoltAt(boltIndex);
       }
     }

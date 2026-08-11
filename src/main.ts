@@ -1516,11 +1516,11 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
       if (wType === WeaponType.Homing) {
         particles.homingExplosion(position);
         surface.applyForce(position, 0.1, 0.4);
-        screenShake.shake(0.1, 0.1);
+        screenShake.shakeSpecial(0.08, 0.1);
       } else if (wType === WeaponType.PlasmaMortar) {
         particles.mortarExplosion(position);
         surfaceShockwave.spawn(position, 3.0, 8.0, 0.4);
-        screenShake.shake(0.5, 0.35);
+        screenShake.shakeSpecial(0.18, 0.22);
         shockwaveEffect.spawnShockwave(position, 0.08, 1.2, 0.8, 0.1);
         shockwaveEffect.triggerWhiteFlash(0.3);
         shockwaveEffect.triggerChromatic(0.012);
@@ -1547,13 +1547,13 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
         surface.applyForce(position, -0.15, 1.5);
         // Gravity implosion particles (replaces generic bulletImpact)
         particles.gravityExplosion(position);
-        screenShake.shake(0.08, 0.3);
+        screenShake.shakeSpecial(0.06, 0.18);
       } else if (wType === WeaponType.BlackHole) {
         surface.applyMeshForce(position, -1.4, 2.5);
         surface.applyForce(position, -0.12, 2.5);
         particles.gravityExplosion(position);
         surfaceShockwave.spawn(position, 4.5, 9, 0.45);
-        screenShake.shake(0.16, 0.24);
+        screenShake.shakeSpecial(0.12, 0.2);
       }
     },
     onGravityGunMove: (position: THREE.Vector3) => {

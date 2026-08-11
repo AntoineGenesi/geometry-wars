@@ -102,6 +102,8 @@ export interface Projectile {
   hasSplit?: boolean;
   /** b_9 devastator: child missiles trigger nova burst on detonation */
   isDevastatorChild?: boolean;
+  /** True when a projectile already fired its special effect before removal. */
+  expiryEffectHandled?: boolean;
 }
 
 /**
@@ -1028,29 +1030,8 @@ export class WeaponManager {
       proj.age += dt;
 
       if (proj.age >= proj.maxAge) {
-        // GravityGun that reaches max age hit the surface (not an enemy)
-        if (proj.type === WeaponType.GravityGun) {
-          this.callbacks?.onProjectileExplosion?.(proj.position.clone(), WeaponType.GravityGun);
-        }
-        // Apex hunter (bl_10): loop back once on miss — reverse toward nearest enemy instead of expiring
-        if (proj.type === WeaponType.Standard && proj.loopBackOnMiss && !proj.hasLoopedBack && this.callbacks) {
-          const enemies = this.callbacks.getEnemies();
-          let nearestEnemy: { position: THREE.Vector3; index: number } | null = null;
-          let nearestDist = Infinity;
-          for (const e of enemies) {
-            if (!e.alive) continue;
-            const d = proj.position.distanceTo(e.position);
-            if (d < nearestDist) { nearestDist = d; nearestEnemy = e; }
-          }
-          if (nearestEnemy) {
-            // Reverse direction toward nearest enemy and give another life (same duration)
-            proj.direction.copy(nearestEnemy.position.clone().sub(proj.position).normalize());
-            proj.targetIndex = nearestEnemy.index;
-            proj.age = 0; // reset age for the return pass
-            proj.hasLoopedBack = true; // prevent looping again
-            continue; // don't remove — let it continue
-          }
-        }
+        if (this.tryLoopBackOnMiss(proj)) continue;
+        this.triggerProjectileExpiryEffect(proj);
         this.removeProjectile(i);
         continue;
       }
@@ -2492,6 +2473,51 @@ export class WeaponManager {
     }
   }
 
+  private tryLoopBackOnMiss(proj: Projectile): boolean {
+    if (proj.type !== WeaponType.Standard || !proj.loopBackOnMiss || proj.hasLoopedBack || !this.callbacks) {
+      return false;
+    }
+
+    const enemies = this.callbacks.getEnemies();
+    let nearestEnemy: { position: THREE.Vector3; index: number } | null = null;
+    let nearestDist = Infinity;
+    for (const enemy of enemies) {
+      if (!enemy.alive) continue;
+      const distance = proj.position.distanceTo(enemy.position);
+      if (distance < nearestDist) {
+        nearestDist = distance;
+        nearestEnemy = enemy;
+      }
+    }
+    if (!nearestEnemy) return false;
+
+    proj.direction.copy(nearestEnemy.position.clone().sub(proj.position).normalize());
+    proj.targetIndex = nearestEnemy.index;
+    proj.age = 0;
+    proj.hasLoopedBack = true;
+    return true;
+  }
+
+  private triggerProjectileExpiryEffect(proj: Projectile): void {
+    if (proj.expiryEffectHandled) return;
+    proj.expiryEffectHandled = true;
+
+    switch (proj.type) {
+      case WeaponType.PlasmaMortar:
+        this.detonatePlasmaMortar(proj, proj.endPos?.clone() ?? proj.position.clone());
+        break;
+      case WeaponType.Homing:
+        this.detonateHoming(proj);
+        break;
+      case WeaponType.GravityGun:
+        this.detonateGravityGun(proj.position.clone());
+        break;
+      case WeaponType.BlackHole:
+        this.spawnBlackHoleEffect(proj.position.clone());
+        break;
+    }
+  }
+
   private updateHomingProjectile(proj: Projectile, dt: number): void {
     if (this.callbacks) {
       const enemies = this.callbacks.getEnemies();
@@ -2535,6 +2561,7 @@ export class WeaponManager {
         if (d < nearMissRadius && d >= hitRadius) {
           this.applyAoeDamage(proj.position, 2.0, proj.damage * 0.5);
           this.callbacks.onProjectileExplosion?.(proj.position.clone(), WeaponType.Homing);
+          proj.expiryEffectHandled = true;
           proj.age = proj.maxAge + 1; // expire missile after near-miss trigger
           break;
         }
@@ -2561,6 +2588,7 @@ export class WeaponManager {
         child.targetIndex = proj.targetIndex;
         if (isDevastator) child.isDevastatorChild = true;
       }
+      proj.expiryEffectHandled = true;
       proj.age = proj.maxAge + 1; // expire parent after split
     }
   }
@@ -2620,64 +2648,7 @@ export class WeaponManager {
         this.callbacks.onEnemyDamage(enemy.index, proj.damage, proj.type);
 
         if (proj.type === WeaponType.PlasmaMortar) {
-          // AoE radius upgrades (branch A): +30%, +60%, +100%
-          const mortarNodes = this.activeUpgradeNodes(WeaponType.PlasmaMortar);
-          const mortarRadiusBonus =
-            (mortarNodes.has('plasma_mortar_a_1') ? 0.30 : 0) +
-            (mortarNodes.has('plasma_mortar_a_2') ? 0.60 : 0) +
-            (mortarNodes.has('plasma_mortar_a_3') ? 1.00 : 0);
-          const blastRadius = 3.0 * (1.0 + mortarRadiusBonus);
-          // b_5 = annihilator: instant-kill enemies below 20% HP in the blast radius
-          if (mortarNodes.has('plasma_mortar_b_5')) {
-            const blastEnemies = this.callbacks.getEnemies().filter(e => e.alive);
-            for (const e of blastEnemies) {
-              const eDist = proj.position.distanceTo(e.position);
-              if (eDist < blastRadius) {
-                const currentHp = e.health ?? e.maxHealth ?? Infinity;
-                const maxHp = e.maxHealth ?? currentHp;
-                if (currentHp < maxHp * 0.20) {
-                  this.callbacks.onEnemyDamage(e.index, 999, WeaponType.PlasmaMortar);
-                }
-              }
-            }
-          }
-          // AoE blast (b_5 gets +100% damage bonus on top of instant-kill)
-          const annihilatorMult = mortarNodes.has('plasma_mortar_b_5') ? 2.0 : 1.0;
-          this.applyAoeDamage(proj.position, blastRadius, proj.damage * 0.75 * annihilatorMult);
-          this.callbacks.onProjectileExplosion?.(proj.position.clone(), WeaponType.PlasmaMortar);
-
-          // a_4 = chain blast: 0.3s after main explosion, secondary blast at 50% radius
-          if (mortarNodes.has('plasma_mortar_a_4') || mortarNodes.has('plasma_mortar_a_5')) {
-            this.pendingShots.push({
-              delay: 0.3,
-              remaining: 0.3,
-              type: WeaponType.PlasmaMortar,
-              origin: proj.position.clone(),
-              direction: proj.direction.clone(),
-              isChainBlast: true,
-              chainBlastRadius: blastRadius * 0.5,
-              chainBlastDamage: proj.damage * 0.4,
-            });
-          }
-
-          // a_5 = carpet bomb: queue 2 additional mortars offset from player origin
-          // NOTE: We don't have player origin here, so we use the mortar's start position
-          // and fan the extra shots at ±15° from original direction
-          if (mortarNodes.has('plasma_mortar_a_5') && proj.startPos) {
-            const localUp = proj.startPos.clone().normalize();
-            const angles = [-Math.PI / 12, Math.PI / 12]; // ±15°
-            for (const ang of angles) {
-              const fanDir = proj.direction.clone().applyAxisAngle(localUp, ang).normalize();
-              this.pendingShots.push({
-                delay: 0.05,
-                remaining: 0.05,
-                type: WeaponType.PlasmaMortar,
-                origin: proj.startPos.clone(),
-                direction: fanDir,
-              });
-            }
-          }
-
+          this.detonatePlasmaMortar(proj, proj.position.clone());
           this.removeProjectile(index);
           return;
         } else if (proj.type === WeaponType.Homing) {
@@ -2685,105 +2656,11 @@ export class WeaponManager {
           // will retarget to a different target (unless the enemy is a boss).
           this.missileHitThisFrame.add(enemy.index);
 
-          // b_9 devastator child missiles: trigger nova burst only, skip full warhead chain
-          if (proj.isDevastatorChild) {
-            const homingNodesDev = this.activeUpgradeNodes(WeaponType.Homing);
-            const radiusBonusDev =
-              (homingNodesDev.has('homing_b_1') ? 0.30 : 0) +
-              (homingNodesDev.has('homing_b_2') ? 0.60 : 0);
-            this.applyAoeDamage(proj.position, 3.5 * (1.0 + radiusBonusDev), proj.damage * 0.8);
-            this.callbacks.onProjectileExplosion?.(proj.position.clone(), WeaponType.Homing);
-            this.removeProjectile(index);
-            return;
-          }
-
-          // Explosion radius upgrades (branch B): +30%, +60%
-          const homingNodes = this.activeUpgradeNodes(WeaponType.Homing);
-          const homingRadiusBonus =
-            (homingNodes.has('homing_b_1') ? 0.30 : 0) +
-            (homingNodes.has('homing_b_2') ? 0.60 : 0);
-          // b_5 = nova burst: combines explosion + napalm + stun; bigger radius than base
-          const novaRadiusMult = homingNodes.has('homing_b_5') || homingNodes.has('homing_b_6') ||
-            homingNodes.has('homing_b_7') || homingNodes.has('homing_b_8') ||
-            homingNodes.has('homing_b_9') || homingNodes.has('homing_b_10') ? 1.5 : 1.0;
-          this.applyAoeDamage(proj.position, 3.5 * (1.0 + homingRadiusBonus) * novaRadiusMult, proj.damage * 0.8);
-          this.callbacks.onProjectileExplosion?.(proj.position.clone(), WeaponType.Homing);
-
-          // b_3 = cluster bomb: spawn 3 mini-missiles on detonation
-          if (homingNodes.has('homing_b_3')) {
-            const miniConfig = WEAPON_CONFIGS[WeaponType.Homing];
-            const localUp = proj.position.clone().normalize();
-            const miniAngles = [-Math.PI / 6, 0, Math.PI / 6]; // 3 directions
-            for (const angle of miniAngles) {
-              const miniDir = proj.direction.clone().applyAxisAngle(localUp, angle).normalize();
-              const mini = this.createProjectile(
-                WeaponType.Homing,
-                proj.position.clone(),
-                miniDir,
-                miniConfig.damage * 0.5,  // 50% damage for mini-missiles
-                proj.speed * 1.1,
-                8.0,
-              );
-              mini.targetIndex = proj.targetIndex; // track same target
-            }
-          }
-
-          // b_4/b_5 = napalm / nova burst: standard gas cloud
-          // b_7+ upgrades the cloud to larger radius/duration (handled below) — skip standard cloud
-          if ((homingNodes.has('homing_b_4') || homingNodes.has('homing_b_5')) &&
-              !homingNodes.has('homing_b_7') && !homingNodes.has('homing_b_8') &&
-              !homingNodes.has('homing_b_9') && !homingNodes.has('homing_b_10')) {
-            this.spawnGasCloud(proj.position.clone());
-          }
-
-          // b_5 = nova burst stun: full stun for 0.5s to enemies in nova radius
-          if (homingNodes.has('homing_b_5') && this.callbacks?.onEnemySlow) {
-            const stunRadius = 3.5 * (1.0 + homingRadiusBonus) * novaRadiusMult;
-            const allEnemies = this.callbacks.getEnemies();
-            for (const e of allEnemies) {
-              if (!e.alive) continue;
-              if (e.position.distanceTo(proj.position) < stunRadius) {
-                this.callbacks.onEnemySlow(e.index, 0.0, 0.5);
-              }
-            }
-          }
-
-          // b_6 Thermobaric: secondary explosion 0.5s after primary
-          if (homingNodes.has('homing_b_6') || homingNodes.has('homing_b_7') ||
-              homingNodes.has('homing_b_8') || homingNodes.has('homing_b_9') ||
-              homingNodes.has('homing_b_10')) {
-            const secondaryRadius = 3.5 * (1.0 + homingRadiusBonus) * novaRadiusMult;
-            this.pendingShots.push({
-              delay: 0.5,
-              remaining: 0.5,
-              type: WeaponType.Homing,
-              origin: proj.position.clone(),
-              direction: proj.direction.clone(),
-              isChainBlast: true,
-              chainBlastRadius: secondaryRadius,
-              chainBlastDamage: proj.damage * 0.6,
-            });
-          }
-
-          // b_7 Fuel-air bomb: double-size long-duration gas cloud
-          if (homingNodes.has('homing_b_7') || homingNodes.has('homing_b_8') ||
-              homingNodes.has('homing_b_9') || homingNodes.has('homing_b_10')) {
-            this.spawnGasCloud(proj.position.clone(), GAS_CLOUD_RADIUS * 2, GAS_CLOUD_DURATION);
-          }
-
-          // b_10 Armageddon: screen-wide shockwave on first missile hit this wave
-          if (homingNodes.has('homing_b_10') && !this.armageddonFiredThisWave) {
-            this.armageddonFiredThisWave = true;
-            this.applyAoeDamage(proj.position, 28.0, proj.damage * 0.4);
-            this.callbacks.onProjectileExplosion?.(proj.position.clone(), WeaponType.Homing);
-          }
-
+          this.detonateHoming(proj);
           this.removeProjectile(index);
           return;
         } else if (proj.type === WeaponType.GravityGun) {
-          // Pull enemies together
-          this.applyGravityPull(proj.position, GRAVITY_GUN_IMPACT_PULL_RADIUS);
-          this.callbacks.onProjectileExplosion?.(proj.position.clone(), WeaponType.GravityGun);
+          this.detonateGravityGun(proj.position.clone());
           this.removeProjectile(index);
           return;
         } else if (proj.type === WeaponType.Standard && proj.isARBolt) {
@@ -2854,6 +2731,150 @@ export class WeaponManager {
         }
       }
     }
+  }
+
+  private detonatePlasmaMortar(proj: Projectile, position: THREE.Vector3): void {
+    if (!this.callbacks) return;
+
+    const mortarNodes = this.activeUpgradeNodes(WeaponType.PlasmaMortar);
+    const mortarRadiusBonus =
+      (mortarNodes.has('plasma_mortar_a_1') ? 0.30 : 0) +
+      (mortarNodes.has('plasma_mortar_a_2') ? 0.60 : 0) +
+      (mortarNodes.has('plasma_mortar_a_3') ? 1.00 : 0);
+    const blastRadius = 3.0 * (1.0 + mortarRadiusBonus);
+
+    if (mortarNodes.has('plasma_mortar_b_5')) {
+      const blastEnemies = this.callbacks.getEnemies().filter(e => e.alive);
+      for (const enemy of blastEnemies) {
+        const distance = position.distanceTo(enemy.position);
+        if (distance < blastRadius) {
+          const currentHp = enemy.health ?? enemy.maxHealth ?? Infinity;
+          const maxHp = enemy.maxHealth ?? currentHp;
+          if (currentHp < maxHp * 0.20) {
+            this.callbacks.onEnemyDamage(enemy.index, 999, WeaponType.PlasmaMortar);
+          }
+        }
+      }
+    }
+
+    const annihilatorMult = mortarNodes.has('plasma_mortar_b_5') ? 2.0 : 1.0;
+    this.applyAoeDamage(position, blastRadius, proj.damage * 0.75 * annihilatorMult);
+    this.callbacks.onProjectileExplosion?.(position.clone(), WeaponType.PlasmaMortar);
+
+    if (mortarNodes.has('plasma_mortar_a_4') || mortarNodes.has('plasma_mortar_a_5')) {
+      this.pendingShots.push({
+        delay: 0.3,
+        remaining: 0.3,
+        type: WeaponType.PlasmaMortar,
+        origin: position.clone(),
+        direction: proj.direction.clone(),
+        isChainBlast: true,
+        chainBlastRadius: blastRadius * 0.5,
+        chainBlastDamage: proj.damage * 0.4,
+      });
+    }
+
+    if (mortarNodes.has('plasma_mortar_a_5') && proj.startPos) {
+      const localUp = proj.startPos.clone().normalize();
+      const angles = [-Math.PI / 12, Math.PI / 12];
+      for (const angle of angles) {
+        const fanDir = proj.direction.clone().applyAxisAngle(localUp, angle).normalize();
+        this.pendingShots.push({
+          delay: 0.05,
+          remaining: 0.05,
+          type: WeaponType.PlasmaMortar,
+          origin: proj.startPos.clone(),
+          direction: fanDir,
+        });
+      }
+    }
+  }
+
+  private detonateHoming(proj: Projectile): void {
+    if (!this.callbacks) return;
+
+    const homingNodes = this.activeUpgradeNodes(WeaponType.Homing);
+    const homingRadiusBonus =
+      (homingNodes.has('homing_b_1') ? 0.30 : 0) +
+      (homingNodes.has('homing_b_2') ? 0.60 : 0);
+
+    if (proj.isDevastatorChild) {
+      this.applyAoeDamage(proj.position, 3.5 * (1.0 + homingRadiusBonus), proj.damage * 0.8);
+      this.callbacks.onProjectileExplosion?.(proj.position.clone(), WeaponType.Homing);
+      return;
+    }
+
+    const novaRadiusMult = homingNodes.has('homing_b_5') || homingNodes.has('homing_b_6') ||
+      homingNodes.has('homing_b_7') || homingNodes.has('homing_b_8') ||
+      homingNodes.has('homing_b_9') || homingNodes.has('homing_b_10') ? 1.5 : 1.0;
+    this.applyAoeDamage(proj.position, 3.5 * (1.0 + homingRadiusBonus) * novaRadiusMult, proj.damage * 0.8);
+    this.callbacks.onProjectileExplosion?.(proj.position.clone(), WeaponType.Homing);
+
+    if (homingNodes.has('homing_b_3')) {
+      const miniConfig = WEAPON_CONFIGS[WeaponType.Homing];
+      const localUp = proj.position.clone().normalize();
+      const miniAngles = [-Math.PI / 6, 0, Math.PI / 6];
+      for (const angle of miniAngles) {
+        const miniDir = proj.direction.clone().applyAxisAngle(localUp, angle).normalize();
+        const mini = this.createProjectile(
+          WeaponType.Homing,
+          proj.position.clone(),
+          miniDir,
+          miniConfig.damage * 0.5,
+          proj.speed * 1.1,
+          8.0,
+        );
+        mini.targetIndex = proj.targetIndex;
+      }
+    }
+
+    if ((homingNodes.has('homing_b_4') || homingNodes.has('homing_b_5')) &&
+        !homingNodes.has('homing_b_7') && !homingNodes.has('homing_b_8') &&
+        !homingNodes.has('homing_b_9') && !homingNodes.has('homing_b_10')) {
+      this.spawnGasCloud(proj.position.clone());
+    }
+
+    if (homingNodes.has('homing_b_5') && this.callbacks.onEnemySlow) {
+      const stunRadius = 3.5 * (1.0 + homingRadiusBonus) * novaRadiusMult;
+      const allEnemies = this.callbacks.getEnemies();
+      for (const enemy of allEnemies) {
+        if (!enemy.alive) continue;
+        if (enemy.position.distanceTo(proj.position) < stunRadius) {
+          this.callbacks.onEnemySlow(enemy.index, 0.0, 0.5);
+        }
+      }
+    }
+
+    if (homingNodes.has('homing_b_6') || homingNodes.has('homing_b_7') ||
+        homingNodes.has('homing_b_8') || homingNodes.has('homing_b_9') ||
+        homingNodes.has('homing_b_10')) {
+      const secondaryRadius = 3.5 * (1.0 + homingRadiusBonus) * novaRadiusMult;
+      this.pendingShots.push({
+        delay: 0.5,
+        remaining: 0.5,
+        type: WeaponType.Homing,
+        origin: proj.position.clone(),
+        direction: proj.direction.clone(),
+        isChainBlast: true,
+        chainBlastRadius: secondaryRadius,
+        chainBlastDamage: proj.damage * 0.6,
+      });
+    }
+
+    if (homingNodes.has('homing_b_7') || homingNodes.has('homing_b_8') ||
+        homingNodes.has('homing_b_9') || homingNodes.has('homing_b_10')) {
+      this.spawnGasCloud(proj.position.clone(), GAS_CLOUD_RADIUS * 2, GAS_CLOUD_DURATION);
+    }
+
+    if (homingNodes.has('homing_b_10') && !this.armageddonFiredThisWave) {
+      this.armageddonFiredThisWave = true;
+      this.applyAoeDamage(proj.position, 28.0, proj.damage * 0.4);
+    }
+  }
+
+  private detonateGravityGun(position: THREE.Vector3): void {
+    this.applyGravityPull(position, GRAVITY_GUN_IMPACT_PULL_RADIUS);
+    this.callbacks?.onProjectileExplosion?.(position.clone(), WeaponType.GravityGun);
   }
 
   private applyAoeDamage(center: THREE.Vector3, radius: number, damage: number): void {

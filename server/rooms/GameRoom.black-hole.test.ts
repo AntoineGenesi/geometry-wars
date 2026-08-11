@@ -364,7 +364,7 @@ describe('GameRoom authoritative Black Hole vortex', () => {
     expect(scenario.room.state.blackHoleFields[0].ownerId).toBe(scenario.player.id);
   });
 
-  it('expires a missed travelling bolt without creating a field', () => {
+  it('blooms a missed travelling bolt into a synchronized field at max range', () => {
     const scenario = makeRoom();
     rooms.push(scenario.room);
 
@@ -372,7 +372,8 @@ describe('GameRoom authoritative Black Hole vortex', () => {
     for (let i = 0; i < 90; i++) scenario.internals.updateBlackHoleBolts(1 / 60);
 
     expect(scenario.room.state.blackHoleBolts).toHaveLength(0);
-    expect(scenario.room.state.blackHoleFields).toHaveLength(0);
+    expect(scenario.room.state.blackHoleFields).toHaveLength(1);
+    expect(scenario.room.state.blackHoleFields[0].ownerId).toBe(scenario.player.id);
   });
 
   it('pulls a ServerMeshWalker toward the field and applies timed owner kill/score attribution', () => {

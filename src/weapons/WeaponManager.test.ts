@@ -53,6 +53,7 @@ function createMockCallbacks(enemies: MockEnemy[] = []) {
   const damages: { index: number; damage: number; type: WeaponType; targetId?: object | string | number }[] = [];
   const pulls: { index: number; strength: number; center: THREE.Vector3; dt?: number; targetId?: object | string | number }[] = [];
   const bullets: { origin: THREE.Vector3; direction: THREE.Vector3 }[] = [];
+  const explosions: { position: THREE.Vector3; type: WeaponType }[] = [];
 
   const callbacks: WeaponCallbacks = {
     getEnemies: () => enemies,
@@ -70,9 +71,12 @@ function createMockCallbacks(enemies: MockEnemy[] = []) {
     spawnBullet: (origin, direction) => {
       bullets.push({ origin: origin.clone(), direction: direction.clone() });
     },
+    onProjectileExplosion: (position, weaponType) => {
+      explosions.push({ position: position.clone(), type: weaponType });
+    },
   };
 
-  return { callbacks, damages, pulls, bullets };
+  return { callbacks, damages, pulls, bullets, explosions };
 }
 
 /** Player origin on sphere of radius 8 */
@@ -637,6 +641,99 @@ describe('WeaponManager', () => {
         expect(mock.damages[0].index).toBe(1); // Hit close enemy first
       }
     });
+
+    it('detonates on maxAge expiry instead of silently disappearing', () => {
+      manager.fire(origin(), forward(), T);
+      const [missile] = manager['projectiles'].filter(p => p.type === WeaponType.Homing);
+      expect(missile).toBeDefined();
+      missile!.age = missile!.maxAge - 0.01;
+
+      manager.update(0.02);
+
+      expect(manager['projectiles'].filter(p => p.type === WeaponType.Homing)).toHaveLength(0);
+      expect(mock.explosions.filter(e => e.type === WeaponType.Homing)).toHaveLength(1);
+    });
+
+    it('does not double explode after Ramjet near-miss already fired', () => {
+      manager.setUpgradeTracker(createActiveUpgradeTracker(['homing_a_6']));
+      const enemy: MockEnemy = {
+        position: origin().clone().add(new THREE.Vector3(0, 0, 0.47)),
+        index: 0,
+        alive: true,
+      };
+      mock = createMockCallbacks([enemy]);
+      manager.setCallbacks(mock.callbacks);
+
+      manager.fire(origin(), forward(), T);
+      manager.update(0.016);
+      expect(mock.explosions.filter(e => e.type === WeaponType.Homing)).toHaveLength(1);
+
+      manager.update(0.016);
+      expect(manager['projectiles'].filter(p => p.type === WeaponType.Homing)).toHaveLength(0);
+      expect(mock.explosions.filter(e => e.type === WeaponType.Homing)).toHaveLength(1);
+    });
+
+    it('does not explode the parent again after carpet-bomb split expiry', () => {
+      manager.setUpgradeTracker(createActiveUpgradeTracker(['homing_b_8']));
+
+      manager.fire(origin(), forward(), T);
+      const [missile] = manager['projectiles'].filter(p => p.type === WeaponType.Homing);
+      expect(missile).toBeDefined();
+      missile!.age = missile!.maxAge * 0.5;
+
+      manager.update(0.016);
+      expect(manager['projectiles'].filter(p => p.type === WeaponType.Homing)).toHaveLength(4);
+      expect(mock.explosions.filter(e => e.type === WeaponType.Homing)).toHaveLength(0);
+
+      manager.update(0.016);
+      expect(manager['projectiles'].filter(p => p.type === WeaponType.Homing)).toHaveLength(3);
+      expect(mock.explosions.filter(e => e.type === WeaponType.Homing)).toHaveLength(0);
+    });
+
+    it('emits one explosion callback for Armageddon direct hits while keeping Armageddon damage', () => {
+      manager.setUpgradeTracker(createActiveUpgradeTracker(['homing_b_10']));
+      const directEnemy: MockEnemy = {
+        position: origin().clone().add(new THREE.Vector3(0, 0, 0.2)),
+        index: 0,
+        alive: true,
+      };
+      const armageddonEnemy: MockEnemy = {
+        position: origin().clone().add(new THREE.Vector3(0, 0, 5)),
+        index: 1,
+        alive: true,
+      };
+      mock = createMockCallbacks([directEnemy, armageddonEnemy]);
+      manager.setCallbacks(mock.callbacks);
+
+      manager.fire(origin(), forward(), T);
+      manager.update(0.05);
+
+      expect(mock.explosions.filter(e => e.type === WeaponType.Homing)).toHaveLength(1);
+      expect((manager as any).armageddonFiredThisWave).toBe(true);
+      expect(mock.damages.some(d => d.index === 1 && d.type === WeaponType.PlasmaMortar)).toBe(true);
+    });
+
+    it('emits one explosion callback for Armageddon expiry while keeping Armageddon damage', () => {
+      manager.setUpgradeTracker(createActiveUpgradeTracker(['homing_b_10']));
+      const armageddonEnemy: MockEnemy = {
+        position: origin().clone().add(new THREE.Vector3(0, 0, 5)),
+        index: 0,
+        alive: true,
+      };
+      mock = createMockCallbacks([armageddonEnemy]);
+      manager.setCallbacks(mock.callbacks);
+
+      manager.fire(origin(), forward(), T);
+      const [missile] = manager['projectiles'].filter(p => p.type === WeaponType.Homing);
+      expect(missile).toBeDefined();
+      missile!.age = missile!.maxAge - 0.01;
+
+      manager.update(0.02);
+
+      expect(mock.explosions.filter(e => e.type === WeaponType.Homing)).toHaveLength(1);
+      expect((manager as any).armageddonFiredThisWave).toBe(true);
+      expect(mock.damages.some(d => d.index === 0 && d.type === WeaponType.PlasmaMortar)).toBe(true);
+    });
   });
 
   // =========================================================================
@@ -653,16 +750,19 @@ describe('WeaponManager', () => {
       expect(manager.projectileRoot.children.length).toBe(1);
     });
 
-    it('should remove projectile after maxAge', () => {
+    it('detonates at range on maxAge expiry instead of disappearing', () => {
       manager.fire(origin(), forward(), T);
       expect(manager.projectileRoot.children.length).toBe(1);
+      const [mortar] = manager['projectiles'].filter(p => p.type === WeaponType.PlasmaMortar);
+      expect(mortar).toBeDefined();
 
-      // Mortar maxAge = range/speed = 8/0.6 = 13.33s. Simulate well past that.
-      for (let i = 0; i < 300; i++) {
-        manager.update(0.05);
-      }
+      mortar!.age = mortar!.maxAge - 0.01;
+      manager.update(0.02);
+
       // Projectile should be removed after expiry
       expect(manager.projectileRoot.children.length).toBe(0);
+      expect(mock.explosions.filter(e => e.type === WeaponType.PlasmaMortar)).toHaveLength(1);
+      expect(mock.explosions[0].position.distanceTo(mortar!.endPos!)).toBeLessThan(0.001);
     });
   });
 
@@ -730,6 +830,27 @@ describe('WeaponManager', () => {
       const nearPull = mock.pulls.find(p => p.index === 0);
       expect(nearPull?.strength).toBeGreaterThan(0.15);
       expect(nearPull?.strength).toBeLessThan(0.35);
+    });
+
+    it('applies its pull and implosion callback on expiry', () => {
+      const enemy: MockEnemy = {
+        position: origin().clone().add(new THREE.Vector3(0, 1, 0)),
+        index: 0,
+        alive: true,
+      };
+      mock = createMockCallbacks([enemy]);
+      manager.setCallbacks(mock.callbacks);
+
+      manager.fire(origin(), forward(), T);
+      const [gravityProjectile] = manager['projectiles'].filter(p => p.type === WeaponType.GravityGun);
+      expect(gravityProjectile).toBeDefined();
+      gravityProjectile!.age = gravityProjectile!.maxAge - 0.01;
+
+      manager.update(0.02);
+
+      expect(manager['projectiles'].filter(p => p.type === WeaponType.GravityGun)).toHaveLength(0);
+      expect(mock.pulls.some(p => p.index === 0)).toBe(true);
+      expect(mock.explosions.filter(e => e.type === WeaponType.GravityGun)).toHaveLength(1);
     });
   });
 
@@ -847,14 +968,14 @@ describe('WeaponManager', () => {
       }
     });
 
-    it('expires on a miss without placing the impact field', () => {
+    it('blooms into a temporary black hole at max range instead of disappearing on a miss', () => {
       manager.fire(origin(), forward(), T);
 
       manager.update(1.25);
 
       expect(manager['projectiles'].filter(p => p.type === WeaponType.BlackHole)).toHaveLength(0);
-      expect(manager['activeEffects'].filter(e => e.type === 'blackhole')).toHaveLength(0);
-      expect(manager.projectileRoot.children.length).toBe(0);
+      expect(manager['activeEffects'].filter(e => e.type === 'blackhole')).toHaveLength(1);
+      expect(manager.projectileRoot.children.length).toBe(1);
     });
 
     it('direct hits bloom into a temporary black hole at impact', () => {
