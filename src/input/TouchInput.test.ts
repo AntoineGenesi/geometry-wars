@@ -14,9 +14,30 @@ import { TouchInput } from './TouchInput';
 // Minimal DOM element mock
 // ---------------------------------------------------------------------------
 
+function createMockStyle(): Record<string, string> {
+  const style: Record<string, string> = {};
+  let cssText = '';
+  Object.defineProperty(style, 'cssText', {
+    get: () => cssText,
+    set: (value: string) => {
+      cssText = value;
+      for (const rule of value.split(';')) {
+        const [rawProp, ...rawValue] = rule.split(':');
+        if (!rawProp || rawValue.length === 0) continue;
+        const prop = rawProp.trim();
+        const parsedValue = rawValue.join(':').trim();
+        if (!prop || !parsedValue) continue;
+        style[prop] = parsedValue;
+      }
+    },
+    configurable: true,
+  });
+  return style;
+}
+
 class MockElement {
   id = '';
-  style: Record<string, string> = {};
+  style: Record<string, string> = createMockStyle();
   children: MockElement[] = [];
   textContent = '';
   title = '';
@@ -283,6 +304,27 @@ describe('TouchInput', () => {
     fireWindowEvent('touchcancel', [touch(1, cx + 60, cy)]);
 
     expect(input.getState().moveX).toBe(0);
+    input.dispose();
+  });
+
+  it('left joystick: suppresses small held-thumb tremor before it reaches movement', () => {
+    const input = new TouchInput();
+    const cx = W * 0.25;
+    const cy = H * 0.75;
+
+    fireWindowEvent('touchstart', [touch(1, cx, cy)]);
+    fireWindowEvent('touchmove', [touch(1, cx + 30, cy)]);
+    const held = input.getState();
+
+    fireWindowEvent('touchmove', [touch(1, cx + 35, cy)]);
+    const tremorRight = input.getState();
+
+    fireWindowEvent('touchmove', [touch(1, cx + 30, cy)]);
+    const tremorLeft = input.getState();
+
+    expect(Math.abs(tremorRight.moveX - held.moveX)).toBeLessThanOrEqual(0.02);
+    expect(Math.abs(tremorLeft.moveX - held.moveX)).toBeLessThanOrEqual(0.02);
+    expect(held.moveX).toBeGreaterThan(0.3);
     input.dispose();
   });
 

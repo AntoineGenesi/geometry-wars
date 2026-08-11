@@ -29,6 +29,9 @@ const JOYSTICK_RADIUS = 60;
 /** Dead zone as a fraction of JOYSTICK_RADIUS. */
 const DEAD_ZONE_FRACTION = 0.15;
 
+/** Normalized joystick output changes smaller than this are treated as held-thumb tremor. */
+const OUTPUT_TREMOR_EPSILON = 0.12;
+
 /** Size of the base circle visual (px). */
 const BASE_SIZE = 120;
 
@@ -62,6 +65,8 @@ export class TouchInput {
   private leftOriginY = 0;
   private leftDeltaX = 0;
   private leftDeltaY = 0;
+  private leftOutputX = 0;
+  private leftOutputY = 0;
   private leftBase: HTMLDivElement;
   private leftThumb: HTMLDivElement;
 
@@ -72,6 +77,8 @@ export class TouchInput {
   private rightOriginY = 0;
   private rightDeltaX = 0;
   private rightDeltaY = 0;
+  private rightOutputX = 0;
+  private rightOutputY = 0;
   private rightBase: HTMLDivElement;
   private rightThumb: HTMLDivElement;
 
@@ -161,19 +168,31 @@ export class TouchInput {
 
   /** Sample touch state and return a unified InputState. */
   getState(): InputState {
-    const moveX = this.applyDeadZone(this.leftDeltaX / JOYSTICK_RADIUS);
-    const moveY = this.applyDeadZone(this.leftDeltaY / JOYSTICK_RADIUS);
-    const aimX = this.applyDeadZone(this.rightDeltaX / JOYSTICK_RADIUS);
-    const aimY = this.applyDeadZone(this.rightDeltaY / JOYSTICK_RADIUS);
+    this.leftOutputX = this.filterJoystickOutput(
+      this.applyDeadZone(this.leftDeltaX / JOYSTICK_RADIUS),
+      this.leftOutputX,
+    );
+    this.leftOutputY = this.filterJoystickOutput(
+      this.applyDeadZone(this.leftDeltaY / JOYSTICK_RADIUS),
+      this.leftOutputY,
+    );
+    this.rightOutputX = this.filterJoystickOutput(
+      this.applyDeadZone(this.rightDeltaX / JOYSTICK_RADIUS),
+      this.rightOutputX,
+    );
+    this.rightOutputY = this.filterJoystickOutput(
+      this.applyDeadZone(this.rightDeltaY / JOYSTICK_RADIUS),
+      this.rightOutputY,
+    );
 
     // Auto-fire when right stick is active
-    const rightStickActive = Math.abs(aimX) > 0 || Math.abs(aimY) > 0;
+    const rightStickActive = Math.abs(this.rightOutputX) > 0 || Math.abs(this.rightOutputY) > 0;
 
     return {
-      moveX: this.clamp(moveX, -1, 1),
-      moveY: this.clamp(moveY, -1, 1),
-      aimX: this.clamp(aimX, -1, 1),
-      aimY: this.clamp(aimY, -1, 1),
+      moveX: this.clamp(this.leftOutputX, -1, 1),
+      moveY: this.clamp(this.leftOutputY, -1, 1),
+      aimX: this.clamp(this.rightOutputX, -1, 1),
+      aimY: this.clamp(this.rightOutputY, -1, 1),
       shooting: rightStickActive,
       bomb: this.bombTriggered,
       boost: false,
@@ -225,12 +244,16 @@ export class TouchInput {
     this.leftTouchId = null;
     this.leftDeltaX = 0;
     this.leftDeltaY = 0;
+    this.leftOutputX = 0;
+    this.leftOutputY = 0;
     this.leftBase.style.display = 'none';
 
     this.rightActive = false;
     this.rightTouchId = null;
     this.rightDeltaX = 0;
     this.rightDeltaY = 0;
+    this.rightOutputX = 0;
+    this.rightOutputY = 0;
     this.rightBase.style.display = 'none';
 
     this.bombTouchId = null;
@@ -273,6 +296,8 @@ export class TouchInput {
             this.leftOriginY = y;
             this.leftDeltaX = 0;
             this.leftDeltaY = 0;
+            this.leftOutputX = 0;
+            this.leftOutputY = 0;
             this.showJoystick(this.leftBase, this.leftThumb, x, y, 0, 0);
           }
         } else {
@@ -284,6 +309,8 @@ export class TouchInput {
             this.rightOriginY = y;
             this.rightDeltaX = 0;
             this.rightDeltaY = 0;
+            this.rightOutputX = 0;
+            this.rightOutputY = 0;
             this.showJoystick(this.rightBase, this.rightThumb, x, y, 0, 0);
           }
         }
@@ -357,6 +384,8 @@ export class TouchInput {
         this.leftTouchId = null;
         this.leftDeltaX = 0;
         this.leftDeltaY = 0;
+        this.leftOutputX = 0;
+        this.leftOutputY = 0;
         this.leftBase.style.display = 'none';
       }
 
@@ -365,6 +394,8 @@ export class TouchInput {
         this.rightTouchId = null;
         this.rightDeltaX = 0;
         this.rightDeltaY = 0;
+        this.rightOutputX = 0;
+        this.rightOutputY = 0;
         this.rightBase.style.display = 'none';
       }
 
@@ -417,6 +448,13 @@ export class TouchInput {
     if (abs < DEAD_ZONE_FRACTION) return 0;
     const sign = value > 0 ? 1 : -1;
     return sign * (abs - DEAD_ZONE_FRACTION) / (1 - DEAD_ZONE_FRACTION);
+  }
+
+  private filterJoystickOutput(next: number, previous: number): number {
+    if (next === 0 || previous === 0) return next;
+    if (Math.sign(next) !== Math.sign(previous)) return next;
+    if (Math.abs(next - previous) <= OUTPUT_TREMOR_EPSILON) return previous;
+    return next;
   }
 
   private clamp(value: number, min: number, max: number): number {
