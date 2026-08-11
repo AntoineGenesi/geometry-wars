@@ -140,6 +140,17 @@ const MAX_ENEMY_COUNT = 400;
 const MAX_SPAWN_ATTEMPTS = 20;
 /** Prevent near-neutral dominance samples from turning 1 HP enemies into 2 HP via Math.ceil. */
 const MIN_DDA_HP_MULTIPLIER_TO_SCALE = 1.05;
+const DDA_HP_EXEMPT_COMMON_FODDER = new Set<EnemyType>([
+  'grunt',
+  'wanderer',
+  'duck',
+  'mayfly',
+  'rocket',
+  'neutron',
+  'weaver',
+  'spinner',
+  'approach_glow',
+]);
 
 /** Spawn warning indicator - pulsing ring at spawn location */
 interface SpawnWarning {
@@ -754,8 +765,9 @@ export class EnemySpawner {
       enemy.applyDifficultyTier(tier);
     }
 
-    // Apply dominance HP multiplier: when player is dominating, enemies get tankier.
-    // Boss-type enemies are excluded (they already have their own scaling).
+    // Apply dominance HP multiplier to distinct threats only. Common fodder
+    // should remain low-shot and readable; pressure should come from visible
+    // tier variants and stronger composition, not hidden HP on basic shapes.
     if (this.ddaDominanceEnabled) {
       const playerIdx = this.ddaPlayers.length > 0 ? 0 : 0; // single-player always index 0
       const hpMult = this.ddaPlayerPower?.hpMultiplier
@@ -765,7 +777,7 @@ export class EnemySpawner {
           this.ddaIsSmallMap,
         )
         ?? 1;
-      if (hpMult >= MIN_DDA_HP_MULTIPLIER_TO_SCALE) {
+      if (hpMult >= MIN_DDA_HP_MULTIPLIER_TO_SCALE && !DDA_HP_EXEMPT_COMMON_FODDER.has(type)) {
         enemy.health = Math.ceil(enemy.health * hpMult);
         enemy.maxHealth = Math.ceil(enemy.maxHealth * hpMult);
       }

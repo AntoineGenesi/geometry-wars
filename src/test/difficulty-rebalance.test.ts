@@ -272,6 +272,22 @@ describe('Enemy Type Introduction', () => {
     expect(byType.get('snake')?.count ?? 0).toBeGreaterThan(0);
     expect(byType.get('snake')?.maxSegments ?? 0).toBeGreaterThanOrEqual(30);
   });
+
+  it('high pressure keeps baseline basic fodder low-HP and shifts pressure to distinctive types', () => {
+    const entries = generateScaledEndlessWave(29, 6.0, 0, 1);
+    const basicEntries = entries.filter(e => ['grunt', 'wanderer', 'duck'].includes(e.type));
+    const firstBasic = basicEntries[0];
+
+    expect(firstBasic.tier).toBe(0);
+    expect(firstBasic.difficultyLevel).toBeUndefined();
+    expect(basicEntries.every(entry => entry.difficultyLevel === undefined)).toBe(true);
+
+    const distinctivePressureCount = entries
+      .filter(e => !['grunt', 'wanderer', 'duck'].includes(e.type))
+      .reduce((sum, entry) => sum + entry.count, 0);
+    const basicCount = basicEntries.reduce((sum, entry) => sum + entry.count, 0);
+    expect(distinctivePressureCount).toBeGreaterThan(basicCount);
+  });
 });
 
 // ============================================================================
@@ -459,11 +475,24 @@ describe('Super-Tier Continuous Scaling (difficultyLevel > MAX_TIER)', () => {
     expect(getContinuousScaleMultiplier(100)).toBe(2.5);
   });
 
-  it('generateScaledEndlessWave: entries have difficultyLevel set when above MAX_TIER', () => {
+  it('generateScaledEndlessWave: distinct threats have difficultyLevel set when above MAX_TIER', () => {
     const wave = generateScaledEndlessWave(20, MAX_TIER + 2);
     expect(wave.length).toBeGreaterThan(0);
-    for (const entry of wave) {
+    const commonFodder = new Set(['grunt', 'wanderer', 'duck', 'mayfly', 'rocket', 'neutron', 'weaver', 'spinner', 'approach_glow']);
+    const distinctThreats = wave.filter(entry => !commonFodder.has(entry.type));
+    expect(distinctThreats.length).toBeGreaterThan(0);
+    for (const entry of distinctThreats) {
       expect(entry.difficultyLevel).toBe(MAX_TIER + 2);
+    }
+  });
+
+  it('generateScaledEndlessWave: common fodder avoids continuous super-tier HP scaling', () => {
+    const wave = generateScaledEndlessWave(20, MAX_TIER + 2);
+    const commonFodder = new Set(['grunt', 'wanderer', 'duck', 'mayfly', 'rocket', 'neutron', 'weaver', 'spinner', 'approach_glow']);
+    const fodderEntries = wave.filter(entry => commonFodder.has(entry.type));
+    expect(fodderEntries.length).toBeGreaterThan(0);
+    for (const entry of fodderEntries) {
+      expect(entry.difficultyLevel).toBeUndefined();
     }
   });
 
