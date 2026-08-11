@@ -209,10 +209,9 @@ describe('BuffAuraRenderer', () => {
       expect(visibleCount).toBe(3);
     });
 
-    it('handles all 8 buff types', () => {
-      const allBuffTypes = [
+    it('handles all ring-rendered buff types', () => {
+      const ringBuffTypes = [
         StackBuffType.HotHands,
-        StackBuffType.TriggerHappy,
         StackBuffType.Afterburner,
         StackBuffType.Magnetism,
         StackBuffType.ToughTimes,
@@ -222,13 +221,34 @@ describe('BuffAuraRenderer', () => {
       ];
 
       // Test each buff type individually
-      for (const buffType of allBuffTypes) {
+      for (const buffType of ringBuffTypes) {
         renderer.update(0.016, 1.0, new Vector3(0, 1, 0), new Vector3(0, 1, 0), [
           { type: buffType, stacks: 1 },
         ]);
         const visibleCount = renderer.root.children.filter((c: any) => c.visible).length;
         expect(visibleCount).toBe(1);
       }
+    });
+
+    it('does not show a flat segmented ring for Trigger Happy', () => {
+      renderer.update(0.016, 1.0, new Vector3(0, 1, 0), new Vector3(0, 1, 0), [
+        { type: StackBuffType.TriggerHappy, stacks: 4 },
+      ]);
+
+      const visibleCount = renderer.root.children.filter((c: any) => c.visible).length;
+      expect(visibleCount).toBe(0);
+    });
+
+    it('does not let Trigger Happy consume one of the visible ring slots', () => {
+      renderer.update(0.016, 1.0, new Vector3(0, 1, 0), new Vector3(0, 1, 0), [
+        { type: StackBuffType.TriggerHappy, stacks: 10 },
+        { type: StackBuffType.HotHands, stacks: 1 },
+        { type: StackBuffType.ToughTimes, stacks: 1 },
+        { type: StackBuffType.Afterburner, stacks: 1 },
+      ]);
+
+      const visibleCount = renderer.root.children.filter((c: any) => c.visible).length;
+      expect(visibleCount).toBe(3);
     });
   });
 

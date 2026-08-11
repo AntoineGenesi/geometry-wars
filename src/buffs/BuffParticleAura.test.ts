@@ -147,6 +147,42 @@ describe('BuffParticleAura', () => {
       expect(aliveCount).toBeGreaterThan(0);
     });
 
+    it('keeps Trigger Happy visible through orange particle aura feedback', () => {
+      const buffs = [{ type: StackBuffType.TriggerHappy, stacks: 4 }];
+
+      for (let i = 0; i < 30; i++) {
+        aura.update(1 / 60, i / 60, playerPos, normal, buffs);
+      }
+
+      const geom = (aura.root.children[0] as THREE.Points).geometry as THREE.BufferGeometry;
+      const sizes = geom.attributes.aSize.array as Float32Array;
+      let aliveCount = 0;
+      for (let i = 0; i < sizes.length; i++) {
+        if (sizes[i] > 0) aliveCount++;
+      }
+      expect(aliveCount).toBeGreaterThan(0);
+    });
+
+    it('uses the EnergyVortex particle slot for Trigger Happy', () => {
+      const buffs = [{ type: StackBuffType.TriggerHappy, stacks: 1 }];
+
+      for (let i = 0; i < 60; i++) {
+        aura.update(1 / 60, i / 60, playerPos, normal, buffs);
+      }
+
+      const geom = (aura.root.children[0] as THREE.Points).geometry as THREE.BufferGeometry;
+      const positions = geom.attributes.position.array as Float32Array;
+      const sizes = geom.attributes.aSize.array as Float32Array;
+      let foundRaisedParticle = false;
+      for (let i = 0; i < 50; i++) {
+        if (sizes[i] > 0 && positions[i * 3 + 1] > playerPos.y + 0.2) {
+          foundRaisedParticle = true;
+          break;
+        }
+      }
+      expect(foundRaisedParticle).toBe(true);
+    });
+
     it('does not spawn particles when no buffs are active', () => {
       for (let i = 0; i < 30; i++) {
         aura.update(1 / 60, i / 60, playerPos, normal, []);

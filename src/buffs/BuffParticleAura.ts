@@ -1,8 +1,9 @@
 /**
  * BuffParticleAura --- 3D volumetric particle auras for active buffs.
  *
- * Adds floating, rising, swirling particles ON TOP of the existing flat
- * BuffAuraRenderer ring. Three visual styles:
+ * Adds floating, rising, swirling particles that can layer with
+ * BuffAuraRenderer rings. Trigger Happy uses only this particle aura, without
+ * a flat segmented ring. Three visual styles:
  *
  *   1. Floating Embers   - Small glowing dots drift upward, fade at peak
  *   2. Lava Lamp         - Larger blobby particles rise/fall organically

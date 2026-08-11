@@ -7,6 +7,9 @@
  *   - Tough Times: Hexagonal force field with flickering sectors
  *   - Afterburner: Speed dashes scrolling around the ring
  *
+ * Trigger Happy intentionally does not render a flat ring; its feedback is
+ * carried by BuffParticleAura's orange energy vortex.
+ *
  * Architecture:
  *   - Custom ring BufferGeometry with UV.x = angle (0-1), UV.y = radial (0-1)
  *   - Shared vertex shader, unique fragment shader per buff type
@@ -275,51 +278,6 @@ const MAGNETISM_FRAGMENT = /* glsl */ `
 
     float alpha = (pattern * radialPulse * 0.7 + dots * 0.5) * uOpacity;
     gl_FragColor = vec4(uColor * alpha, alpha);
-  }
-`;
-
-/** Trigger Happy — rapid-fire chambers lighting up in sequence */
-const TRIGGER_HAPPY_FRAGMENT = /* glsl */ `
-  uniform float uTime;
-  uniform float uStacks;
-  uniform vec3 uColor;
-  uniform vec3 uFlashColor;
-  uniform float uOpacity;
-
-  varying float vAngle;
-  varying float vRadius;
-
-  void main() {
-    float chamberCount = 6.0 + uStacks * 2.0;
-    float cycleSpeed = 3.0 + uStacks * 1.0;
-
-    // Current active chamber
-    float activeIndex = floor(fract(uTime * cycleSpeed) * chamberCount);
-    float chamberIndex = floor(vAngle * chamberCount);
-
-    // Chamber brightness
-    float isActive = step(abs(chamberIndex - activeIndex), 0.5);
-
-    // Adjacent chamber afterglow
-    float prevIndex = mod(activeIndex - 1.0, chamberCount);
-    float isAdjacent = step(abs(chamberIndex - prevIndex), 0.5);
-
-    // Flash on transition
-    float transitionPhase = fract(fract(uTime * cycleSpeed) * chamberCount);
-    float flash = smoothstep(0.1, 0.0, transitionPhase) * isActive;
-
-    // Chamber separator lines
-    float cellFract = fract(vAngle * chamberCount);
-    float separator = smoothstep(0.02, 0.0, cellFract) + smoothstep(0.98, 1.0, cellFract);
-
-    // Radial shape
-    float radial = smoothstep(0.0, 0.2, vRadius) * smoothstep(1.0, 0.8, vRadius);
-
-    float intensity = (isActive * 0.8 + isAdjacent * 0.2 + flash * 1.0 + separator * 0.3) * radial;
-    vec3 color = mix(uColor, uFlashColor, flash * 0.7);
-    float alpha = intensity * uOpacity;
-
-    gl_FragColor = vec4(color * alpha, alpha);
   }
 `;
 
@@ -683,12 +641,6 @@ export class BuffAuraRenderer {
       uColor: { value: new THREE.Color(0xffff00) },
     }));
 
-    // Trigger Happy (rapid fire orange)
-    this.materials.set(StackBuffType.TriggerHappy, this.createMaterial(TRIGGER_HAPPY_FRAGMENT, {
-      uColor: { value: new THREE.Color(0xff8800) },
-      uFlashColor: { value: new THREE.Color(0xffff88) },
-    }));
-
     // Incendiary Rounds (flame tongues)
     this.materials.set(StackBuffType.IncendiaryRounds, this.createMaterial(INCENDIARY_FRAGMENT, {
       uColorBase: { value: new THREE.Color(0xff4400) },
@@ -740,10 +692,11 @@ export class BuffAuraRenderer {
   private prioritizeBuffs(
     buffs: Array<{ type: StackBuffType; stacks: number }>,
   ): Array<{ type: StackBuffType; stacks: number }> {
-    if (buffs.length <= MAX_VISIBLE_RINGS) return buffs;
+    const ringBuffs = buffs.filter(buff => buff.type !== StackBuffType.TriggerHappy);
+    if (ringBuffs.length <= MAX_VISIBLE_RINGS) return ringBuffs;
 
     // Sort: uncommon first, then by stacks
-    return buffs
+    return ringBuffs
       .slice()
       .sort((a, b) => {
         const defA = BUFF_DEFINITIONS[a.type];
