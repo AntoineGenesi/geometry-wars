@@ -12,7 +12,7 @@
     "score": "SCORE",
     "available": "Disponible",
     "notAvailable": "Indisponible",
-    "close": "CLOSE"
+    "close": "FERMER"
   },
   "gameOver": {
     "title": "FIN DE PARTIE",
@@ -179,7 +179,7 @@
       "weaponMastery": "MAÎTRISE DES ARMES",
       "weaponDatabase": "BASE DE DONNÉES DES ARMES",
       "visualStyles": "STYLES DE CARTE",
-      "enemyTypes": "ENEMY TYPES"
+      "enemyTypes": "TYPES D’ENNEMIS"
     },
     "headings": {
       "adventureLevels": "NIVEAUX D'AVENTURE",

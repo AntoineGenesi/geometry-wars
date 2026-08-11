@@ -12,7 +12,7 @@
     "score": "СЧЁТ",
     "available": "Доступно",
     "notAvailable": "Недоступно",
-    "close": "CLOSE"
+    "close": "ЗАКРЫТЬ"
   },
   "gameOver": {
     "title": "ИГРА ОКОНЧЕНА",
@@ -179,7 +179,7 @@
       "weaponMastery": "МАСТЕРСТВО ОРУЖИЯ",
       "weaponDatabase": "БАЗА ОРУЖИЯ",
       "visualStyles": "СТИЛИ КАРТЫ",
-      "enemyTypes": "ENEMY TYPES"
+      "enemyTypes": "ТИПЫ ВРАГОВ"
     },
     "headings": {
       "adventureLevels": "УРОВНИ ПРИКЛЮЧЕНИЯ",

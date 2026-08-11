@@ -12,7 +12,7 @@
     "score": "PUNKTE",
     "available": "Verfügbar",
     "notAvailable": "Nicht verfügbar",
-    "close": "CLOSE"
+    "close": "SCHLIESSEN"
   },
   "gameOver": {
     "title": "SPIEL VORBEI",
@@ -179,7 +179,7 @@
       "weaponMastery": "WAFFENMEISTERSCHAFT",
       "weaponDatabase": "WAFFENDATENBANK",
       "visualStyles": "KARTENSTILE",
-      "enemyTypes": "ENEMY TYPES"
+      "enemyTypes": "FEINDTYPEN"
     },
     "headings": {
       "adventureLevels": "ABENTEUERSTUFEN",

@@ -12,7 +12,7 @@
     "score": "النقاط",
     "available": "متاح",
     "notAvailable": "غير متاح",
-    "close": "CLOSE"
+    "close": "إغلاق"
   },
   "gameOver": {
     "title": "انتهت اللعبة",
@@ -179,7 +179,7 @@
       "weaponMastery": "إتقان الأسلحة",
       "weaponDatabase": "قاعدة بيانات الأسلحة",
       "visualStyles": "أنماط الخريطة",
-      "enemyTypes": "ENEMY TYPES"
+      "enemyTypes": "أنواع الأعداء"
     },
     "headings": {
       "adventureLevels": "مستويات المغامرة",
