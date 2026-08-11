@@ -27,12 +27,14 @@ export interface BlackHoleModelInput {
   masteryLevel5?: boolean;
 }
 
-export const BLACK_HOLE_BASE_DURATION = 3;
+export const BLACK_HOLE_BASE_DURATION = 4.5;
 export const BLACK_HOLE_FORMATION_DURATION = 0.25;
-export const BLACK_HOLE_COLLAPSE_DURATION = 0.5;
-export const BLACK_HOLE_BASE_RADIUS = 5;
-export const BLACK_HOLE_BASE_CAPTURE_LIMIT = 8;
-export const BLACK_HOLE_MASS_CAPTURE_LIMIT = 12;
+export const BLACK_HOLE_COLLAPSE_DURATION = 0.65;
+export const BLACK_HOLE_BASE_RADIUS = 8.5;
+export const BLACK_HOLE_BASE_CAPTURE_LIMIT = 10;
+export const BLACK_HOLE_MASS_CAPTURE_LIMIT = 16;
+export const BLACK_HOLE_BASE_MAX_PULL_SPEED = 6;
+export const BLACK_HOLE_BASE_SPIRAL_RATIO = 0.35;
 export const BLACK_HOLE_DAMAGE_CADENCE = 0.25;
 
 function has(nodes: ReadonlySet<string>, id: string): boolean {
@@ -55,7 +57,7 @@ export function createBlackHoleConfig(input: BlackHoleModelInput = {}): BlackHol
     (has(nodes, 'black_hole_br_5') ? 1.50 : 0);
   const giantVoidScale = has(nodes, 'black_hole_ar_4') || has(nodes, 'black_hole_ar_5') ? 1.4 : 1;
   const isEternalCollapse = has(nodes, 'black_hole_ar_5');
-  const baseDuration = masteryLevel5 ? 4.5 : BLACK_HOLE_BASE_DURATION;
+  const baseDuration = masteryLevel5 ? 6 : BLACK_HOLE_BASE_DURATION;
   const radius = BLACK_HOLE_BASE_RADIUS * (1 + pullBonus) * giantVoidScale;
 
   return {
@@ -66,15 +68,15 @@ export function createBlackHoleConfig(input: BlackHoleModelInput = {}): BlackHol
     captureLimit: has(nodes, 'black_hole_bl_4') || has(nodes, 'black_hole_bl_5')
       ? BLACK_HOLE_MASS_CAPTURE_LIMIT
       : BLACK_HOLE_BASE_CAPTURE_LIMIT,
-    maxPullSpeed: 3.5 * (masteryLevel5 ? 1.3 : 1),
-    spiralRatio: 0.22,
+    maxPullSpeed: BLACK_HOLE_BASE_MAX_PULL_SPEED * (masteryLevel5 ? 1.3 : 1),
+    spiralRatio: BLACK_HOLE_BASE_SPIRAL_RATIO,
     damagePerSecond: has(nodes, 'black_hole_br_5')
       ? 10
       : has(nodes, 'black_hole_br_4')
         ? 5
         : 2,
     damageCadence: BLACK_HOLE_DAMAGE_CADENCE,
-    collapseRadius: radius * 0.55,
+    collapseRadius: radius * 0.58,
     collapseDamage: masteryLevel5 || isEternalCollapse ? 20 : 8,
     isEternalCollapse,
   };
