@@ -369,6 +369,18 @@ function getSnakeMaxSegmentsForPressure(
   return type === 'giant_snake' ? Math.max(7, Math.floor(maxSeg * 0.5)) : maxSeg;
 }
 
+function getReadableEarlyMidTierCap(
+  maxTier: number,
+  waveNum: number,
+  difficultyLevel: number,
+): number {
+  if (maxTier <= 0) return 0;
+  if (difficultyLevel < 3.0 || (waveNum < 10 && difficultyLevel < 4.0)) {
+    return Math.min(maxTier, 1);
+  }
+  return maxTier;
+}
+
 /**
  * Generate a scaled endless wave based on wave number, difficulty level, and player count.
  *
@@ -403,6 +415,7 @@ export function generateScaledEndlessWave(
 ): ScaledWaveEntry[] {
   const enemies: ScaledWaveEntry[] = [];
   const maxTier = getMaxSpawnTier(difficultyLevel);
+  const readableTierCap = getReadableEarlyMidTierCap(maxTier, waveNum, difficultyLevel);
 
   // Player count multiplier: more players = more enemies per wave to maintain pressure.
   // Formula: 1.0 + (playerCount - 1) * 0.5  →  1p=1.0x, 2p=1.5x, 3p=2.0x, 4p=2.5x
@@ -447,7 +460,7 @@ export function generateScaledEndlessWave(
   // -- Hard enemies from wave 4+ (earlier!) --
   if (waveNum >= 4) {
     const hardType = HARD_TYPES[(waveNum - 4) % HARD_TYPES.length];
-    const hardTier = maxTier;
+    const hardTier = readableTierCap;
     enemies.push({
       type: hardType,
       count: Math.min(Math.floor(baseCount * 0.5 * specialistBrake), 10),
@@ -471,7 +484,7 @@ export function generateScaledEndlessWave(
     enemies.push({
       type: eliteType,
       count: Math.min(Math.floor(baseCount * 0.4 * eliteBrake), 6),
-      tier: maxTier,
+      tier: readableTierCap,
     });
   }
 
@@ -517,7 +530,7 @@ export function generateScaledEndlessWave(
     enemies.push({
       type: variantType,
       count: Math.min(Math.round((6 + Math.floor(difficultyLevel * 1.5)) * fodderBrake), 20),
-      tier: maxTier,
+      tier: readableTierCap,
     });
   }
 
@@ -527,7 +540,7 @@ export function generateScaledEndlessWave(
     enemies.push({
       type: hardType2,
       count: Math.min(Math.floor(baseCount * 0.4 * specialistBrake), 8),
-      tier: maxTier,
+      tier: readableTierCap,
     });
   }
 
@@ -537,7 +550,7 @@ export function generateScaledEndlessWave(
     enemies.push({
       type: swarmType,
       count: Math.min(Math.round((2 + Math.floor(difficultyLevel - 2.5)) * fodderBrake), 8),
-      tier: Math.min(maxTier, 2),
+      tier: Math.min(readableTierCap, 2),
     });
   }
 
@@ -547,7 +560,7 @@ export function generateScaledEndlessWave(
     enemies.push({
       type: eliteType2,
       count: Math.min(Math.round((3 + Math.floor(difficultyLevel - 4)) * eliteBrake), 6),
-      tier: maxTier,
+      tier: readableTierCap,
     });
   }
 
@@ -570,30 +583,29 @@ export function generateScaledEndlessWave(
       tier: Math.min(maxTier, Math.max(0, maxTier - 1)),
     });
   }
-  if (waveNum >= 8 && difficultyLevel >= 1.8) {
+  if (waveNum >= 10 && difficultyLevel >= 2.5) {
     enemies.push({
       type: 'sentinel_orb',
-      count: Math.min(Math.round((1 + Math.floor((difficultyLevel - 1.8) * 0.4)) * specialistBrake), 4),
+      count: Math.min(Math.round((1 + Math.floor((difficultyLevel - 2.5) * 0.4)) * specialistBrake), 4),
       tier: Math.min(maxTier, Math.max(0, maxTier - 1)),
     });
   }
-  if (waveNum >= 10 && difficultyLevel >= 2.5) {
+  if (waveNum >= 12 && difficultyLevel >= 3.0) {
     enemies.push({
       type: 'shatter_bloom',
-      count: Math.min(Math.round((1 + Math.floor((difficultyLevel - 2.5) * 0.35)) * eliteBrake), 3),
-      tier: maxTier,
+      count: Math.min(Math.round((1 + Math.floor((difficultyLevel - 3.0) * 0.35)) * eliteBrake), 3),
+      tier: readableTierCap,
     });
   }
 
-  // -- FractalSnake: guaranteed composite enemy every 4 waves from wave 3 --
+  // -- FractalSnake: composite pressure, delayed out of the first easy waves. --
   // fractal_snake is at index 8 in HARD_TYPES and only naturally appears at wave 12+.
-  // Start from wave 3 (no difficulty requirement) so players see it early.
-  // Waves 3, 7, 11, 15... — more frequent than before (was wave 5+ at difficulty 1.0+).
-  if (waveNum >= 3 && (waveNum - 3) % 4 === 0) {
+  // Waves 7, 11, 15... once difficulty pressure is visible enough to justify it.
+  if (waveNum >= 7 && difficultyLevel >= 1.0 && (waveNum - 3) % 4 === 0) {
     enemies.push({
       type: 'fractal_snake',
       count: 1,
-      tier: maxTier,
+      tier: readableTierCap,
     });
   }
 
@@ -603,7 +615,7 @@ export function generateScaledEndlessWave(
     enemies.push({
       type: hardType3,
       count: Math.min(Math.round((4 + Math.floor(difficultyLevel - 6)) * specialistBrake), 8),
-      tier: maxTier,
+      tier: readableTierCap,
     });
     const megaSplit = SPLITTING_TYPES[(waveNum + 4) % SPLITTING_TYPES.length];
     enemies.push({

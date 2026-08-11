@@ -247,6 +247,28 @@ describe('Enemy Type Introduction', () => {
     expect(hasOrbiter).toBe(true);
   });
 
+  it('early-mid SP waves cap visible tier pressure while keeping varied threats', () => {
+    const entries = generateScaledEndlessWave(8, 2.3);
+    const maxTier = Math.max(...entries.map(entry => entry.tier));
+    const nonBasicCount = entries
+      .filter(entry => !['grunt', 'wanderer', 'duck'].includes(entry.type))
+      .reduce((sum, entry) => sum + entry.count, 0);
+
+    expect(maxTier).toBeLessThanOrEqual(1);
+    expect(nonBasicCount).toBeGreaterThan(20);
+    expect(entries.some(entry => entry.type === 'orbiter')).toBe(true);
+    expect(entries.some(entry => entry.type === 'prism_lancer')).toBe(true);
+    expect(entries.some(entry => entry.type === 'sentinel_orb')).toBe(false);
+  });
+
+  it('composite fractal snake pressure waits past the first low-difficulty waves', () => {
+    const earlyEntries = generateScaledEndlessWave(3, 0);
+    const pressuredEntries = generateScaledEndlessWave(7, 1.2);
+
+    expect(earlyEntries.some(entry => entry.type === 'fractal_snake')).toBe(false);
+    expect(pressuredEntries.some(entry => entry.type === 'fractal_snake')).toBe(true);
+  });
+
   it('high difficulty waves should have multiple enemy categories', () => {
     const entries = generateScaledEndlessWave(20, 4.0);
     const categories = new Set<string>();
