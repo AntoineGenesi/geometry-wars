@@ -939,7 +939,6 @@ export class WeaponManager {
       const activeLaser = this.getActiveLaserEffect();
       if (activeLaser) {
         this.updateLaserEffectPath(activeLaser, origin, direction);
-        firedAnything = true;
       }
     }
 

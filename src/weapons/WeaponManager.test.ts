@@ -888,7 +888,7 @@ describe('WeaponManager', () => {
     });
 
     it('keeps one steerable beam charge while fire is held', () => {
-      manager.fire(origin(), forward(), T);
+      expect(manager.fire(origin(), forward(), T)).toBe(true);
       const ammoAfterCharge = manager.getCurrentAmmo();
       const [effect] = manager['activeEffects'].filter(e => e.type === 'laser');
       expect(effect).toBeDefined();
@@ -896,7 +896,9 @@ describe('WeaponManager', () => {
       const yBeforeSteer = effect.beamPoints![1].y;
 
       const newDirection = new THREE.Vector3(0, 1, 0);
-      manager.fire(origin(), newDirection, T + 0.1);
+      // Before the independent blaster cooldown elapses, steering the active Laser
+      // should not report a new shot to the live SP feedback path.
+      expect(manager.fire(origin(), newDirection, T + 0.1)).toBe(false);
 
       const laserEffects = manager['activeEffects'].filter(e => e.type === 'laser');
       expect(laserEffects).toHaveLength(1);
