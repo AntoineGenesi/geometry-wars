@@ -2869,7 +2869,6 @@ export class WeaponManager {
     if (homingNodes.has('homing_b_10') && !this.armageddonFiredThisWave) {
       this.armageddonFiredThisWave = true;
       this.applyAoeDamage(proj.position, 28.0, proj.damage * 0.4);
-      this.callbacks.onProjectileExplosion?.(proj.position.clone(), WeaponType.Homing);
     }
   }
 

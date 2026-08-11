@@ -689,6 +689,51 @@ describe('WeaponManager', () => {
       expect(manager['projectiles'].filter(p => p.type === WeaponType.Homing)).toHaveLength(3);
       expect(mock.explosions.filter(e => e.type === WeaponType.Homing)).toHaveLength(0);
     });
+
+    it('emits one explosion callback for Armageddon direct hits while keeping Armageddon damage', () => {
+      manager.setUpgradeTracker(createActiveUpgradeTracker(['homing_b_10']));
+      const directEnemy: MockEnemy = {
+        position: origin().clone().add(new THREE.Vector3(0, 0, 0.2)),
+        index: 0,
+        alive: true,
+      };
+      const armageddonEnemy: MockEnemy = {
+        position: origin().clone().add(new THREE.Vector3(0, 0, 5)),
+        index: 1,
+        alive: true,
+      };
+      mock = createMockCallbacks([directEnemy, armageddonEnemy]);
+      manager.setCallbacks(mock.callbacks);
+
+      manager.fire(origin(), forward(), T);
+      manager.update(0.05);
+
+      expect(mock.explosions.filter(e => e.type === WeaponType.Homing)).toHaveLength(1);
+      expect((manager as any).armageddonFiredThisWave).toBe(true);
+      expect(mock.damages.some(d => d.index === 1 && d.type === WeaponType.PlasmaMortar)).toBe(true);
+    });
+
+    it('emits one explosion callback for Armageddon expiry while keeping Armageddon damage', () => {
+      manager.setUpgradeTracker(createActiveUpgradeTracker(['homing_b_10']));
+      const armageddonEnemy: MockEnemy = {
+        position: origin().clone().add(new THREE.Vector3(0, 0, 5)),
+        index: 0,
+        alive: true,
+      };
+      mock = createMockCallbacks([armageddonEnemy]);
+      manager.setCallbacks(mock.callbacks);
+
+      manager.fire(origin(), forward(), T);
+      const [missile] = manager['projectiles'].filter(p => p.type === WeaponType.Homing);
+      expect(missile).toBeDefined();
+      missile!.age = missile!.maxAge - 0.01;
+
+      manager.update(0.02);
+
+      expect(mock.explosions.filter(e => e.type === WeaponType.Homing)).toHaveLength(1);
+      expect((manager as any).armageddonFiredThisWave).toBe(true);
+      expect(mock.damages.some(d => d.index === 0 && d.type === WeaponType.PlasmaMortar)).toBe(true);
+    });
   });
 
   // =========================================================================
