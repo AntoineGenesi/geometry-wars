@@ -34,11 +34,14 @@ const GAS_CLOUD_DAMAGE = 3.0;   // per tick
 const GAS_CLOUD_DURATION = 5.0; // seconds
 const GAS_CLOUD_TICK = 0.5;     // seconds between damage ticks
 const BLACK_HOLE_BOLT_MAX_AGE = 1.2;
-const BLACK_HOLE_BOLT_PULL_RADIUS_FACTOR = 0.35;
+const BLACK_HOLE_BOLT_PULL_RADIUS_FACTOR = 0.4;
 const BLACK_HOLE_BOLT_MIN_PULL_RADIUS = 1.25;
-const BLACK_HOLE_BOLT_MAX_PULL_RADIUS = 2.75;
-const BLACK_HOLE_BOLT_PULL_SPEED_FACTOR = 0.7;
+const BLACK_HOLE_BOLT_MAX_PULL_RADIUS = 3.4;
+const BLACK_HOLE_BOLT_PULL_SPEED_FACTOR = 0.75;
 const BLACK_HOLE_BOLT_HIT_RADIUS = 0.35;
+const GRAVITY_GUN_CONTINUOUS_PULL_RADIUS = 4.25;
+const GRAVITY_GUN_IMPACT_PULL_RADIUS = 3.25;
+const GRAVITY_GUN_CONTINUOUS_PULL_SCALE = 0.65;
 
 // Pre-allocated constant for projectile mesh orientation.
 // Homing cone geometry apex is baked at local +Z (after geo.rotateX(π/2)).
@@ -1081,10 +1084,9 @@ export class WeaponManager {
       if (proj.type === WeaponType.GravityGun) {
         this.callbacks?.onGravityGunMove?.(proj.position);
         // Continuously attract enemies toward the projectile while it travels.
-        // Pull radius slightly larger than detonation radius (3.0 vs 2.0) to create
-        // a "suction field" ahead of the projectile. Strength capped at 50% vs full
-        // detonation pull to avoid over-powering before the bullet arrives.
-        this.applyGravityPull(proj.position, 3.0, true);
+        // Keep Gravity Gun as a scoped projectile pull while making its travel
+        // suction readable before impact.
+        this.applyGravityPull(proj.position, GRAVITY_GUN_CONTINUOUS_PULL_RADIUS, true);
       }
 
       if (proj.type === WeaponType.BlackHole) {
@@ -2780,7 +2782,7 @@ export class WeaponManager {
           return;
         } else if (proj.type === WeaponType.GravityGun) {
           // Pull enemies together
-          this.applyGravityPull(proj.position, 2.0);
+          this.applyGravityPull(proj.position, GRAVITY_GUN_IMPACT_PULL_RADIUS);
           this.callbacks.onProjectileExplosion?.(proj.position.clone(), WeaponType.GravityGun);
           this.removeProjectile(index);
           return;
@@ -2910,10 +2912,11 @@ export class WeaponManager {
       const visualDist = enemy.meshPosition ? center.distanceTo(enemy.meshPosition) : onSurfaceDist;
       const dist = Math.min(onSurfaceDist, visualDist);
       if (dist < radius) {
-        // Continuous in-flight pull uses 50% max strength (same as Black Hole per-frame pull).
+        // Continuous in-flight pull uses a partial strength scale so it reads
+        // before impact without becoming a second Black Hole field.
         // On-impact detonation uses full 100% strength.
         const baseStrength = Math.pow(1 - dist / radius, 0.5);
-        const strength = continuousPull ? baseStrength * 0.5 : baseStrength;
+        const strength = continuousPull ? baseStrength * GRAVITY_GUN_CONTINUOUS_PULL_SCALE : baseStrength;
         this.callbacks.onEnemyPull(enemy.index, strength, center);
         // Kinetic crush: deal instant damage when pulled (detonation only)
         if (kineticDamage > 0) {

@@ -404,11 +404,11 @@ describe('GameRoom authoritative Black Hole vortex', () => {
     const field = spawnFieldAtAim(scenario);
     const enemy = addEnemyNearField(scenario.room, scenario.internals, field, 2, 20);
 
-    for (let i = 0; i < 180; i++) scenario.internals.updateBlackHoleFields(1 / 60);
+    for (let i = 0; i < 270; i++) scenario.internals.updateBlackHoleFields(1 / 60);
     expect(scenario.room.state.blackHoleFields).toHaveLength(0);
-    expect(enemy.health).toBeCloseTo(7.5, 4);
+    expect(enemy.health).toBeCloseTo(5, 4);
     scenario.internals.updateBlackHoleFields(1);
-    expect(enemy.health).toBeCloseTo(7.5, 4);
+    expect(enemy.health).toBeCloseTo(5, 4);
 
     scenario.internals.fireBlackHoleMP(scenario.player);
     scenario.internals.startGame();

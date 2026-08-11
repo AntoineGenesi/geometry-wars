@@ -135,9 +135,9 @@ const MP_BLACK_HOLE_BOLT_MAX_AGE = 1.2;
 const MP_BLACK_HOLE_BOLT_HIT_RADIUS = 0.55;
 const MP_BLACK_HOLE_BOLT_PULL_RADIUS = Math.max(
   1.25,
-  Math.min(2.75, MP_BLACK_HOLE_CONFIG.maxRadius * 0.35),
+  Math.min(3.4, MP_BLACK_HOLE_CONFIG.maxRadius * 0.4),
 );
-const MP_BLACK_HOLE_BOLT_PULL_SPEED_FACTOR = 0.7;
+const MP_BLACK_HOLE_BOLT_PULL_SPEED_FACTOR = 0.75;
 // How far in advance (ms) the server warns clients before spawning an enemy.
 // Clients show a pulsing red ring for this duration before the enemy appears.
 const PRE_SPAWN_WARNING_MS = 1500;

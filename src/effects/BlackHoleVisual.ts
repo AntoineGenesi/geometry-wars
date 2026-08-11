@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import type { BlackHoleState } from '../shared/BlackHoleModel';
 
-const MAX_TRAILS = 12;
+const MAX_TRAILS = 20;
 const _axisZ = new THREE.Vector3(0, 0, 1);
 
 export class BlackHoleVisual {
@@ -24,14 +24,14 @@ export class BlackHoleVisual {
     const ringRotation = new THREE.Quaternion().setFromUnitVectors(_axisZ, surfaceNormal.clone().normalize());
 
     this.core = this.makeMesh(
-      new THREE.SphereGeometry(1, 20, 14),
-      new THREE.MeshBasicMaterial({ color: 0x050008, transparent: true, opacity: 0.98, depthWrite: false }),
+      new THREE.SphereGeometry(1, 28, 18),
+      new THREE.MeshBasicMaterial({ color: 0x020006, transparent: true, opacity: 1, depthWrite: false }),
     );
     this.core.position.copy(center);
 
-    this.accretionInner = this.makeRing(0.055, 0xcc44ff, 0.9, ringRotation);
-    this.accretionOuter = this.makeRing(0.035, 0x44ddff, 0.72, ringRotation);
-    this.boundary = this.makeRing(0.018, 0xcc88ff, 0.5, ringRotation);
+    this.accretionInner = this.makeRing(0.08, 0xee55ff, 0.95, ringRotation);
+    this.accretionOuter = this.makeRing(0.055, 0x44f4ff, 0.85, ringRotation);
+    this.boundary = this.makeRing(0.03, 0xd8a0ff, 0.72, ringRotation);
 
     this.collapseFlash = this.makeMesh(
       new THREE.SphereGeometry(1, 16, 12),
@@ -39,7 +39,7 @@ export class BlackHoleVisual {
     );
     this.collapseFlash.position.copy(center);
 
-    this.shockwave = this.makeRing(0.045, 0xffffff, 0, ringRotation);
+    this.shockwave = this.makeRing(0.06, 0xffffff, 0, ringRotation);
 
     const trailGeometry = new THREE.BufferGeometry();
     trailGeometry.setAttribute('position', new THREE.BufferAttribute(this.trailPositions, 3));
@@ -47,7 +47,7 @@ export class BlackHoleVisual {
     const trailMaterial = new THREE.LineBasicMaterial({
       color: 0xcc66ff,
       transparent: true,
-      opacity: 0.7,
+      opacity: 0.82,
       depthWrite: false,
     });
     this.ownedGeometries.push(trailGeometry);
@@ -63,23 +63,23 @@ export class BlackHoleVisual {
   update(state: BlackHoleState, elapsed: number, affectedPositions: readonly THREE.Vector3[]): void {
     const formationScale = state.phase === 'formation' ? 0.35 + state.phaseProgress * 0.65 : 1;
     const contraction = state.phase === 'collapse' ? 1 - state.phaseProgress * 0.45 : 1;
-    const pulse = 1 + Math.sin(elapsed * 11) * 0.08;
-    this.core.scale.setScalar(Math.max(0.08, 0.72 * formationScale * contraction * pulse));
+    const pulse = 1 + Math.sin(elapsed * 13) * 0.1;
+    this.core.scale.setScalar(Math.max(0.1, 0.88 * formationScale * contraction * pulse));
 
-    this.accretionInner.scale.setScalar(Math.max(0.1, state.radius * 0.42));
-    this.accretionOuter.scale.setScalar(Math.max(0.1, state.radius * 0.68));
+    this.accretionInner.scale.setScalar(Math.max(0.1, state.radius * 0.48));
+    this.accretionOuter.scale.setScalar(Math.max(0.1, state.radius * 0.82));
     this.boundary.scale.setScalar(Math.max(0.1, state.radius));
-    this.accretionInner.rotation.z = elapsed * 2.8;
-    this.accretionOuter.rotation.z = -elapsed * 1.9;
-    this.boundary.rotation.z = elapsed * 0.35;
+    this.accretionInner.rotation.z = elapsed * 4;
+    this.accretionOuter.rotation.z = -elapsed * 2.7;
+    this.boundary.rotation.z = elapsed * 0.6;
 
     const collapseProgress = state.phase === 'collapse' ? state.phaseProgress : 0;
     const flashMaterial = this.collapseFlash.material as THREE.MeshBasicMaterial;
-    flashMaterial.opacity = collapseProgress > 0 ? Math.sin(collapseProgress * Math.PI) * 0.7 : 0;
-    this.collapseFlash.scale.setScalar(0.7 + collapseProgress * 1.8);
+    flashMaterial.opacity = collapseProgress > 0 ? Math.sin(collapseProgress * Math.PI) * 0.9 : 0;
+    this.collapseFlash.scale.setScalar(1 + collapseProgress * 2.3);
     const shockwaveMaterial = this.shockwave.material as THREE.MeshBasicMaterial;
-    shockwaveMaterial.opacity = collapseProgress > 0 ? (1 - collapseProgress) * 0.8 : 0;
-    this.shockwave.scale.setScalar(Math.max(0.1, state.radius * (0.4 + collapseProgress * 1.8)));
+    shockwaveMaterial.opacity = collapseProgress > 0 ? (1 - collapseProgress) * 0.95 : 0;
+    this.shockwave.scale.setScalar(Math.max(0.1, state.radius * (0.55 + collapseProgress * 2.1)));
 
     const trailCount = Math.min(MAX_TRAILS, affectedPositions.length);
     for (let i = 0; i < trailCount; i++) {
@@ -88,9 +88,9 @@ export class BlackHoleVisual {
       this.trailPositions[offset] = source.x;
       this.trailPositions[offset + 1] = source.y;
       this.trailPositions[offset + 2] = source.z;
-      this.trailPositions[offset + 3] = source.x + (this.center.x - source.x) * 0.72;
-      this.trailPositions[offset + 4] = source.y + (this.center.y - source.y) * 0.72;
-      this.trailPositions[offset + 5] = source.z + (this.center.z - source.z) * 0.72;
+      this.trailPositions[offset + 3] = source.x + (this.center.x - source.x) * 0.86;
+      this.trailPositions[offset + 4] = source.y + (this.center.y - source.y) * 0.86;
+      this.trailPositions[offset + 5] = source.z + (this.center.z - source.z) * 0.86;
     }
     const positionAttribute = this.trails.geometry.getAttribute('position') as THREE.BufferAttribute;
     positionAttribute.needsUpdate = true;
