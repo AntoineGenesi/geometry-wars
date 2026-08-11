@@ -100,6 +100,13 @@ export const BULLET_SPEED_WORLD = 4.0;
 // On a sphere of radius 10: 4.0 / (π*10) ≈ 0.127 UV/s.
 export const BULLET_SPEED_UV = 0.13;
 
+// MP homing missiles mirror SP WeaponManager baseline projectiles:
+// projectileSpeed=3.0, max age=60s, turn rate=12 rad/s.
+export const MP_HOMING_BULLET_SPEED_WORLD = 3.0;
+export const MP_HOMING_BULLET_SPEED_UV = 0.0975;
+export const MP_HOMING_BULLET_LIFETIME = 60.0;
+export const MP_HOMING_BULLET_TURN_RATE = 12.0;
+
 // ---------------------------------------------------------------------------
 // Player movement constants
 // ---------------------------------------------------------------------------

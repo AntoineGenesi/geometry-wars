@@ -24,6 +24,9 @@ import {
   PLAYER_WORLD_SPEED,
   BULLET_SPEED,
   BULLET_LIFETIME,
+  MP_HOMING_BULLET_SPEED_UV,
+  MP_HOMING_BULLET_LIFETIME,
+  MP_HOMING_BULLET_TURN_RATE,
   WEAPON_DROP_CHANCE,
   WEAPON_PICKUP_LIFETIME,
   ENEMY_SPEEDS,
@@ -3969,6 +3972,8 @@ export class GameRoom extends Room<GameState> {
           this.fireChainLightningMP(player);
         } else if (weaponType === 'black_hole') {
           this.fireBlackHoleMP(player);
+        } else if (weaponType === 'homing') {
+          this.spawnHomingBullet(player, angle);
         } else {
           // Default: single bullet for secondary weapon
           this.spawnBullet(player, angle, 0, 0, weaponType);
@@ -4000,6 +4005,10 @@ export class GameRoom extends Room<GameState> {
     bullet.age = 0;
 
     this.state.bullets.push(bullet);
+  }
+
+  private spawnHomingBullet(player: PlayerState, angle: number): void {
+    this.spawnBullet(player, angle, 0, 0, 'homing');
   }
 
   private vectorTuple(x: number, y: number, z: number): [number, number, number] {
@@ -5322,6 +5331,52 @@ export class GameRoom extends Room<GameState> {
     return choices[randomIndex];
   }
 
+  private bulletSpeedForWeapon(weaponType: string): number {
+    return weaponType === 'homing' ? MP_HOMING_BULLET_SPEED_UV : BULLET_SPEED;
+  }
+
+  private bulletLifetimeForWeapon(weaponType: string, genericLifetime: number): number {
+    return weaponType === 'homing' ? MP_HOMING_BULLET_LIFETIME : genericLifetime;
+  }
+
+  private findNearestHomingTarget(bullet: BulletState): EnemyState | null {
+    let nearestEnemy: EnemyState | null = null;
+    let nearestDist = Infinity;
+
+    this.state.enemies.forEach((enemy) => {
+      if (!this.isTargetableEnemy(enemy)) return;
+      const dist = this.bulletWorldDistanceToEnemy(bullet, enemy);
+      if (dist < nearestDist) {
+        nearestDist = dist;
+        nearestEnemy = enemy;
+      }
+    });
+
+    return nearestEnemy;
+  }
+
+  private steerHomingBullet(bullet: BulletState, dt: number): void {
+    const target = this.findNearestHomingTarget(bullet);
+    if (!target) return;
+
+    const desiredX = this.uvDelta(bullet.x, target.surfaceU, true);
+    const desiredY = this.uvDelta(bullet.y, target.surfaceV, this.surfaceWrapsV());
+    const desiredLen = Math.hypot(desiredX, desiredY);
+    if (desiredLen < 0.0001) return;
+
+    const normalizedDesiredX = desiredX / desiredLen;
+    const normalizedDesiredY = desiredY / desiredLen;
+    const turn = Math.min(1, MP_HOMING_BULLET_TURN_RATE * dt);
+    const nextX = bullet.dirX + (normalizedDesiredX - bullet.dirX) * turn;
+    const nextY = bullet.dirY + (normalizedDesiredY - bullet.dirY) * turn;
+    const nextLen = Math.hypot(nextX, nextY);
+    if (nextLen < 0.0001) return;
+
+    bullet.dirX = nextX / nextLen;
+    bullet.dirY = nextY / nextLen;
+    bullet.dirZ = 0;
+  }
+
   private updateBullets(dt: number) {
     const bulletsToRemove: number[] = [];
 
@@ -5342,6 +5397,10 @@ export class GameRoom extends Room<GameState> {
 
     this.state.bullets.forEach((bullet, index) => {
       bullet.age += dt;
+      if (bullet.weaponType === 'homing') {
+        this.steerHomingBullet(bullet, dt);
+      }
+      const bulletSpeed = this.bulletSpeedForWeapon(bullet.weaponType);
 
       if (isPeanut) {
         // Peanut surface: parallel transport + 2-axis metric correction.
@@ -5365,15 +5424,15 @@ export class GameRoom extends Room<GameState> {
         const g_vv = rNorm * rNorm + drNorm * drNorm;
         const Gamma_u_uv = (drNorm / Math.max(rNorm, 0.01)) + cotPhi;
         const Gamma_v_uu = -rNorm * sinPhi * (rNorm * cosPhi + drNorm * sinPhi) / Math.max(g_vv, 0.01);
-        const step = BULLET_SPEED * dt;
+        const step = bulletSpeed * dt;
         const prevDirXPeanut = bullet.dirX;
         bullet.dirX += -2 * Gamma_u_uv * bullet.dirX * bullet.dirY * step;
         bullet.dirY += -Gamma_v_uu * prevDirXPeanut * prevDirXPeanut * step;
         const peanutLen = Math.sqrt(bullet.dirX * bullet.dirX + bullet.dirY * bullet.dirY);
         if (peanutLen > 0.001) { bullet.dirX /= peanutLen; bullet.dirY /= peanutLen; }
 
-        bullet.x += (bullet.dirX / metricU) * BULLET_SPEED * dt;
-        bullet.y += (bullet.dirY / metricV) * BULLET_SPEED * dt;
+        bullet.x += (bullet.dirX / metricU) * bulletSpeed * dt;
+        bullet.y += (bullet.dirY / metricV) * bulletSpeed * dt;
       } else if (isSphereLike) {
         // Sphere: parallel transport + metric correction for u-axis.
         // Geodesic equations for sphere: Γ^u_uv = cot(phi), Γ^v_uu = -sin(phi)*cos(phi)
@@ -5384,7 +5443,7 @@ export class GameRoom extends Room<GameState> {
 
         // Parallel transport: rotate direction using Christoffel symbols
         const cotPhi = cosPhi / Math.max(Math.abs(sinPhi), 0.01);
-        const step = BULLET_SPEED * dt;
+        const step = bulletSpeed * dt;
         const prevDirX = bullet.dirX;
         bullet.dirX += -2 * cotPhi * bullet.dirX * bullet.dirY * step;
         bullet.dirY += sinPhi * cosPhi * prevDirX * prevDirX * step;
@@ -5392,8 +5451,8 @@ export class GameRoom extends Room<GameState> {
         if (sphereLen > 0.001) { bullet.dirX /= sphereLen; bullet.dirY /= sphereLen; }
 
         // Move bullet with metric correction for u (arc-length preserving)
-        bullet.x += (bullet.dirX / clampedSinPhi) * BULLET_SPEED * dt;
-        bullet.y += bullet.dirY * BULLET_SPEED * dt;
+        bullet.x += (bullet.dirX / clampedSinPhi) * bulletSpeed * dt;
+        bullet.y += bullet.dirY * bulletSpeed * dt;
 
         // Pole crossing: when bullet passes through north (v<0) or south (v>1) pole,
         // it emerges on the opposite side of the sphere. In UV space this means:
@@ -5431,7 +5490,7 @@ export class GameRoom extends Room<GameState> {
         // Geodesic parallel transport in (θ, φ) coordinates:
         // d²θ/dt² = -Γ^θ_φφ * (dφ/dt)²  where Γ^θ_φφ = ρ*sin(θ)/r
         // d²φ/dt² = -2*Γ^φ_θφ * (dθ/dt)(dφ/dt)  where Γ^φ_θφ = -r*sin(θ)/ρ
-        const step = BULLET_SPEED * dt;
+        const step = bulletSpeed * dt;
         const prevDirX = bullet.dirX;
         bullet.dirX += -(rho * sinT / TORUS_r) * bullet.dirY * bullet.dirY * step;
         bullet.dirY += (2 * TORUS_r * sinT / rho) * prevDirX * bullet.dirY * step;
@@ -5439,8 +5498,8 @@ export class GameRoom extends Room<GameState> {
         if (torusLen > 0.001) { bullet.dirX /= torusLen; bullet.dirY /= torusLen; }
 
         // Arc-length metric correction: tube arc = r*dθ, ring arc = ρ(θ)*dφ
-        bullet.x += (bullet.dirX / TORUS_r) * BULLET_SPEED * dt;   // tube direction
-        bullet.y += (bullet.dirY / rho) * BULLET_SPEED * dt;        // ring direction
+        bullet.x += (bullet.dirX / TORUS_r) * bulletSpeed * dt;   // tube direction
+        bullet.y += (bullet.dirY / rho) * bulletSpeed * dt;        // ring direction
       } else if (isPill) {
         // s44r6-05: Pill-specific bullet movement with metric correction on hemispherical caps.
         // The pill has three UV regions: bottom cap, cylindrical body, top cap.
@@ -5460,12 +5519,12 @@ export class GameRoom extends Room<GameState> {
           const phi = (Math.PI / 2) * (1 - localT);
           sinPhi = Math.max(Math.abs(Math.sin(phi)), 0.1);
         }
-        bullet.x += (bullet.dirX / sinPhi) * BULLET_SPEED * dt;
-        bullet.y += bullet.dirY * BULLET_SPEED * dt;
+        bullet.x += (bullet.dirX / sinPhi) * bulletSpeed * dt;
+        bullet.y += bullet.dirY * bulletSpeed * dt;
       } else {
         // Flat / other surfaces (cube, plane, pipe, mobius) — straight-line UV motion.
-        bullet.x += bullet.dirX * BULLET_SPEED * dt;
-        bullet.y += bullet.dirY * BULLET_SPEED * dt;
+        bullet.x += bullet.dirX * bulletSpeed * dt;
+        bullet.y += bullet.dirY * bulletSpeed * dt;
       }
 
       // Wrap/clamp coordinates. U always wraps. V wraps on torus-like surfaces,
@@ -5478,7 +5537,7 @@ export class GameRoom extends Room<GameState> {
       }
 
       // Remove old bullets (scaled by map size — see bulletLifetime above)
-      if (bullet.age > bulletLifetime) {
+      if (bullet.age > this.bulletLifetimeForWeapon(bullet.weaponType, bulletLifetime)) {
         bulletsToRemove.push(index);
         this.bulletDamageTracker.delete(bullet.id); // s44r3-02: clean up budget tracker
       }

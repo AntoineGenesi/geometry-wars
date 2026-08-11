@@ -53,7 +53,11 @@ import { PvPvELeaderboard } from './ui/PvPvELeaderboard';
 import { KillFeed } from './ui/KillFeed';
 import { WeaponPickup } from './weapons/WeaponPickup';
 import { WeaponType, WEAPON_CONFIGS } from './weapons/WeaponTypes';
-import { BULLET_SPEED_WORLD as SHARED_BULLET_SPEED_WORLD, PLAYER_SPEED_UV } from './shared/GameBalanceConstants';
+import {
+  BULLET_SPEED_WORLD as SHARED_BULLET_SPEED_WORLD,
+  MP_HOMING_BULLET_SPEED_WORLD,
+  PLAYER_SPEED_UV,
+} from './shared/GameBalanceConstants';
 import {
   createBlackHoleConfig,
   getBlackHoleState,
@@ -89,6 +93,7 @@ import {
   resolveAndApplyPickupVisibility,
 } from './pickups/PickupSurfaceVisual';
 import { resolveEnemyRenderTargetFrame } from './network/EnemyFrameSync';
+import { mpBulletWorldDirectionFromServerPatch } from './network/mpBulletDirection';
 import {
   createHealthIconSprite,
   createShieldIconSprite,
@@ -5136,6 +5141,23 @@ async function main() {
           bExisting.surfaceV = bullet.y;
           bExisting.dirX = bullet.dirX;
           bExisting.dirY = bullet.dirY;
+          const existingWeaponType = bulletWeaponType.get(bullet.id)
+            ?? SERVER_TO_WEAPON_TYPE[bullet.weaponType ?? 'standard']
+            ?? WeaponType.Standard;
+          if (existingWeaponType === WeaponType.Homing && surface) {
+            const geoState = bulletGeodesicState.get(bullet.id);
+            if (geoState) {
+              const sp = surface.getPoint(bullet.x, bullet.y);
+              mpBulletWorldDirectionFromServerPatch(
+                sp.tangentU,
+                sp.tangentV,
+                bullet.dirX,
+                bullet.dirY,
+                lastCreatedSurfaceType,
+                geoState.dirWorld,
+              );
+            }
+          }
         }
       } else {
         // New bullet: find an inactive pool slot and activate it directly.
@@ -5329,12 +5351,13 @@ async function main() {
             }
 
             // Convert UV-space direction to world-space using surface tangent frame.
-            // Apply same torus dirX negation as rendering for consistency.
-            const bDirX = lastCreatedSurfaceType === 'torus' ? -bullet.dirX : bullet.dirX;
-            const bulletWorldDir = new THREE.Vector3()
-              .addScaledVector(bulletTangentU, bDirX)
-              .addScaledVector(bulletTangentV, bullet.dirY)
-              .normalize();
+            const bulletWorldDir = mpBulletWorldDirectionFromServerPatch(
+              bulletTangentU,
+              bulletTangentV,
+              bullet.dirX,
+              bullet.dirY,
+              lastCreatedSurfaceType,
+            );
 
             const closest = meshSurface.closestPointOnSurface(bulletWorldPos);
             if (closest) {
@@ -8718,8 +8741,12 @@ async function main() {
 
       const geoState = bulletGeodesicState.get(id);
       if (meshSurface && geoState) {
+        const weapType = bulletWeaponType.get(id) ?? WeaponType.Standard;
         // Advance bullet along geodesic (true great-circle path on any surface)
-        const dist = BULLET_SPEED_WORLD * renderDt;
+        const bulletRenderSpeed = weapType === WeaponType.Homing
+          ? MP_HOMING_BULLET_SPEED_WORLD
+          : BULLET_SPEED_WORLD;
+        const dist = bulletRenderSpeed * renderDt;
         const result = advanceProjectileOnMesh(
           meshSurface,
           geoState.facePos,
@@ -8750,8 +8777,6 @@ async function main() {
             if (samples.length > 20) samples.splice(0, samples.length - 20);
           }
         }
-
-        const weapType = bulletWeaponType.get(id) ?? WeaponType.Standard;
 
         // s44r-04-02 / s44r3-02: Client-authoritative bullet-enemy hit detection with penetration.
         // Only report hits for the local player's own bullets (server validates ownerId).
