@@ -1233,10 +1233,10 @@ async function main() {
         }
         // Gravity implosion particles (replaces generic bulletImpact)
         particles.gravityExplosion(position);
-        screenShake.shake(0.08, 0.3);
+        screenShake.shakeSpecial(0.06, 0.18);
       } else if (wType === WeaponType.PlasmaMortar) {
         particles.mortarExplosion(position);
-        screenShake.shake(0.5, 0.35);
+        screenShake.shakeSpecial(0.18, 0.22);
         // Visual shockwave ring (no gameplay damage — MP is server authoritative)
         plasmaExplosionEffect.spawn(position);
       }
