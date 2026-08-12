@@ -19,6 +19,10 @@ export function mpBulletWorldDirectionFromServerPatch(
     .normalize();
 }
 
+export function mpShouldApplyServerBulletUvSpawnOffset(surfaceType: string): boolean {
+  return surfaceType !== 'torus';
+}
+
 export interface MpBulletGeodesicState {
   facePos: FacePosition;
   positionWorld: THREE.Vector3;

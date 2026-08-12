@@ -4,6 +4,7 @@ import type { MeshSurface } from '../surfaces/MeshSurface';
 import {
   mpBulletWorldDirectionFromServerPatch,
   mpReconcileHomingBulletGeodesicFromServerPatch,
+  mpShouldApplyServerBulletUvSpawnOffset,
 } from './mpBulletDirection';
 
 describe('mpBulletWorldDirectionFromServerPatch', () => {
@@ -26,6 +27,11 @@ describe('mpBulletWorldDirectionFromServerPatch', () => {
 
     expect(dirWorld.x).toBeCloseTo(-1, 5);
     expect(dirWorld.y).toBeCloseTo(0, 5);
+  });
+
+  it('does not treat advanced torus bullet UV as a spawn offset', () => {
+    expect(mpShouldApplyServerBulletUvSpawnOffset('torus')).toBe(false);
+    expect(mpShouldApplyServerBulletUvSpawnOffset('sphere')).toBe(true);
   });
 
   it('rebuilds homing geodesic position from the authoritative server patch', () => {

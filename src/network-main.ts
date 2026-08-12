@@ -96,6 +96,7 @@ import { resolveEnemyRenderTargetFrame } from './network/EnemyFrameSync';
 import {
   mpBulletWorldDirectionFromServerPatch,
   mpReconcileHomingBulletGeodesicFromServerPatch,
+  mpShouldApplyServerBulletUvSpawnOffset,
 } from './network/mpBulletDirection';
 import { planMatchBoundaryPauseUiClear } from './network/mpPauseBoundary';
 import {
@@ -5439,7 +5440,10 @@ async function main() {
               if (du < -0.5) du += 1.0;
               if (dv > 0.5) dv -= 1.0;
               if (dv < -0.5) dv += 1.0;
-              if (Math.abs(du) > 0.0001 || Math.abs(dv) > 0.0001) {
+              // Torus bullet.x/y may already include server projectile travel by the
+              // first client patch, so do not reinterpret that delta as barrel offset.
+              if (mpShouldApplyServerBulletUvSpawnOffset(lastCreatedSurfaceType)
+                && (Math.abs(du) > 0.0001 || Math.abs(dv) > 0.0001)) {
                 const offsetWorld = visualSp.tangentU.clone().multiplyScalar(du * Math.PI * 2)
                   .addScaledVector(visualSp.tangentV, dv * Math.PI);
                 offsetWorld.multiplyScalar(currentMapSizeScaleFactor * DEFAULT_SURFACE_SCALE);
@@ -5504,7 +5508,10 @@ async function main() {
               if (du < -0.5) du += 1.0;
               if (dv > 0.5) dv -= 1.0;
               if (dv < -0.5) dv += 1.0;
-              if (Math.abs(du) > 0.0001 || Math.abs(dv) > 0.0001) {
+              // Torus bullet.x/y may already include server projectile travel by the
+              // first client patch, so do not reinterpret that delta as barrel offset.
+              if (mpShouldApplyServerBulletUvSpawnOffset(lastCreatedSurfaceType)
+                && (Math.abs(du) > 0.0001 || Math.abs(dv) > 0.0001)) {
                 // Compute world-space offset from UV delta using tangent vectors.
                 // tangentU/V from getPoint() are NORMALIZED unit vectors (not scaled by sphere
                 // radius), so we must multiply by DEFAULT_SURFACE_SCALE (sphere radius = 10)
