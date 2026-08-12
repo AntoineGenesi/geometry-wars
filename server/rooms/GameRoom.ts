@@ -71,9 +71,11 @@ import {
   isMpUpgradeNodeSupported,
 } from '../../src/shared/WeaponUpgradeEffects';
 import {
+  BASELINE_BLASTER_DPS,
   computePlayerPower,
   GUARDIAN_SHOTS_PER_SECOND,
   HUNTER_SHOTS_PER_SECOND,
+  MAX_POWER_DIFFICULTY_BONUS,
   MP_COMPANION_DAMAGE_PER_HIT,
   type PlayerPowerBreakdown,
   type PlayerPowerInput,
@@ -199,6 +201,9 @@ const WAVE_FIRST_AT = 3.0;       // first wave at 3s (reduced from 6s to speed u
 const WAVE_INTERVAL_BASE = 7.0;  // base interval between waves
 const WAVE_INTERVAL_MIN = 2.0;   // minimum interval (hard floor)
 const WAVE_INTERVAL_DECAY = 0.2; // seconds shorter per wave
+const MP_SINGLE_SURVIVOR_DRONE_MIN_DIFFICULTY_BONUS = 1.5;
+const MP_SINGLE_SURVIVOR_DRONE_WAVE_COUNT_MAX_EXTRA = 0.35;
+const MP_SINGLE_SURVIVOR_DRONE_SPAWN_RATE_MAX_EXTRA = 0.25;
 
 // Claustrophobia mode constants (s44h-15)
 const CLAUSTROPHOBIA_TIME_LIMIT_SECS = 1200;    // 20-minute time limit
@@ -221,6 +226,10 @@ const STOP_PROTECTION_WINDOW_MS = 60_000;    // 60 seconds
  */
 function getMaxEnemiesForPlayerCount(playerCount: number): number {
   return Math.min(60 + (playerCount - 1) * 30, 200);
+}
+
+function clamp01(value: number): number {
+  return Math.max(0, Math.min(1, value));
 }
 
 // Player colors — 10 distinct colors for up to 10 players, HSL rotation beyond.
@@ -8068,6 +8077,55 @@ export class GameRoom extends Room<GameState> {
     return strongest;
   }
 
+  private computeSingleSurvivorDronePressure(): number {
+    if (this.currentSettings.enemyDifficultyPerPlayer === 'low') return 0;
+    if (this.state.players.size < 2) return 0;
+
+    let aliveCount = 0;
+    let survivor: PlayerState | null = null;
+    this.state.players.forEach((player) => {
+      if (!player.alive) return;
+      aliveCount++;
+      survivor = player;
+    });
+
+    if (aliveCount !== 1 || !survivor) return 0;
+    if (survivor.ddaLevel >= 2) return 0;
+
+    const dominance = this.getRoomDominance();
+    const hasDroneHeavySignal = dominance.companionDps >= BASELINE_BLASTER_DPS
+      || dominance.protectorValue >= 0.3;
+    if (!hasDroneHeavySignal) return 0;
+    if (dominance.difficultyBonus < MP_SINGLE_SURVIVOR_DRONE_MIN_DIFFICULTY_BONUS) return 0;
+
+    const companionPressure = clamp01(
+      (dominance.companionDps - BASELINE_BLASTER_DPS) / (BASELINE_BLASTER_DPS * 2),
+    );
+    const defensivePressure = clamp01(dominance.protectorValue / 0.6);
+    const dominancePressure = clamp01(
+      (dominance.difficultyBonus - MP_SINGLE_SURVIVOR_DRONE_MIN_DIFFICULTY_BONUS)
+        / (MAX_POWER_DIFFICULTY_BONUS - MP_SINGLE_SURVIVOR_DRONE_MIN_DIFFICULTY_BONUS),
+    );
+
+    return Math.max(companionPressure, defensivePressure, dominancePressure);
+  }
+
+  private computeSingleSurvivorDronePressureMultiplier(maxExtra: number): number {
+    if (maxExtra <= 0) return 1;
+    return 1 + this.computeSingleSurvivorDronePressure() * maxExtra;
+  }
+
+  private applySingleSurvivorDroneWavePressure(entries: WaveEntry[]): void {
+    const countMultiplier = this.computeSingleSurvivorDronePressureMultiplier(
+      MP_SINGLE_SURVIVOR_DRONE_WAVE_COUNT_MAX_EXTRA,
+    );
+    if (countMultiplier <= 1) return;
+
+    for (const entry of entries) {
+      entry.count = Math.max(entry.count, Math.round(entry.count * countMultiplier));
+    }
+  }
+
   /**
    * Compute a spawn-rate multiplier based on active player count (s44j-pvpve-14b).
    *
@@ -8082,14 +8140,20 @@ export class GameRoom extends Room<GameState> {
   private computePlayerCountDifficultyMultiplier(): number {
     const tier = this.currentSettings.enemyDifficultyPerPlayer;
     const factor = DIFFICULTY_PER_PLAYER_FACTOR[tier] ?? 0;
-    if (factor === 0) return 1.0;
+    let playerCountMultiplier = 1.0;
 
-    const totalPlayers = this.state.players.size;
-    let activePlayers = 0;
-    this.state.players.forEach((p) => { if (p.alive) activePlayers++; });
-    const eliminated = totalPlayers - activePlayers;
+    if (factor !== 0) {
+      const totalPlayers = this.state.players.size;
+      let activePlayers = 0;
+      this.state.players.forEach((p) => { if (p.alive) activePlayers++; });
+      const eliminated = totalPlayers - activePlayers;
+      playerCountMultiplier = 1 + factor * eliminated;
+    }
 
-    return Math.max(0.1, Math.min(10.0, 1 + factor * eliminated));
+    const survivorDroneMultiplier = this.computeSingleSurvivorDronePressureMultiplier(
+      MP_SINGLE_SURVIVOR_DRONE_SPAWN_RATE_MAX_EXTRA,
+    );
+    return Math.max(0.1, Math.min(10.0, playerCountMultiplier * survivorDroneMultiplier));
   }
 
   /**
@@ -8283,6 +8347,7 @@ export class GameRoom extends Room<GameState> {
       });
     }
 
+    this.applySingleSurvivorDroneWavePressure(entries);
     return entries;
   }
 

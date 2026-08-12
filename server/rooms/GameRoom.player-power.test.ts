@@ -27,12 +27,14 @@ function makePlayer(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function makeRoom(player: ReturnType<typeof makePlayer>) {
+function makeRoom(playerOrPlayers: ReturnType<typeof makePlayer> | Array<ReturnType<typeof makePlayer>>) {
+  const players = Array.isArray(playerOrPlayers) ? playerOrPlayers : [playerOrPlayers];
+  const playerMap = new Map(players.map(player => [player.id, player]));
   const room = Object.create(GameRoom.prototype) as any;
   room.state = {
     gameTime: 600,
     gameMode: 'waves',
-    players: new Map([[player.id, player]]),
+    players: playerMap,
     enemies: [],
   };
   room.waveNumber = 50;
@@ -43,11 +45,21 @@ function makeRoom(player: ReturnType<typeof makePlayer>) {
   };
   room.playerActiveUpgradeNodes = new Map();
   room.playerUpgradeKillCounts = new Map();
-  room.playerPowerStreaks = new Map([[player.id, 0]]);
-  room.playerPowerLastDeathAt = new Map([[player.id, 600]]);
-  room.playerPowerRawScores = new Map([[player.id, 0]]);
+  room.playerPowerStreaks = new Map(players.map(player => [player.id, 0]));
+  room.playerPowerLastDeathAt = new Map(players.map(player => [player.id, 600]));
+  room.playerPowerRawScores = new Map(players.map(player => [player.id, 0]));
   room.broadcast = vi.fn();
   return room;
+}
+
+function totalWaveCount(room: any): number {
+  return room.generateServerWave()
+    .reduce((sum: number, entry: { count: number }) => sum + entry.count, 0);
+}
+
+function useEarlyMidWave(room: any): void {
+  room.state.gameTime = 240;
+  room.waveNumber = 8;
 }
 
 describe('GameRoom authoritative player-power integration', () => {
@@ -158,6 +170,65 @@ describe('GameRoom authoritative player-power integration', () => {
     expect(dominance.rawScore).toBe(75);
     expect(dominance.multipliedScore).toBe(300);
     expect(dominance.killPressure).toBeGreaterThan(0);
+  });
+
+  it('adds visible wave pressure for a drone-heavy single survivor after the host dies without inflating HP', () => {
+    const hostAlive = makePlayer({ id: 'host', name: 'Host', alive: true });
+    const hostDead = makePlayer({ id: 'host', name: 'Host', alive: false });
+    const droneSurvivor = makePlayer({
+      id: 'phone',
+      name: 'Phone',
+      guardianCount: 4,
+      hunterCount: 2,
+      protectorCount: 2,
+    });
+
+    const bothAliveRoom = makeRoom([hostAlive, droneSurvivor]);
+    const singleSurvivorRoom = makeRoom([hostDead, droneSurvivor]);
+    useEarlyMidWave(bothAliveRoom);
+    useEarlyMidWave(singleSurvivorRoom);
+
+    const bothAliveCount = totalWaveCount(bothAliveRoom);
+    const singleSurvivorCount = totalWaveCount(singleSurvivorRoom);
+
+    expect(singleSurvivorRoom.getRoomDominance().companionDps).toBe(15);
+    expect(singleSurvivorRoom.computeDifficultyLevel()).toBe(bothAliveRoom.computeDifficultyLevel());
+    expect(singleSurvivorRoom.getEnemyHealth('grunt')).toBe(bothAliveRoom.getEnemyHealth('grunt'));
+    expect(singleSurvivorRoom.getEnemyHealth('grunt')).toBe(2);
+    expect(singleSurvivorRoom.computePlayerCountDifficultyMultiplier()).toBeGreaterThan(1);
+    expect(singleSurvivorCount).toBeGreaterThan(bothAliveCount);
+  });
+
+  it('does not add drone-survivor pressure for multiple alive players, low elimination pressure, or struggling survivors', () => {
+    const hostAlive = makePlayer({ id: 'host', name: 'Host', alive: true });
+    const hostDead = makePlayer({ id: 'host', name: 'Host', alive: false });
+    const droneSurvivor = makePlayer({
+      id: 'phone',
+      name: 'Phone',
+      guardianCount: 4,
+      hunterCount: 2,
+      protectorCount: 2,
+    });
+
+    const bothAliveRoom = makeRoom([hostAlive, droneSurvivor]);
+    const lowPressureRoom = makeRoom([hostDead, droneSurvivor]);
+    lowPressureRoom.currentSettings.enemyDifficultyPerPlayer = 'low';
+
+    const strugglingRoom = makeRoom([
+      hostDead,
+      makePlayer({
+        ...droneSurvivor,
+        ddaLevel: 2,
+      }),
+    ]);
+    useEarlyMidWave(bothAliveRoom);
+    useEarlyMidWave(lowPressureRoom);
+    useEarlyMidWave(strugglingRoom);
+
+    expect(bothAliveRoom.computePlayerCountDifficultyMultiplier()).toBe(1);
+    expect(totalWaveCount(lowPressureRoom)).toBe(totalWaveCount(bothAliveRoom));
+    expect(totalWaveCount(strugglingRoom)).toBeLessThan(totalWaveCount(bothAliveRoom));
+    expect(strugglingRoom.computePlayerCountDifficultyMultiplier()).toBe(1);
   });
 
   it('keeps SP early-mid ramp tier pressure closer to MP flat-health waves', () => {
