@@ -109,6 +109,24 @@ const KILL_THRESHOLDS: Record<number, number> = {
 
 const STANDARD_BLASTER_KILL_THRESHOLD_MULTIPLIER = 3;
 
+/**
+ * Baseline blaster fundamentals granted to every player from match start.
+ *
+ * These are the current Standard tree's right-side Focus trunk fundamentals:
+ * Focused pair, Triple needle, and Quad lance. The fourth right-side trunk node
+ * (`standard_b_4`) is intentionally excluded until its MP runtime contract is
+ * server-authoritative.
+ */
+export const STANDARD_BLASTER_EARLY_AUTO_UNLOCK_NODE_IDS = [
+  'standard_b_1',
+  'standard_b_2',
+  'standard_b_3',
+] as const;
+
+const DEFAULT_AUTO_UNLOCKED_UPGRADE_NODE_IDS = new Set<string>(
+  STANDARD_BLASTER_EARLY_AUTO_UNLOCK_NODE_IDS,
+);
+
 function getKillThreshold(weaponType: WeaponType, index: number): number {
   const base = KILL_THRESHOLDS[index] ?? KILL_THRESHOLDS[10];
   if (weaponType === WeaponType.Standard) {
@@ -525,6 +543,18 @@ export function getUpgradeTree(weaponType: WeaponType): UpgradeTree {
 /** Returns all nodes across all weapons. */
 export function getAllNodes(): UpgradeNode[] {
   return Object.values(UPGRADE_TREES).flatMap(tree => tree.nodes);
+}
+
+/** Returns true when a node is granted as a baseline match-start unlock. */
+export function isDefaultAutoUnlockedUpgradeNode(nodeId: string): boolean {
+  return DEFAULT_AUTO_UNLOCKED_UPGRADE_NODE_IDS.has(nodeId);
+}
+
+/** Returns baseline auto-unlocked node IDs, optionally filtered by weapon. */
+export function getDefaultAutoUnlockedUpgradeNodeIds(weaponType?: WeaponType): string[] {
+  const nodeIds = Array.from(DEFAULT_AUTO_UNLOCKED_UPGRADE_NODE_IDS);
+  if (!weaponType) return nodeIds;
+  return nodeIds.filter(nodeId => nodeId.startsWith(`${weaponType}_`));
 }
 
 /** Returns the point cost for one rank of a node. */

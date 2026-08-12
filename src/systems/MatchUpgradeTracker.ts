@@ -1,5 +1,11 @@
 import { WeaponType } from '../weapons/WeaponTypes';
-import { UPGRADE_TREES, isExcluded, isPrerequisiteMet } from './UpgradeTreeData';
+import {
+  UPGRADE_TREES,
+  getDefaultAutoUnlockedUpgradeNodeIds,
+  isDefaultAutoUnlockedUpgradeNode,
+  isExcluded,
+  isPrerequisiteMet,
+} from './UpgradeTreeData';
 import { MasteryPointStore } from './MasteryPointStore';
 
 // ---------------------------------------------------------------------------
@@ -41,6 +47,7 @@ export class MatchUpgradeTracker {
     this.store = store;
     this.permanentUnlocks = new Set(store.getUnlockedNodes());
     this.autoApplySingleNode = options.autoApplySingleNode ?? true;
+    this.activateDefaultAutoUnlocks();
   }
 
   // -------------------------------------------------------------------------
@@ -197,6 +204,22 @@ export class MatchUpgradeTracker {
   private makePointLookup(weaponType: WeaponType) {
     const activeSet = this.activeUpgrades.get(weaponType) ?? new Set<string>();
     return { getNodePoints: (id: string) => (activeSet.has(id) ? 1 : 0) };
+  }
+
+  private activateDefaultAutoUnlocks(): void {
+    const defaultNodeIds = new Set(getDefaultAutoUnlockedUpgradeNodeIds());
+    for (const [weaponTypeKey, tree] of Object.entries(UPGRADE_TREES)) {
+      const weaponType = weaponTypeKey as WeaponType;
+      for (const node of tree.nodes) {
+        if (!defaultNodeIds.has(node.id) || !isDefaultAutoUnlockedUpgradeNode(node.id)) continue;
+        let weaponSet = this.activeUpgrades.get(weaponType);
+        if (!weaponSet) {
+          weaponSet = new Set<string>();
+          this.activeUpgrades.set(weaponType, weaponSet);
+        }
+        weaponSet.add(node.id);
+      }
+    }
   }
 
   private checkActivations(weaponType: WeaponType, prevKills: number, newKills: number): void {

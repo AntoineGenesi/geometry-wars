@@ -1,8 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
 import { GameRoom } from './GameRoom';
 import { WeaponType } from '../../src/weapons/WeaponTypes';
-import { getNodeById } from '../../src/systems/UpgradeTreeData';
+import { STANDARD_BLASTER_EARLY_AUTO_UNLOCK_NODE_IDS, getNodeById } from '../../src/systems/UpgradeTreeData';
 import { validateMpUpgradeActivation } from './mpUpgradeActivation';
+
+const EARLY_BLASTER_KEYS = STANDARD_BLASTER_EARLY_AUTO_UNLOCK_NODE_IDS
+  .map(nodeId => `standard:${nodeId}`)
+  .sort();
 
 function threshold(nodeId: string): number {
   const node = getNodeById(nodeId);
@@ -191,7 +195,7 @@ function makeDamageHandlerRoom() {
 }
 
 describe('GameRoom MP weapon upgrade runtime parity', () => {
-  it('emits one Standard starter bolt before mastery unlocks', () => {
+  it('emits the server-authoritative early Blaster baseline for a fresh MP player', () => {
     const room = makeRoom();
     const player = makePlayer();
     room.state.players.set('p1', player);
@@ -199,10 +203,13 @@ describe('GameRoom MP weapon upgrade runtime parity', () => {
     room.tryShoot(player);
 
     const standardBullets = room.state.bullets.filter((b: any) => b.weaponType === WeaponType.Standard);
-    expect(standardBullets).toHaveLength(1);
+    expect(standardBullets).toHaveLength(4);
+    expect([...room.playerActiveUpgradeNodes.get('p1').get(WeaponType.Standard)].sort()).toEqual([
+      ...STANDARD_BLASTER_EARLY_AUTO_UNLOCK_NODE_IDS,
+    ].sort());
   });
 
-  it('emits two Standard bolts when standard_a_1 is active', () => {
+  it('stacks later Standard choices on top of the early Blaster baseline', () => {
     const room = makeRoom();
     const player = makePlayer();
     room.state.players.set('p1', player);
@@ -213,8 +220,8 @@ describe('GameRoom MP weapon upgrade runtime parity', () => {
     room.tryShoot(player);
 
     const standardBullets = room.state.bullets.filter((b: any) => b.weaponType === WeaponType.Standard);
-    expect(standardBullets).toHaveLength(2);
-    expect(new Set(standardBullets.map((b: any) => b.dirY)).size).toBe(2);
+    expect(standardBullets).toHaveLength(6);
+    expect(new Set(standardBullets.map((b: any) => b.dirY)).size).toBeGreaterThan(2);
   });
 
   it('emits upgraded Standard projectile patterns from server-authoritative nodes', () => {
@@ -244,7 +251,7 @@ describe('GameRoom MP weapon upgrade runtime parity', () => {
       room.tryShoot(player);
 
       const standardBullets = room.state.bullets.filter((b: any) => b.weaponType === WeaponType.Standard);
-      expect(standardBullets).toHaveLength(5);
+      expect(standardBullets).toHaveLength(9);
       return Math.max(...standardBullets.map((b: any) => Math.abs(b.dirY)));
     };
 
@@ -397,8 +404,10 @@ describe('GameRoom MP weapon upgrade runtime parity', () => {
     room.clearActiveUpgradeState();
 
     expect(room.playerUpgradeKillCounts.size).toBe(0);
-    expect(room.playerActiveUpgradeNodes.size).toBe(0);
-    expect(activeUpgradeNodes.size).toBe(0);
+    expect([...room.playerActiveUpgradeNodes.get('p1').get(WeaponType.Standard)].sort()).toEqual([
+      ...STANDARD_BLASTER_EARLY_AUTO_UNLOCK_NODE_IDS,
+    ].sort());
+    expect([...activeUpgradeNodes.keys()].sort()).toEqual(EARLY_BLASTER_KEYS);
   });
 
   it('startGame clears private and schema active upgrade state together', () => {
@@ -407,8 +416,10 @@ describe('GameRoom MP weapon upgrade runtime parity', () => {
     room.startGame();
 
     expect(room.playerUpgradeKillCounts.size).toBe(0);
-    expect(room.playerActiveUpgradeNodes.size).toBe(0);
-    expect(activeUpgradeNodes.size).toBe(0);
+    expect([...room.playerActiveUpgradeNodes.get('p1').get(WeaponType.Standard)].sort()).toEqual([
+      ...STANDARD_BLASTER_EARLY_AUTO_UNLOCK_NODE_IDS,
+    ].sort());
+    expect([...activeUpgradeNodes.keys()].sort()).toEqual(EARLY_BLASTER_KEYS);
   });
 
   it('softRestartRound clears private and schema active upgrade state together', () => {
@@ -424,8 +435,10 @@ describe('GameRoom MP weapon upgrade runtime parity', () => {
     });
 
     expect(room.playerUpgradeKillCounts.size).toBe(0);
-    expect(room.playerActiveUpgradeNodes.size).toBe(0);
-    expect(activeUpgradeNodes.size).toBe(0);
+    expect([...room.playerActiveUpgradeNodes.get('p1').get(WeaponType.Standard)].sort()).toEqual([
+      ...STANDARD_BLASTER_EARLY_AUTO_UNLOCK_NODE_IDS,
+    ].sort());
+    expect([...activeUpgradeNodes.keys()].sort()).toEqual(EARLY_BLASTER_KEYS);
   });
 
   it('rejects accepted-tree nodes whose MP runtime effect is not implemented', () => {

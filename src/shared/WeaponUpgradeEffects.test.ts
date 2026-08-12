@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { getAllNodes } from '../systems/UpgradeTreeData';
+import { STANDARD_BLASTER_EARLY_AUTO_UNLOCK_NODE_IDS, getAllNodes } from '../systems/UpgradeTreeData';
 import { WeaponType } from '../weapons/WeaponTypes';
 import {
   MP_SUPPORTED_UPGRADE_NODE_IDS,
@@ -51,6 +51,22 @@ describe('shared weapon upgrade effects', () => {
     expect(getUpgradeFireRateMultiplier(WeaponType.Standard, new Set(['standard_b_1']))).toBeCloseTo(1);
     expect(getUpgradeDamageMultiplier(WeaponType.Spread, new Set(['spread_al_5']))).toBeCloseTo(1.15);
     expect(getUpgradeFireRateMultiplier(WeaponType.Standard, new Set(['standard_ar_5']))).toBeCloseTo(1.5);
+  });
+
+  it('maps the early right-side Blaster baseline to supported tight bolts and faster fire', () => {
+    const active = new Set<string>(STANDARD_BLASTER_EARLY_AUTO_UNLOCK_NODE_IDS);
+
+    expect(getStandardUpgradePattern(active)).toMatchObject({
+      fanExtraBolts: 0,
+      branchBExtraBolts: 3,
+      branchBConeAngle: Math.PI / 36,
+    });
+    expect(getUpgradeFireRateMultiplier(WeaponType.Standard, active)).toBeCloseTo(1.8);
+    expect(getUpgradeDamageMultiplier(WeaponType.Standard, active)).toBeCloseTo(1);
+    for (const nodeId of STANDARD_BLASTER_EARLY_AUTO_UNLOCK_NODE_IDS) {
+      expect(isMpUpgradeNodeSupported(nodeId)).toBe(true);
+    }
+    expect(isMpUpgradeNodeSupported('standard_b_4')).toBe(false);
   });
 
   it('defines MP support for every retained tree node and no stale removed nodes', () => {

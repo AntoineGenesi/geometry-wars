@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { MasteryPointStore, weaponTypeFromNodeId } from '../systems/MasteryPointStore';
 import { MatchUpgradeTracker } from '../systems/MatchUpgradeTracker';
-import { getNodeById } from '../systems/UpgradeTreeData';
+import { STANDARD_BLASTER_EARLY_AUTO_UNLOCK_NODE_IDS, getNodeById } from '../systems/UpgradeTreeData';
 import { WeaponType } from '../weapons/WeaponTypes';
 import {
   filterMpBuildChoiceNodeIds,
@@ -55,7 +55,10 @@ describe('MP upgrade activation client reconciliation', () => {
     const { tracker } = makePending('standard_a_1', WeaponType.Standard);
 
     expect(tracker.getPendingChoice()).not.toBeNull();
-    expect(tracker.getActiveUpgrades(WeaponType.Standard).size).toBe(0);
+    expect([...tracker.getActiveUpgrades(WeaponType.Standard)].sort()).toEqual([
+      ...STANDARD_BLASTER_EARLY_AUTO_UNLOCK_NODE_IDS,
+    ].sort());
+    expect(tracker.getActiveUpgrades(WeaponType.Standard)).not.toContain('standard_a_1');
   });
 
   it('activates local upgrade effects after server acceptance', () => {
@@ -75,6 +78,9 @@ describe('MP upgrade activation client reconciliation', () => {
     expect(pendingUpgradeActivations.size).toBe(0);
     expect(tracker.getPendingChoice()).toBeNull();
     expect(tracker.getActiveUpgrades(WeaponType.Standard)).toContain('standard_a_1');
+    for (const nodeId of STANDARD_BLASTER_EARLY_AUTO_UNLOCK_NODE_IDS) {
+      expect(tracker.getActiveUpgrades(WeaponType.Standard)).toContain(nodeId);
+    }
     expect(onActivated).toHaveBeenCalledWith('standard_a_1', WeaponType.Standard);
   });
 
@@ -94,8 +100,31 @@ describe('MP upgrade activation client reconciliation', () => {
     expect(status).toBe('rejected');
     expect(pendingUpgradeActivations.size).toBe(0);
     expect(tracker.getPendingChoice()).toBeNull();
-    expect(tracker.getActiveUpgrades(WeaponType.Standard).size).toBe(0);
+    expect([...tracker.getActiveUpgrades(WeaponType.Standard)].sort()).toEqual([
+      ...STANDARD_BLASTER_EARLY_AUTO_UNLOCK_NODE_IDS,
+    ].sort());
     expect(onActivated).not.toHaveBeenCalled();
+  });
+
+  it('reconciles server-published early Blaster baseline into local MP tracker state', () => {
+    const tracker = new MatchUpgradeTracker(makeStore([]), { autoApplySingleNode: false });
+    tracker.syncActiveUpgrades(WeaponType.Standard, []);
+
+    const activeKeys = reconcileActiveUpgradeSnapshot({
+      activeUpgradeNodes: new Map<string, number>(
+        STANDARD_BLASTER_EARLY_AUTO_UNLOCK_NODE_IDS.map(nodeId => [`standard:${nodeId}`, 1]),
+      ),
+      serverToWeaponType: SERVER_TO_WEAPON_TYPE,
+      knownWeaponTypes: [WeaponType.Standard, WeaponType.Spread],
+      matchUpgradeTracker: tracker,
+    });
+
+    expect(activeKeys).toEqual(
+      STANDARD_BLASTER_EARLY_AUTO_UNLOCK_NODE_IDS.map(nodeId => `standard:${nodeId}`).sort(),
+    );
+    expect([...tracker.getActiveUpgrades(WeaponType.Standard)].sort()).toEqual([
+      ...STANDARD_BLASTER_EARLY_AUTO_UNLOCK_NODE_IDS,
+    ].sort());
   });
 
   it('treats an empty server active-upgrade snapshot as a complete clear', () => {

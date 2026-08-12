@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { MatchUpgradeTracker } from './MatchUpgradeTracker';
 import { MasteryPointStore, weaponTypeFromNodeId } from './MasteryPointStore';
 import { WeaponType } from '../weapons/WeaponTypes';
+import { STANDARD_BLASTER_EARLY_AUTO_UNLOCK_NODE_IDS } from './UpgradeTreeData';
 
 /** Build a MasteryPointStore with the given nodes pre-unlocked. */
 function makeStore(nodeIds: string[]): MasteryPointStore {
@@ -34,9 +35,11 @@ describe('MatchUpgradeTracker', () => {
   // Initial state
   // -------------------------------------------------------------------------
 
-  it('starts with no active upgrades', () => {
+  it('starts fresh SP trackers with only the early right-side Blaster fundamentals active', () => {
     expect(tracker.getActiveUpgrades(WeaponType.PlasmaMortar).size).toBe(0);
-    expect(tracker.getActiveUpgrades(WeaponType.Standard).size).toBe(0);
+    expect([...tracker.getActiveUpgrades(WeaponType.Standard)].sort()).toEqual([
+      ...STANDARD_BLASTER_EARLY_AUTO_UNLOCK_NODE_IDS,
+    ].sort());
   });
 
   it('starts with zero kill counts', () => {
@@ -332,6 +335,9 @@ describe('MatchUpgradeTracker', () => {
       emptyTracker.recordKill(WeaponType.Standard);
     }
     expect(cb).not.toHaveBeenCalled();
+    expect([...emptyTracker.getActiveUpgrades(WeaponType.Standard)].sort()).toEqual([
+      ...STANDARD_BLASTER_EARLY_AUTO_UNLOCK_NODE_IDS,
+    ].sort());
   });
 
   // -------------------------------------------------------------------------

@@ -71,6 +71,9 @@ import {
   isMpUpgradeNodeSupported,
 } from '../../src/shared/WeaponUpgradeEffects';
 import {
+  STANDARD_BLASTER_EARLY_AUTO_UNLOCK_NODE_IDS,
+} from '../../src/systems/UpgradeTreeData';
+import {
   BASELINE_BLASTER_DPS,
   computePlayerPower,
   GUARDIAN_SHOTS_PER_SECOND,
@@ -2146,6 +2149,7 @@ export class GameRoom extends Room<GameState> {
     }
 
     this.state.players.set(client.sessionId, player);
+    this.applyEarlyBlasterAutoUnlocks(client.sessionId, player);
 
     // Send startup config hash — client will check its localStorage cache and
     // reply with startup_cache_ack { hit: true/false }.  If miss, we send the
@@ -2365,7 +2369,24 @@ export class GameRoom extends Room<GameState> {
       byWeapon.set(weaponType, active);
     }
 
+    if (weaponType === 'standard') {
+      const player = this.state?.players?.get(sessionId);
+      for (const nodeId of STANDARD_BLASTER_EARLY_AUTO_UNLOCK_NODE_IDS) {
+        active.add(nodeId);
+        player?.activeUpgradeNodes?.set(`standard:${nodeId}`, 1);
+      }
+    }
+
     return active;
+  }
+
+  private applyEarlyBlasterAutoUnlocks(sessionId: string, player?: Pick<PlayerState, 'activeUpgradeNodes'>): void {
+    const active = this.getActiveUpgradeNodes(sessionId, 'standard');
+    const schemaNodes = player ?? this.state?.players?.get(sessionId);
+    for (const nodeId of STANDARD_BLASTER_EARLY_AUTO_UNLOCK_NODE_IDS) {
+      active.add(nodeId);
+      schemaNodes?.activeUpgradeNodes?.set(`standard:${nodeId}`, 1);
+    }
   }
 
   /** Resolve the server-authoritative upgrade multiplier for one player's weapon. */
@@ -3354,7 +3375,10 @@ export class GameRoom extends Room<GameState> {
   private clearActiveUpgradeState(): void {
     this.playerUpgradeKillCounts.clear();
     this.playerActiveUpgradeNodes.clear();
-    this.state.players.forEach((player) => player.activeUpgradeNodes?.clear());
+    this.state.players.forEach((player, sessionId) => {
+      player.activeUpgradeNodes?.clear();
+      this.applyEarlyBlasterAutoUnlocks(sessionId, player);
+    });
   }
 
   private handleInput(client: Client, input: PlayerInput) {
