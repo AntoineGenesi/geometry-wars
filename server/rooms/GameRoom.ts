@@ -2392,6 +2392,10 @@ export class GameRoom extends Room<GameState> {
   /** Resolve the server-authoritative upgrade multiplier for one player's weapon. */
   private getUpgradeDamageMult(sessionId: string, weaponType: string): number {
     const active = this.getActiveUpgradeNodes(sessionId, weaponType);
+    return this.getUpgradeDamageMultForNodes(weaponType, active);
+  }
+
+  private getUpgradeDamageMultForNodes(weaponType: string, active: ReadonlySet<string>): number {
     let supportedActive: Set<string> | null = null;
     for (const nodeId of active) {
       if (!isMpUpgradeNodeSupported(nodeId)) {
@@ -2400,6 +2404,17 @@ export class GameRoom extends Room<GameState> {
       }
     }
     return getUpgradeDamageMultiplier(weaponType, supportedActive ?? active);
+  }
+
+  private getPlayerPowerStandardUpgradeNodes(sessionId: string): ReadonlySet<string> {
+    const active = this.getActiveUpgradeNodes(sessionId, 'standard');
+    let playerPowerNodes: Set<string> | null = null;
+    for (const nodeId of STANDARD_BLASTER_EARLY_AUTO_UNLOCK_NODE_IDS) {
+      if (!active.has(nodeId)) continue;
+      playerPowerNodes ??= new Set(active);
+      playerPowerNodes.delete(nodeId);
+    }
+    return playerPowerNodes ?? active;
   }
 
   private getPlayerWeaponDamageMultiplier(
@@ -2412,6 +2427,19 @@ export class GameRoom extends Room<GameState> {
     const buffDamageMult = player ? this.calculateBuffDamageMult(player) : 1.0;
     const upgradeDamageMult = this.getUpgradeDamageMult(sessionId, weaponType);
     return levelDamageMult * buffDamageMult * upgradeDamageMult;
+  }
+
+  private getPlayerWeaponDamageFromNodes(
+    player: PlayerState | undefined,
+    weaponType: string,
+    baseDamage: number,
+    activeNodes: ReadonlySet<string>,
+  ): number {
+    const levelIdx = Math.min(player?.playerLevel ?? 0, LEVEL_DAMAGE_MULTIPLIERS.length - 1);
+    const levelDamageMult = LEVEL_DAMAGE_MULTIPLIERS[levelIdx];
+    const buffDamageMult = player ? this.calculateBuffDamageMult(player) : 1.0;
+    const upgradeDamageMult = this.getUpgradeDamageMultForNodes(weaponType, activeNodes);
+    return baseDamage * levelDamageMult * buffDamageMult * upgradeDamageMult;
   }
 
   private getPlayerWeaponDamage(
@@ -8036,8 +8064,8 @@ export class GameRoom extends Room<GameState> {
   }
 
   private collectPlayerPower(player: PlayerState): PlayerPowerInput {
-    const standardNodes = this.getActiveUpgradeNodes(player.id, 'standard');
-    const standardPattern = getStandardUpgradePattern(standardNodes);
+    const playerPowerStandardNodes = this.getPlayerPowerStandardUpgradeNodes(player.id);
+    const standardPattern = getStandardUpgradePattern(playerPowerStandardNodes);
     const fanCount = standardPattern.fanExtraBolts > 0 ? standardPattern.fanExtraBolts + 1 : 0;
     const branchBCount = standardPattern.branchBExtraBolts > 0 ? standardPattern.branchBExtraBolts + 1 : 0;
     const standardProjectiles = fanCount + branchBCount || 1;
@@ -8070,9 +8098,14 @@ export class GameRoom extends Room<GameState> {
       streak: this.playerPowerStreaks.get(player.id) ?? 0,
       totalKills: player.enemyKills,
       blaster: {
-        damage: this.getPlayerWeaponDamage(player.id, player, 'standard', blasterConfig.damage),
+        damage: this.getPlayerWeaponDamageFromNodes(
+          player,
+          'standard',
+          blasterConfig.damage,
+          playerPowerStandardNodes,
+        ),
         shotsPerSecond: blasterConfig.fireRate
-          * getUpgradeFireRateMultiplier('standard', standardNodes),
+          * getUpgradeFireRateMultiplier('standard', playerPowerStandardNodes),
         projectilesPerShot: standardProjectiles,
       },
       activeWeapon,
