@@ -1,7 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import {
+  STANDARD_BLASTER_EARLY_AUTO_UNLOCK_NODE_IDS,
   UPGRADE_TREES,
   getAllNodes,
+  getDefaultAutoUnlockedUpgradeNodeIds,
   getNodeById,
   getBranchNodes,
   getUpgradeTree,
@@ -99,6 +101,26 @@ describe('UPGRADE_TREES', () => {
     expect(getNodeById('standard_b_3')?.effect).toContain('fire rate totals +80% [+50%]');
     expect(getNodeById('standard_br_7')?.effect).toContain('Bolt damage totals +140% [+40%]');
     expect(getNodeById('standard_br_10')?.effect).toContain('bolt damage totals +190% [+50%]');
+  });
+
+  it('early auto-unlocked Blaster fundamentals are the right-side Focus trunk only', () => {
+    expect(STANDARD_BLASTER_EARLY_AUTO_UNLOCK_NODE_IDS).toEqual([
+      'standard_b_1',
+      'standard_b_2',
+      'standard_b_3',
+    ]);
+    expect(getDefaultAutoUnlockedUpgradeNodeIds(WeaponType.Standard)).toEqual([
+      'standard_b_1',
+      'standard_b_2',
+      'standard_b_3',
+    ]);
+    expect(STANDARD_BLASTER_EARLY_AUTO_UNLOCK_NODE_IDS.map(nodeId => getNodeById(nodeId)?.description)).toEqual([
+      'Focused pair',
+      'Triple needle',
+      'Quad lance',
+    ]);
+    expect(getDefaultAutoUnlockedUpgradeNodeIds(WeaponType.Standard)).not.toContain('standard_b_4');
+    expect(getDefaultAutoUnlockedUpgradeNodeIds(WeaponType.Spread)).toEqual([]);
   });
 
   it('percentage upgrade copy avoids isolated percent fragments across all weapons', () => {

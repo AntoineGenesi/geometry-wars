@@ -11,7 +11,14 @@
 // ---------------------------------------------------------------------------
 
 import { WeaponType } from '../weapons/WeaponTypes';
-import { UpgradeTree, getNodeById, getNodeCost, isExcluded } from './UpgradeTreeData';
+import {
+  UpgradeTree,
+  getDefaultAutoUnlockedUpgradeNodeIds,
+  getNodeById,
+  getNodeCost,
+  isDefaultAutoUnlockedUpgradeNode,
+  isExcluded,
+} from './UpgradeTreeData';
 
 const STORAGE_KEY = 'gw_mastery_points';
 export const DEBUG_MASTERY_POINTS_PER_WEAPON = 9999;
@@ -169,7 +176,7 @@ export class MasteryPointStore {
 
     if (tree && isExcluded(nodeId, tree, this)) return false;
 
-    const current = this.nodePoints[nodeId] ?? 0;
+    const current = this.getNodePoints(nodeId);
     if (current >= maxPoints) return false;
     if (this.getAvailablePoints(weaponType) < cost) return false;
 
@@ -214,6 +221,9 @@ export class MasteryPointStore {
 
   /** Returns the number of points currently invested in a node (0 if locked). */
   getNodePoints(nodeId: string): number {
+    if (isDefaultAutoUnlockedUpgradeNode(nodeId)) {
+      return Math.max(1, this.nodePoints[nodeId] ?? 0);
+    }
     return this.nodePoints[nodeId] ?? 0;
   }
 
@@ -222,12 +232,15 @@ export class MasteryPointStore {
    * For multi-level nodes, this returns true even if not at max level.
    */
   isUnlocked(nodeId: string): boolean {
-    return (this.nodePoints[nodeId] ?? 0) > 0;
+    return this.getNodePoints(nodeId) > 0;
   }
 
   /** Returns the set of all node IDs with at least 1 point invested. */
   getUnlockedNodes(): Set<string> {
-    return new Set(Object.keys(this.nodePoints).filter(id => (this.nodePoints[id] ?? 0) > 0));
+    return new Set([
+      ...getDefaultAutoUnlockedUpgradeNodeIds(),
+      ...Object.keys(this.nodePoints).filter(id => (this.nodePoints[id] ?? 0) > 0),
+    ]);
   }
 
   // -------------------------------------------------------------------------

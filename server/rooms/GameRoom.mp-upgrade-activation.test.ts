@@ -6,7 +6,7 @@ import {
   type UpgradeActivationResult,
 } from './mpUpgradeActivation';
 import { WeaponType } from '../../src/weapons/WeaponTypes';
-import { getNodeById } from '../../src/systems/UpgradeTreeData';
+import { STANDARD_BLASTER_EARLY_AUTO_UNLOCK_NODE_IDS, getNodeById } from '../../src/systems/UpgradeTreeData';
 
 function threshold(nodeId: string): number {
   const node = getNodeById(nodeId);
@@ -152,6 +152,19 @@ describe('MP upgrade activation validation', () => {
       weaponType: WeaponType.Standard,
       unlockedNodeIds: ['standard_a_2'],
     }, ['standard_a_1'], threshold('standard_a_2'))).toMatchObject({ accepted: true });
+  });
+
+  it('treats early right-side Blaster baseline nodes as already active server-side', () => {
+    for (const nodeId of STANDARD_BLASTER_EARLY_AUTO_UNLOCK_NODE_IDS) {
+      expect(validate({
+        nodeId,
+        weaponType: WeaponType.Standard,
+        unlockedNodeIds: [nodeId],
+      }, STANDARD_BLASTER_EARLY_AUTO_UNLOCK_NODE_IDS, threshold(nodeId))).toMatchObject({
+        accepted: false,
+        reason: 'duplicate',
+      });
+    }
   });
 
   it('rejects unsupported Spread nodes after entitlement and prerequisites pass', () => {

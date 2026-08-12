@@ -1,7 +1,11 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { DEBUG_MASTERY_POINTS_PER_WEAPON, MasteryPointStore, weaponTypeFromNodeId } from './MasteryPointStore';
 import { WeaponType } from '../weapons/WeaponTypes';
-import { UPGRADE_TREES, UpgradeTree } from './UpgradeTreeData';
+import {
+  STANDARD_BLASTER_EARLY_AUTO_UNLOCK_NODE_IDS,
+  UPGRADE_TREES,
+  UpgradeTree,
+} from './UpgradeTreeData';
 
 // Mock localStorage for test environment
 const localStorageMock = (() => {
@@ -38,8 +42,15 @@ describe('MasteryPointStore', () => {
     expect(store.getAvailablePoints(WeaponType.Spread)).toBe(0);
   });
 
-  it('starts with no unlocked nodes', () => {
-    expect(store.getUnlockedNodes().size).toBe(0);
+  it('starts with the early right-side Blaster fundamentals unlocked for free', () => {
+    expect([...store.getUnlockedNodes()].sort()).toEqual([
+      ...STANDARD_BLASTER_EARLY_AUTO_UNLOCK_NODE_IDS,
+    ].sort());
+    for (const nodeId of STANDARD_BLASTER_EARLY_AUTO_UNLOCK_NODE_IDS) {
+      expect(store.isUnlocked(nodeId)).toBe(true);
+      expect(store.getNodePoints(nodeId)).toBe(1);
+    }
+    expect(store.getSpentPoints(WeaponType.Standard)).toBe(0);
   });
 
   it('debug point mode starts with a large virtual balance for every weapon', () => {
@@ -125,7 +136,7 @@ describe('MasteryPointStore', () => {
     store.earnPoint(WeaponType.Spread);
     const result = store.spendPoint('standard_a_1');
     expect(result).toBe(false);
-    expect(store.getUnlockedNodes().size).toBe(0);
+    expect(store.isUnlocked('standard_a_1')).toBe(false);
     // Spread points unchanged
     expect(store.getAvailablePoints(WeaponType.Spread)).toBe(1);
   });
@@ -160,10 +171,10 @@ describe('MasteryPointStore', () => {
     store.earnPoint(WeaponType.Standard);
     store.earnPoint(WeaponType.Standard);
     store.spendPoint('standard_a_1');
-    store.spendPoint('standard_b_1');
-    expect(store.getUnlockedNodes().size).toBe(2);
+    store.spendPoint('standard_a_2');
+    expect(store.getUnlockedNodes().size).toBe(STANDARD_BLASTER_EARLY_AUTO_UNLOCK_NODE_IDS.length + 2);
     expect(store.isUnlocked('standard_a_1')).toBe(true);
-    expect(store.isUnlocked('standard_b_1')).toBe(true);
+    expect(store.isUnlocked('standard_a_2')).toBe(true);
     expect(store.getAvailablePoints(WeaponType.Standard)).toBe(0);
   });
 
@@ -183,6 +194,17 @@ describe('MasteryPointStore', () => {
   it('refundPoint returns false when node not unlocked', () => {
     const result = store.refundPoint('standard_a_1');
     expect(result).toBe(false);
+  });
+
+  it('cannot refund or repurchase free early Blaster baseline nodes', () => {
+    store.earnPoint(WeaponType.Standard);
+
+    expect(store.spendPoint('standard_b_1')).toBe(false);
+    expect(store.refundPoint('standard_b_1')).toBe(false);
+
+    expect(store.isUnlocked('standard_b_1')).toBe(true);
+    expect(store.getAvailablePoints(WeaponType.Standard)).toBe(1);
+    expect(store.getSpentPoints(WeaponType.Standard)).toBe(0);
   });
 
   it('refundPoint re-locks node and returns point to weapon pool', () => {
@@ -217,9 +239,9 @@ describe('MasteryPointStore', () => {
     store.earnPoint(WeaponType.Standard);
     store.spendPoint('standard_a_1');
     store.refundPoint('standard_a_1');
-    const result = store.spendPoint('standard_b_1');
+    const result = store.spendPoint('standard_a_2');
     expect(result).toBe(true);
-    expect(store.isUnlocked('standard_b_1')).toBe(true);
+    expect(store.isUnlocked('standard_a_2')).toBe(true);
     expect(store.isUnlocked('standard_a_1')).toBe(false);
   });
 
@@ -276,7 +298,9 @@ describe('MasteryPointStore', () => {
     localStorageMock.setItem('gw_mastery_points', 'not-valid-json{{{');
     const freshStore = new MasteryPointStore();
     expect(freshStore.getTotalPoints()).toBe(0);
-    expect(freshStore.getUnlockedNodes().size).toBe(0);
+    expect([...freshStore.getUnlockedNodes()].sort()).toEqual([
+      ...STANDARD_BLASTER_EARLY_AUTO_UNLOCK_NODE_IDS,
+    ].sort());
   });
 
   // -------------------------------------------------------------------------
@@ -289,7 +313,9 @@ describe('MasteryPointStore', () => {
     store.reset();
     expect(store.getTotalPoints()).toBe(0);
     expect(store.getSpentPoints()).toBe(0);
-    expect(store.getUnlockedNodes().size).toBe(0);
+    expect([...store.getUnlockedNodes()].sort()).toEqual([
+      ...STANDARD_BLASTER_EARLY_AUTO_UNLOCK_NODE_IDS,
+    ].sort());
     expect(store.getAvailablePoints(WeaponType.Standard)).toBe(0);
   });
 
@@ -320,8 +346,8 @@ describe('MasteryPointStore', () => {
     store.earnPoint(WeaponType.Standard);
     store.spendPoint('standard_a_1');
     const nodes = store.getUnlockedNodes();
-    nodes.add('standard_b_1'); // mutate the returned set
-    expect(store.isUnlocked('standard_b_1')).toBe(false);
+    nodes.add('standard_a_2'); // mutate the returned set
+    expect(store.isUnlocked('standard_a_2')).toBe(false);
   });
 
   // -------------------------------------------------------------------------
@@ -407,7 +433,10 @@ describe('MasteryPointStore', () => {
     const migrated = new MasteryPointStore();
     expect(migrated.isUnlocked('standard_a_1')).toBe(true);
     expect(migrated.isUnlocked('standard_removed_99')).toBe(false);
-    expect(migrated.getUnlockedNodes()).toEqual(new Set(['standard_a_1']));
+    expect(migrated.getUnlockedNodes()).toEqual(new Set([
+      'standard_a_1',
+      ...STANDARD_BLASTER_EARLY_AUTO_UNLOCK_NODE_IDS,
+    ]));
     expect(migrated.getSpentPoints(WeaponType.Standard)).toBe(1);
     expect(migrated.getAvailablePoints(WeaponType.Standard)).toBe(3);
   });
@@ -520,16 +549,16 @@ describe('MasteryPointStore', () => {
   // -------------------------------------------------------------------------
 
   it('spendPoint returns false when node is excluded by an already-unlocked node', () => {
-    // Build a minimal tree with an exclusion pair: standard_a_3 excludes standard_b_3
+    // Build a minimal tree with an exclusion pair: standard_a_3 excludes standard_a_4
     const tree: UpgradeTree = {
       weaponType: WeaponType.Standard,
       branchAName: 'A',
       branchBName: 'B',
       nodes: [
         { id: 'standard_a_3', description: 'Quad burst', effect: '+4 bolts wide', killThreshold: 300, branch: 'a', nodeIndex: 3 },
-        { id: 'standard_b_3', description: 'Quad lance', effect: '+4 bolts tight', killThreshold: 300, branch: 'b', nodeIndex: 3 },
+        { id: 'standard_a_4', description: 'Rapid burst', effect: '+5 bolts wide', killThreshold: 400, branch: 'a', nodeIndex: 4 },
       ],
-      exclusionPairs: [['standard_a_3', 'standard_b_3']],
+      exclusionPairs: [['standard_a_3', 'standard_a_4']],
     };
 
     // Earn enough points to buy both
@@ -540,10 +569,10 @@ describe('MasteryPointStore', () => {
     store.spendPoint('standard_a_3', 1, 1);
     expect(store.isUnlocked('standard_a_3')).toBe(true);
 
-    // Now try to spend on standard_b_3 — should fail because standard_a_3 is unlocked
-    const result = store.spendPoint('standard_b_3', 1, 1, tree);
+    // Now try to spend on standard_a_4 — should fail because standard_a_3 is unlocked
+    const result = store.spendPoint('standard_a_4', 1, 1, tree);
     expect(result).toBe(false);
-    expect(store.isUnlocked('standard_b_3')).toBe(false);
+    expect(store.isUnlocked('standard_a_4')).toBe(false);
     // The point was NOT consumed
     expect(store.getAvailablePoints(WeaponType.Standard)).toBe(1);
   });
@@ -554,9 +583,9 @@ describe('MasteryPointStore', () => {
     store.earnPoint(WeaponType.Standard);
 
     store.spendPoint('standard_a_3', 1, 1);
-    const result = store.spendPoint('standard_b_3', 1, 1); // no tree — no exclusion check
+    const result = store.spendPoint('standard_a_4', 1, 1); // no tree — no exclusion check
     expect(result).toBe(true);
-    expect(store.isUnlocked('standard_b_3')).toBe(true);
+    expect(store.isUnlocked('standard_a_4')).toBe(true);
   });
 
   it('spendPoint allows formerly excluded Standard AL and AR roots with the real tree', () => {
@@ -578,7 +607,7 @@ describe('MasteryPointStore', () => {
     const tree = UPGRADE_TREES[WeaponType.Standard];
     for (let i = 0; i < 8; i++) store.earnPoint(WeaponType.Standard);
 
-    for (const nodeId of ['standard_b_1', 'standard_b_2', 'standard_b_3', 'standard_b_4', 'standard_bl_5']) {
+    for (const nodeId of ['standard_b_4', 'standard_bl_5']) {
       const node = tree.nodes.find(n => n.id === nodeId)!;
       expect(store.spendPoint(nodeId, node.maxPoints ?? 1, node.cost ?? 1, tree)).toBe(true);
     }
