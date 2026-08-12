@@ -5,6 +5,7 @@ import {
   getDifficultyTier,
 } from '../../src/core/DifficultyScaling';
 import { computePlayerPower } from '../../src/shared/PlayerPowerModel';
+import { STANDARD_BLASTER_EARLY_AUTO_UNLOCK_NODE_IDS } from '../../src/systems/UpgradeTreeData';
 import { GameRoom } from './GameRoom';
 
 function makePlayer(overrides: Record<string, unknown> = {}) {
@@ -23,6 +24,7 @@ function makePlayer(overrides: Record<string, unknown> = {}) {
     protectorCount: 0,
     ddaLevel: 0,
     buffStacks: new Map<string, number>(),
+    activeUpgradeNodes: new Map<string, number>(),
     ...overrides,
   };
 }
@@ -63,6 +65,48 @@ function useEarlyMidWave(room: any): void {
 }
 
 describe('GameRoom authoritative player-power integration', () => {
+  it('keeps free early Blaster baseline active but DDA-neutral', () => {
+    const player = makePlayer();
+    const room = makeRoom(player);
+
+    const snapshot = room.collectPlayerPower(player);
+    const activeStandardNodes = room.playerActiveUpgradeNodes.get(player.id).get('standard');
+
+    expect([...activeStandardNodes].sort()).toEqual([
+      ...STANDARD_BLASTER_EARLY_AUTO_UNLOCK_NODE_IDS,
+    ].sort());
+    expect([...player.activeUpgradeNodes.keys()].sort()).toEqual(
+      STANDARD_BLASTER_EARLY_AUTO_UNLOCK_NODE_IDS
+        .map(nodeId => `standard:${nodeId}`)
+        .sort(),
+    );
+    expect(snapshot.blaster?.shotsPerSecond).toBe(6);
+    expect(snapshot.blaster?.projectilesPerShot).toBe(1);
+    expect(room.getRoomDominance().difficultyBonus).toBeLessThan(0.05);
+  });
+
+  it('counts earned Standard upgrades beyond the free baseline toward DDA dominance', () => {
+    const baselinePlayer = makePlayer();
+    const baselineRoom = makeRoom(baselinePlayer);
+    const baselineDominance = baselineRoom.getRoomDominance().difficultyBonus;
+
+    const earnedPlayer = makePlayer();
+    const earnedRoom = makeRoom(earnedPlayer);
+    earnedRoom.playerActiveUpgradeNodes.set(earnedPlayer.id, new Map([
+      ['standard', new Set(['standard_a_1'])],
+    ]));
+
+    const snapshot = earnedRoom.collectPlayerPower(earnedPlayer);
+    const activeStandardNodes = earnedRoom.playerActiveUpgradeNodes.get(earnedPlayer.id).get('standard');
+
+    expect([...activeStandardNodes].sort()).toEqual([
+      'standard_a_1',
+      ...STANDARD_BLASTER_EARLY_AUTO_UNLOCK_NODE_IDS,
+    ].sort());
+    expect(snapshot.blaster?.projectilesPerShot).toBe(2);
+    expect(earnedRoom.getRoomDominance().difficultyBonus).toBeGreaterThan(baselineDominance + 1);
+  });
+
   it('collects accepted upgrades and bounded companion power on the server', () => {
     const player = makePlayer({
       score: 1_000_000,
