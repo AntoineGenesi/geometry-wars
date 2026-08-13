@@ -128,6 +128,31 @@ The LAN host flow is meant for the downloadable/source version of the project.
 Static web hosting can run the browser game, but it cannot host the local
 Colyseus LAN server by itself.
 
+## Windows Launchers And Repo Structure
+
+The root `.bat` files are convenience launchers for playing from Windows:
+
+- `WINDOWS-SETUP.bat` installs/checks Windows Node.js and dependencies.
+- `Play Game.bat` starts the Colyseus server on `2567`, Vite on `3000`, opens
+  the browser, and tries to prepare firewall/LAN access.
+- `Play Game Debug.bat` is a wrapper that keeps the terminal open while
+  diagnosing launcher crashes.
+- `Stop Game.bat` stops leftover Node/Vite/Colyseus processes on the game
+  ports.
+- `Setup-WSL-LAN.bat` is only for forwarding WSL2 dev servers to Windows LAN
+  devices. Do not use it with `Play Game.bat`; stale portproxy rules can break
+  the Windows launcher path.
+
+This repository also contains development history and agent-orchestration
+material. Public/game code is mainly in `src/`, `server/`, `public/`, `docs/`,
+`decisions/`, and `tests/`. Private development checkouts may also contain
+`AGENTS.md`, `CODEX-ORCHESTRATION.md`, `codex/`, `tasks/`, `inbox/`,
+`.claude/`, logs, reports, worker notes, and review artifacts. Those files are
+for coordinating and auditing AI-agent development, not for running the game.
+
+See [Project Structure And Workflow](docs/project-structure-and-workflow.md)
+for the fuller explanation.
+
 ## Static Build
 
 Build a static package:
@@ -171,8 +196,10 @@ decisions/ Historical architecture notes and development records
 tests/     Visual, LAN, multiplayer, and surface verification harnesses
 ```
 
-Private AI-agent orchestration/task files may exist in the development repo,
-but they are not required to play or build the game.
+Private AI-agent orchestration/task files may exist in the development repo, but
+they are not required to play or build the game. Public sanitized exports remove
+that private workflow material while keeping the committed game code and branch
+history.
 
 ## Development History
 
