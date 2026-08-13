@@ -1,5 +1,7 @@
 # Geometry Wars 3D
 
+**Play it now:** https://antoinegenesi.github.io/geometry-wars/
+
 Geometry Wars 3D is an ambitious browser arcade-shooter prototype built with
 Three.js, TypeScript, Vite, and Colyseus. The core idea is simple: take the
 flat twin-stick shooter feel and put it on strange 3D surfaces: spheres, cubes,
