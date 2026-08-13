@@ -452,7 +452,7 @@ describe('Camera-Relative Input', () => {
     });
 
     it('diagonal movement on torus should also produce non-zero displacement', () => {
-      const surf = SurfaceFactory.create('torus', { tubeRadius: 2, torusRadius: 5 });
+      const surf = SurfaceFactory.create('torus', { minorRadius: 2, majorRadius: 5 });
       surf.mesh.updateMatrixWorld(true);
       const meshSurface = new MeshSurface(surf.mesh);
       const startPos = surf.getPoint(0.5, 0.5).position;

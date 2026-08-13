@@ -485,8 +485,8 @@ describe('Mesh Walker Verification', () => {
         expect(endDistToPlayer).toBeLessThanOrEqual(startDistToPlayer * 1.1);
       });
 
-      it('approachglow moves toward player', () => {
-        harness.enemySpawner.spawn('approachglow', 0.3, 0.7);
+      it('approach_glow moves toward player', () => {
+        harness.enemySpawner.spawn('approach_glow', 0.3, 0.7);
         harness.waitForMaterialization();
 
         const playerPos = harness.getPlayerWorldPos();
@@ -736,7 +736,7 @@ describe('Mesh Walker Verification', () => {
     });
 
     it('boss enemy moves without NaN', () => {
-      harness.enemySpawner.spawn('boss', 0.5, 0.3);
+      harness.enemySpawner.spawn('boss_sapphire', 0.5, 0.3);
       harness.waitForMaterialization();
 
       const startPos = harness.getEnemyWorldPositions()[0];
@@ -760,8 +760,8 @@ describe('Mesh Walker Verification', () => {
     });
 
     it('giant enemies move without NaN', () => {
-      harness.enemySpawner.spawn('giantneutron', 0.3, 0.3);
-      harness.enemySpawner.spawn('giantwanderer', 0.7, 0.7);
+      harness.enemySpawner.spawn('giant_neutron', 0.3, 0.3);
+      harness.enemySpawner.spawn('giant_wanderer', 0.7, 0.7);
       harness.waitForMaterialization();
 
       for (let i = 0; i < 90; i++) {
@@ -777,8 +777,8 @@ describe('Mesh Walker Verification', () => {
     });
 
     it('titan enemies move without NaN', () => {
-      harness.enemySpawner.spawn('titangrunt', 0.4, 0.4);
-      harness.enemySpawner.spawn('titanweaver', 0.6, 0.6);
+      harness.enemySpawner.spawn('titan_grunt', 0.4, 0.4);
+      harness.enemySpawner.spawn('titan_weaver', 0.6, 0.6);
       harness.waitForMaterialization();
 
       for (let i = 0; i < 90; i++) {

@@ -6,8 +6,8 @@ describe('CubeWithTunnelSurface Size Reduction (S37)', () => {
     const surface = new CubeWithTunnelSurface()
 
     // The size should be 20 after the downsize
-    // We access it through getPointLocal to verify the dimensions
-    const pointAtCenter = surface.getPointLocal(0.5, 0.5)
+    // We access it through getPoint to verify the dimensions
+    const pointAtCenter = surface.getPoint(0.5, 0.5)
     expect(pointAtCenter).toBeDefined()
     expect(pointAtCenter.position).toBeDefined()
 
@@ -21,8 +21,8 @@ describe('CubeWithTunnelSurface Size Reduction (S37)', () => {
     const defaultSurface = new CubeWithTunnelSurface()
 
     // Verify they produce similar geometry to size: 20
-    const point20 = surface20.getPointLocal(0.25, 0.25)
-    const pointDefault = defaultSurface.getPointLocal(0.25, 0.25)
+    const point20 = surface20.getPoint(0.25, 0.25)
+    const pointDefault = defaultSurface.getPoint(0.25, 0.25)
 
     // Points should be very close (allowing for floating point error)
     expect(Math.abs(point20.position.x - pointDefault.position.x)).toBeLessThan(0.001)
@@ -35,8 +35,8 @@ describe('CubeWithTunnelSurface Size Reduction (S37)', () => {
     const surface24 = new CubeWithTunnelSurface({ size: 24 })
 
     // Compare corner points
-    const corner20 = surface20.getPointLocal(0.25, 0.5)
-    const corner24 = surface24.getPointLocal(0.25, 0.5)
+    const corner20 = surface20.getPoint(0.25, 0.5)
+    const corner24 = surface24.getPoint(0.25, 0.5)
 
     // The distance from origin should be proportionally smaller
     const dist20 = Math.sqrt(
@@ -59,7 +59,7 @@ describe('CubeWithTunnelSurface Size Reduction (S37)', () => {
 
   it('can still create cube tunnel with custom size', () => {
     const customSurface = new CubeWithTunnelSurface({ size: 30 })
-    const point = customSurface.getPointLocal(0.25, 0.25)
+    const point = customSurface.getPoint(0.25, 0.25)
 
     expect(point).toBeDefined()
     expect(point.position).toBeDefined()

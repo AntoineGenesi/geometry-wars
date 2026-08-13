@@ -21,6 +21,7 @@ import { BuffPickup, getRandomBuffType } from '../weapons/BuffPickup';
 import { BuffPickupNew } from '../buffs/BuffPickupNew';
 import { WeaponType } from '../weapons/WeaponTypes';
 import { StackBuffType } from '../buffs/BuffManager';
+import { WEAPON_PICKUP_WORLD_RADIUS } from '../shared/GameBalanceConstants';
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -63,7 +64,7 @@ function buffNewCollides(
   playerWorldPos: THREE.Vector3,
   scaleFactor: number,
 ): boolean {
-  const p = new BuffPickupNew(StackBuffType.AttackSpeed, 0.5, 0.5, scaleFactor);
+  const p = new BuffPickupNew(StackBuffType.TriggerHappy, 0.5, 0.5, scaleFactor);
   p.applySurfaceTransform(makeTransformAt(pickupWorldPos));
   return p.checkPlayerCollision(0.5, 0.5, playerWorldPos);
 }
@@ -72,28 +73,28 @@ function buffNewCollides(
 
 describe('Pickup scale-invariant collection radius (S36 regression)', () => {
   /**
-   * S44b-06: BASE_RADIUS reduced from 0.3 → 0.15 to fix "too large" collection distance.
-   * At MEDIUM (scale=1): 0.15 world units ≈ 0.5 player-widths (player visual radius ≈ 0.15).
-   * At EPIC (scale=2): 0.30 world units = 1 player-width — much less intrusive.
+   * S44r8-06: pickup collection uses the shared WEAPON_PICKUP_WORLD_RADIUS.
+   * At MEDIUM (scale=1): 0.35 world units.
+   * At EPIC (scale=2): 0.70 world units.
    *
-   * On scale=1 the threshold is 0.15. On scale=2 the threshold is 0.30.
-   * We test that a gap of 0.25 world units (which is < 0.15*2=0.30) is collected
-   * on scale=2 but NOT collected on scale=1 (where threshold is 0.15).
+   * We test that a gap of 0.25 world units is collected at scale=1 and scale=2,
+   * while a gap just outside the shared radius remains uncollected after scaling.
    *
-   * 0.25 > 0.15 → NOT collected at scale=1 (CORRECT)
-   * 0.25 < 0.30 → IS collected at scale=2 (CORRECT)
+   * 0.25 < 0.35 → collected at scale=1 (CORRECT)
+   * 0.25 < 0.70 → collected at scale=2 (CORRECT)
    */
   const PICKUP_POS = new THREE.Vector3(0, 0, 0);
   const PLAYER_GAP_0_25 = new THREE.Vector3(0.25, 0, 0); // 0.25 units away
+  const OUTSIDE_RADIUS_GAP = WEAPON_PICKUP_WORLD_RADIUS + 0.05;
 
   it('WeaponPickup: collects at 0.25 units on scale=2 (would fail if radius not scaled)', () => {
-    // 0.25 < 0.15*2=0.30 → true.
+    // 0.25 < 0.35*2=0.70 → true.
     expect(weaponCollides(PICKUP_POS, PLAYER_GAP_0_25, 2.0)).toBe(true);
   });
 
-  it('WeaponPickup: does NOT collect at 0.25 units on scale=1 (radius=0.15)', () => {
-    // 0.25 > 0.15 → should not collect
-    expect(weaponCollides(PICKUP_POS, PLAYER_GAP_0_25, 1.0)).toBe(false);
+  it('WeaponPickup: collects at 0.25 units on scale=1', () => {
+    // 0.25 < 0.35 → should collect
+    expect(weaponCollides(PICKUP_POS, PLAYER_GAP_0_25, 1.0)).toBe(true);
   });
 
   it('BuffPickup: collects at 0.25 units on scale=2', () => {
@@ -104,29 +105,29 @@ describe('Pickup scale-invariant collection radius (S36 regression)', () => {
     expect(buffNewCollides(PICKUP_POS, PLAYER_GAP_0_25, 2.0)).toBe(true);
   });
 
-  it('WeaponPickup: does NOT collect at 0.35 units on scale=2 (outside 0.15*2=0.30)', () => {
-    const farPlayer = new THREE.Vector3(0.35, 0, 0);
+  it('WeaponPickup: does NOT collect outside the shared radius on scale=2', () => {
+    const farPlayer = new THREE.Vector3(OUTSIDE_RADIUS_GAP * 2.0, 0, 0);
     expect(weaponCollides(PICKUP_POS, farPlayer, 2.0)).toBe(false);
   });
 
   it('WeaponPickup: consistent radius across SMALL(0.75), MEDIUM(1.0), LARGE(1.5), EPIC(2.0)', () => {
-    // For each scale, a player at exactly 0.10 * scaleFactor units away should always collect.
-    // This verifies scale invariance in UV terms (0.10*scale < 0.15*scale).
+    // For each scale, a player at exactly 0.25 * scaleFactor units away should always collect.
+    // This verifies scale invariance in UV terms (0.25*scale < 0.35*scale).
     for (const scale of [0.75, 1.0, 1.5, 2.0]) {
-      const playerPos = new THREE.Vector3(0.10 * scale, 0, 0);
+      const playerPos = new THREE.Vector3(0.25 * scale, 0, 0);
       expect(
         weaponCollides(PICKUP_POS, playerPos, scale),
-        `scale=${scale}: player at 0.10*scale should collect`,
+        `scale=${scale}: player at 0.25*scale should collect`,
       ).toBe(true);
     }
   });
 
-  it('WeaponPickup: player at 0.20 * scaleFactor always NOT collected (outside 0.15 threshold)', () => {
+  it('WeaponPickup: player outside the shared radius times scaleFactor is not collected', () => {
     for (const scale of [0.75, 1.0, 1.5, 2.0]) {
-      const playerPos = new THREE.Vector3(0.20 * scale, 0, 0);
+      const playerPos = new THREE.Vector3(OUTSIDE_RADIUS_GAP * scale, 0, 0);
       expect(
         weaponCollides(PICKUP_POS, playerPos, scale),
-        `scale=${scale}: player at 0.20*scale should NOT collect`,
+        `scale=${scale}: player outside shared radius should NOT collect`,
       ).toBe(false);
     }
   });
