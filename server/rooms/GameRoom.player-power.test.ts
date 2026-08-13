@@ -65,27 +65,43 @@ function useEarlyMidWave(room: any): void {
 }
 
 describe('GameRoom authoritative player-power integration', () => {
-  it('keeps free early Blaster baseline active but DDA-neutral', () => {
+  it('keeps fresh default-unlocked Blaster Focus nodes inactive and DDA-neutral', () => {
     const player = makePlayer();
     const room = makeRoom(player);
 
     const snapshot = room.collectPlayerPower(player);
     const activeStandardNodes = room.playerActiveUpgradeNodes.get(player.id).get('standard');
 
-    expect([...activeStandardNodes].sort()).toEqual([
-      ...STANDARD_BLASTER_EARLY_AUTO_UNLOCK_NODE_IDS,
-    ].sort());
-    expect([...player.activeUpgradeNodes.keys()].sort()).toEqual(
-      STANDARD_BLASTER_EARLY_AUTO_UNLOCK_NODE_IDS
-        .map(nodeId => `standard:${nodeId}`)
-        .sort(),
-    );
+    expect([...activeStandardNodes]).toEqual([]);
+    expect([...player.activeUpgradeNodes.keys()]).toEqual([]);
     expect(snapshot.blaster?.shotsPerSecond).toBe(6);
     expect(snapshot.blaster?.projectilesPerShot).toBe(1);
     expect(room.getRoomDominance().difficultyBonus).toBeLessThan(0.05);
   });
 
-  it('counts earned Standard upgrades beyond the free baseline toward DDA dominance', () => {
+  it('counts earned default-unlocked Blaster Focus upgrades toward DDA dominance after activation', () => {
+    const baselinePlayer = makePlayer();
+    const baselineRoom = makeRoom(baselinePlayer);
+    const baselineDominance = baselineRoom.getRoomDominance().difficultyBonus;
+
+    const earnedPlayer = makePlayer();
+    const earnedRoom = makeRoom(earnedPlayer);
+    earnedRoom.playerActiveUpgradeNodes.set(earnedPlayer.id, new Map([
+      ['standard', new Set(STANDARD_BLASTER_EARLY_AUTO_UNLOCK_NODE_IDS)],
+    ]));
+
+    const snapshot = earnedRoom.collectPlayerPower(earnedPlayer);
+    const activeStandardNodes = earnedRoom.playerActiveUpgradeNodes.get(earnedPlayer.id).get('standard');
+
+    expect([...activeStandardNodes].sort()).toEqual([
+      ...STANDARD_BLASTER_EARLY_AUTO_UNLOCK_NODE_IDS,
+    ].sort());
+    expect(snapshot.blaster?.shotsPerSecond).toBeCloseTo(10.8);
+    expect(snapshot.blaster?.projectilesPerShot).toBe(4);
+    expect(earnedRoom.getRoomDominance().difficultyBonus).toBeGreaterThan(baselineDominance + 1);
+  });
+
+  it('counts earned non-baseline Standard upgrades beyond fresh DDA dominance', () => {
     const baselinePlayer = makePlayer();
     const baselineRoom = makeRoom(baselinePlayer);
     const baselineDominance = baselineRoom.getRoomDominance().difficultyBonus;
@@ -97,12 +113,7 @@ describe('GameRoom authoritative player-power integration', () => {
     ]));
 
     const snapshot = earnedRoom.collectPlayerPower(earnedPlayer);
-    const activeStandardNodes = earnedRoom.playerActiveUpgradeNodes.get(earnedPlayer.id).get('standard');
 
-    expect([...activeStandardNodes].sort()).toEqual([
-      'standard_a_1',
-      ...STANDARD_BLASTER_EARLY_AUTO_UNLOCK_NODE_IDS,
-    ].sort());
     expect(snapshot.blaster?.projectilesPerShot).toBe(2);
     expect(earnedRoom.getRoomDominance().difficultyBonus).toBeGreaterThan(baselineDominance + 1);
   });

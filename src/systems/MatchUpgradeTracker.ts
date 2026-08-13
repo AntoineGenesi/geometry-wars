@@ -1,8 +1,6 @@
 import { WeaponType } from '../weapons/WeaponTypes';
 import {
   UPGRADE_TREES,
-  getDefaultAutoUnlockedUpgradeNodeIds,
-  isDefaultAutoUnlockedUpgradeNode,
   isExcluded,
   isPrerequisiteMet,
 } from './UpgradeTreeData';
@@ -47,7 +45,6 @@ export class MatchUpgradeTracker {
     this.store = store;
     this.permanentUnlocks = new Set(store.getUnlockedNodes());
     this.autoApplySingleNode = options.autoApplySingleNode ?? true;
-    this.activateDefaultAutoUnlocks();
   }
 
   // -------------------------------------------------------------------------
@@ -130,28 +127,11 @@ export class MatchUpgradeTracker {
     return this.activateNode(nodeId, weaponType);
   }
 
-  /** Clear all state and activate permanent unlocks — call at the start of a new match. */
+  /** Clear all per-match state. Permanent unlocks stay available to earn again through kill thresholds. */
   reset(): void {
     this.killCounts = new Map();
     this.activeUpgrades = new Map();
     this.pendingChoice = null;
-
-    // Activate all permanently unlocked nodes so their effects apply in gameplay.
-    // Without this, permanentUnlocks exist in the store but getActiveUpgrades()
-    // returns empty — upgrades like homing, extra bolts, etc. never take effect.
-    for (const [weaponTypeKey, tree] of Object.entries(UPGRADE_TREES)) {
-      const weaponType = weaponTypeKey as WeaponType;
-      for (const node of tree.nodes) {
-        if (this.permanentUnlocks.has(node.id)) {
-          let weaponSet = this.activeUpgrades.get(weaponType);
-          if (!weaponSet) {
-            weaponSet = new Set<string>();
-            this.activeUpgrades.set(weaponType, weaponSet);
-          }
-          weaponSet.add(node.id);
-        }
-      }
-    }
   }
 
   /**
@@ -204,22 +184,6 @@ export class MatchUpgradeTracker {
   private makePointLookup(weaponType: WeaponType) {
     const activeSet = this.activeUpgrades.get(weaponType) ?? new Set<string>();
     return { getNodePoints: (id: string) => (activeSet.has(id) ? 1 : 0) };
-  }
-
-  private activateDefaultAutoUnlocks(): void {
-    const defaultNodeIds = new Set(getDefaultAutoUnlockedUpgradeNodeIds());
-    for (const [weaponTypeKey, tree] of Object.entries(UPGRADE_TREES)) {
-      const weaponType = weaponTypeKey as WeaponType;
-      for (const node of tree.nodes) {
-        if (!defaultNodeIds.has(node.id) || !isDefaultAutoUnlockedUpgradeNode(node.id)) continue;
-        let weaponSet = this.activeUpgrades.get(weaponType);
-        if (!weaponSet) {
-          weaponSet = new Set<string>();
-          this.activeUpgrades.set(weaponType, weaponSet);
-        }
-        weaponSet.add(node.id);
-      }
-    }
   }
 
   private checkActivations(weaponType: WeaponType, prevKills: number, newKills: number): void {
