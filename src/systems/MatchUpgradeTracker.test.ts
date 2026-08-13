@@ -26,7 +26,6 @@ describe('MatchUpgradeTracker', () => {
       'plasma_mortar_a_1', // threshold: 10
       'plasma_mortar_a_2', // threshold: 25
       'plasma_mortar_b_1', // threshold: 10
-      'standard_a_1',      // threshold: 10
     ]);
     tracker = new MatchUpgradeTracker(store);
   });
@@ -35,11 +34,12 @@ describe('MatchUpgradeTracker', () => {
   // Initial state
   // -------------------------------------------------------------------------
 
-  it('starts fresh SP trackers with only the early right-side Blaster fundamentals active', () => {
+  it('starts fresh SP trackers with no active upgrades, including default-unlocked Blaster fundamentals', () => {
     expect(tracker.getActiveUpgrades(WeaponType.PlasmaMortar).size).toBe(0);
-    expect([...tracker.getActiveUpgrades(WeaponType.Standard)].sort()).toEqual([
-      ...STANDARD_BLASTER_EARLY_AUTO_UNLOCK_NODE_IDS,
-    ].sort());
+    expect(tracker.getActiveUpgrades(WeaponType.Standard).size).toBe(0);
+    for (const nodeId of STANDARD_BLASTER_EARLY_AUTO_UNLOCK_NODE_IDS) {
+      expect(store.isUnlocked(nodeId)).toBe(true);
+    }
   });
 
   it('starts with zero kill counts', () => {
@@ -87,7 +87,7 @@ describe('MatchUpgradeTracker', () => {
     expect(tracker.getActiveUpgrades(WeaponType.PlasmaMortar).size).toBe(0);
   });
 
-  it('auto-applies a single actionable SP node without pending choice UI', () => {
+  it('auto-applies a single default-unlocked Blaster node through the kill-threshold path', () => {
     const choiceAvailable = vi.fn();
     const activated = vi.fn();
     const autoApplied = vi.fn();
@@ -101,9 +101,28 @@ describe('MatchUpgradeTracker', () => {
 
     expect(choiceAvailable).not.toHaveBeenCalled();
     expect(tracker.getPendingChoice()).toBeNull();
-    expect(tracker.getActiveUpgrades(WeaponType.Standard)).toContain('standard_a_1');
-    expect(activated).toHaveBeenCalledWith('standard_a_1', WeaponType.Standard);
-    expect(autoApplied).toHaveBeenCalledWith('standard_a_1', WeaponType.Standard);
+    expect([...tracker.getActiveUpgrades(WeaponType.Standard)]).toEqual(['standard_b_1']);
+    expect(activated).toHaveBeenCalledWith('standard_b_1', WeaponType.Standard);
+    expect(autoApplied).toHaveBeenCalledWith('standard_b_1', WeaponType.Standard);
+  });
+
+  it('earns the default-unlocked Blaster Focus chain through normal thresholds', () => {
+    const autoApplied = vi.fn();
+    tracker.onAutoUpgradeApplied = autoApplied;
+
+    for (let i = 0; i < 150; i++) {
+      tracker.recordKill(WeaponType.Standard);
+    }
+
+    expect([...tracker.getActiveUpgrades(WeaponType.Standard)].sort()).toEqual([
+      ...STANDARD_BLASTER_EARLY_AUTO_UNLOCK_NODE_IDS,
+    ].sort());
+    expect(autoApplied.mock.calls.map(call => call[0])).toEqual([
+      'standard_b_1',
+      'standard_b_2',
+      'standard_b_3',
+    ]);
+    expect(tracker.getActiveUpgrades(WeaponType.Standard)).not.toContain('standard_b_4');
   });
 
   it('does not fire onBuildChoiceAvailable more than once per threshold crossing', () => {
@@ -327,17 +346,22 @@ describe('MatchUpgradeTracker', () => {
     expect(allOffered).not.toContain('plasma_mortar_a_3');
   });
 
-  it('tracker with no permanent unlocks never fires onBuildChoiceAvailable', () => {
+  it('fresh default-unlocked Blaster nodes are available to earn, not active immediately', () => {
     const emptyTracker = new MatchUpgradeTracker(new MasteryPointStore());
     const cb = vi.fn();
+    const autoApplied = vi.fn();
     emptyTracker.onBuildChoiceAvailable = cb;
-    for (let i = 0; i < 100; i++) {
+    emptyTracker.onAutoUpgradeApplied = autoApplied;
+
+    expect(emptyTracker.getActiveUpgrades(WeaponType.Standard).size).toBe(0);
+
+    for (let i = 0; i < 30; i++) {
       emptyTracker.recordKill(WeaponType.Standard);
     }
+
     expect(cb).not.toHaveBeenCalled();
-    expect([...emptyTracker.getActiveUpgrades(WeaponType.Standard)].sort()).toEqual([
-      ...STANDARD_BLASTER_EARLY_AUTO_UNLOCK_NODE_IDS,
-    ].sort());
+    expect([...emptyTracker.getActiveUpgrades(WeaponType.Standard)]).toEqual(['standard_b_1']);
+    expect(autoApplied).toHaveBeenCalledWith('standard_b_1', WeaponType.Standard);
   });
 
   // -------------------------------------------------------------------------
@@ -379,14 +403,14 @@ describe('MatchUpgradeTracker', () => {
     expect(tracker.getActiveUpgrades(WeaponType.PlasmaMortar).size).toBe(0);
     expect(tracker.getKillCount(WeaponType.Standard)).toBe(30);
     expect(cb).not.toHaveBeenCalled();
-    expect(tracker.getActiveUpgrades(WeaponType.Standard)).toContain('standard_a_1');
+    expect(tracker.getActiveUpgrades(WeaponType.Standard)).toContain('standard_b_1');
   });
 
   // -------------------------------------------------------------------------
   // reset
   // -------------------------------------------------------------------------
 
-  it('reset clears kill counts and pending choice, then reactivates permanent unlocks', () => {
+  it('reset clears kill counts, pending choice, and active upgrades without pre-activating permanent unlocks', () => {
     tracker.onBuildChoiceAvailable = vi.fn();
     for (let i = 0; i < 25; i++) {
       tracker.recordKill(WeaponType.PlasmaMortar);
@@ -396,15 +420,11 @@ describe('MatchUpgradeTracker', () => {
     tracker.reset();
 
     expect(tracker.getKillCount(WeaponType.PlasmaMortar)).toBe(0);
-    expect([...tracker.getActiveUpgrades(WeaponType.PlasmaMortar)].sort()).toEqual([
-      'plasma_mortar_a_1',
-      'plasma_mortar_a_2',
-      'plasma_mortar_b_1',
-    ]);
+    expect(tracker.getActiveUpgrades(WeaponType.PlasmaMortar).size).toBe(0);
     expect(tracker.getPendingChoice()).toBeNull();
   });
 
-  it('after reset, permanently unlocked nodes are active and are not re-offered', () => {
+  it('after reset, permanently unlocked nodes can be earned again through thresholds', () => {
     const cb = vi.fn();
     tracker.onBuildChoiceAvailable = cb;
     for (let i = 0; i < 10; i++) {
@@ -414,12 +434,9 @@ describe('MatchUpgradeTracker', () => {
     for (let i = 0; i < 10; i++) {
       tracker.recordKill(WeaponType.PlasmaMortar);
     }
-    expect(cb).toHaveBeenCalledTimes(1);
-    expect([...tracker.getActiveUpgrades(WeaponType.PlasmaMortar)].sort()).toEqual([
-      'plasma_mortar_a_1',
-      'plasma_mortar_a_2',
-      'plasma_mortar_b_1',
-    ]);
+    expect(cb).toHaveBeenCalledTimes(2);
+    expect(tracker.getPendingChoice()).not.toBeNull();
+    expect(tracker.getActiveUpgrades(WeaponType.PlasmaMortar).size).toBe(0);
   });
 
   // -------------------------------------------------------------------------

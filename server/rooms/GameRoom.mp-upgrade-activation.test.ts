@@ -154,17 +154,33 @@ describe('MP upgrade activation validation', () => {
     }, ['standard_a_1'], threshold('standard_a_2'))).toMatchObject({ accepted: true });
   });
 
-  it('treats early right-side Blaster baseline nodes as already active server-side', () => {
-    for (const nodeId of STANDARD_BLASTER_EARLY_AUTO_UNLOCK_NODE_IDS) {
-      expect(validate({
-        nodeId,
-        weaponType: WeaponType.Standard,
-        unlockedNodeIds: [nodeId],
-      }, STANDARD_BLASTER_EARLY_AUTO_UNLOCK_NODE_IDS, threshold(nodeId))).toMatchObject({
-        accepted: false,
-        reason: 'duplicate',
-      });
-    }
+  it('accepts default-unlocked Blaster Focus nodes through the normal threshold chain', () => {
+    expect(validate({
+      nodeId: 'standard_b_1',
+      weaponType: WeaponType.Standard,
+      unlockedNodeIds: [...STANDARD_BLASTER_EARLY_AUTO_UNLOCK_NODE_IDS],
+    }, [], threshold('standard_b_1'))).toMatchObject({ accepted: true });
+
+    expect(validate({
+      nodeId: 'standard_b_2',
+      weaponType: WeaponType.Standard,
+      unlockedNodeIds: [...STANDARD_BLASTER_EARLY_AUTO_UNLOCK_NODE_IDS],
+    }, ['standard_b_1'], threshold('standard_b_2'))).toMatchObject({ accepted: true });
+
+    expect(validate({
+      nodeId: 'standard_b_3',
+      weaponType: WeaponType.Standard,
+      unlockedNodeIds: [...STANDARD_BLASTER_EARLY_AUTO_UNLOCK_NODE_IDS],
+    }, ['standard_b_1', 'standard_b_2'], threshold('standard_b_3'))).toMatchObject({ accepted: true });
+
+    expect(validate({
+      nodeId: 'standard_b_2',
+      weaponType: WeaponType.Standard,
+      unlockedNodeIds: [...STANDARD_BLASTER_EARLY_AUTO_UNLOCK_NODE_IDS],
+    }, [], threshold('standard_b_2'))).toMatchObject({
+      accepted: false,
+      reason: 'prerequisite_unmet',
+    });
   });
 
   it('rejects unsupported Spread nodes after entitlement and prerequisites pass', () => {
