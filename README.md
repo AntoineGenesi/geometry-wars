@@ -1,116 +1,191 @@
-# Geometry Wars 3D Dimensions - Browser Recreation
+# Geometry Wars 3D
 
-Browser-based 3D arcade shooter inspired by Geometry Wars 3: Dimensions. Built with Three.js, TypeScript, and Vite.
+Geometry Wars 3D is an ambitious browser arcade-shooter prototype built with
+Three.js, TypeScript, Vite, and Colyseus. The core idea is simple: take the
+flat twin-stick shooter feel and put it on strange 3D surfaces: spheres, cubes,
+tunnels, toruses, peanuts, Mobius strips, and imported meshes.
 
-Core experience: you're on a couch with friends, you say "pull out your phone, go to this URL" and everyone is immediately playing together. No downloads, no installs, no accounts.
+It is playable, technical, and weird in the best way. It is also a prototype,
+not a polished commercial release.
 
-## Tech Stack
+## What It Is
 
-- Three.js ^0.170 (3D rendering, bloom, GPU particles), WebGPU with WebGL2 fallback
-- TypeScript 5.7 + Vite 6 (build tooling)
-- three-mesh-bvh (BVH-accelerated surface walking)
-- Colyseus ^0.15 (network multiplayer, server-authoritative)
-- Rapier.js WASM (physics)
-- Web Audio API (procedural synth audio)
-- Node 20+ required (20.19.5 via nvm)
+- A no-install browser game with single-player and LAN multiplayer modes.
+- A curved-surface shooter where movement, bullets, enemies, pickups, and zones
+  are projected onto 3D battlefields.
+- A large gameplay experiment with weapon mastery, enemy variety, custom maps,
+  visual styles, performance telemetry, and a lot of regression harnesses.
+- A codebase that was mostly built during a heavy February/March 2026 AI-agent
+  development push, then substantially repaired and packaged again in late
+  July/August 2026.
+
+This project is inspired by the Geometry Wars style of arcade combat. It is not
+affiliated with or endorsed by the original Geometry Wars rights holders.
+
+## What Is Cool About It
+
+- **Curved battlefields:** sphere, cube, pill, pipe, torus, peanut, capsule,
+  icosahedron, Mobius, sphere tunnel, cube ring, and cube tunnel maps.
+- **Custom maps:** OBJ, GLB, and GLTF meshes can be loaded as playable surfaces,
+  with BVH-backed surface walking.
+- **LAN multiplayer:** a Colyseus server path supports local network play,
+  lobby hosting, QR/link joining, PvP, PvPvE, co-op-style modes, kill credit,
+  assists, and shared pressure.
+- **Weapons:** blaster, spread shot, piercing beam, chain lightning, homing
+  missiles, plasma mortar, gravity gun, laser beam, black hole, and Tesla coil.
+- **Weapon mastery:** persistent mastery points and in-match upgrade activation
+  let weapons grow over time without simply handing every upgrade to the player.
+- **Enemy variety:** 40+ enemy identifiers including snakes, titans, giants,
+  bosses, splitters, phasers, lancers, sentinels, stealth enemies, and fractal
+  variants.
+- **Readable meta systems:** enemy compendium, weapon wiki/playground,
+  post-game stats, score graphs, kill streaks, settings, localisation, and HUD
+  visibility controls.
+- **Rendering work:** WebGPU/WebGL2 paths, bloom, instanced enemy rendering,
+  surface opacity/dimming work, particles, trails, shockwaves, and visual style
+  presets.
+- **Instrumentation:** performance logging, DDA telemetry, visual regression
+  scripts, LAN/MP harnesses, and many focused tests.
+
+## What It Does Well
+
+The strongest part of the project is the amount of real game surface area it
+tries to make playable at once. The game is not just a menu mockup or a single
+arena demo: there are many maps, many enemy types, real weapons, persistent
+progression, live settings, post-game screens, and multiplayer machinery.
+
+The other strong part is the verification culture that grew around it. There
+are unit tests, integration-ish tests, visual checks, performance probes,
+network harnesses, and task/review records. A lot of the code exists because a
+bug was seen in real play and then turned into a reusable proof.
+
+## What It Struggles With
+
+This is still a prototype with rough edges:
+
+- **Single-player and multiplayer parity is hard.** They share many concepts,
+  but they do not run through one perfectly unified gameplay loop. Some fixes
+  have historically landed in one mode before the other.
+- **LAN multiplayer is inherently fiddly.** Same-WiFi play can be affected by
+  firewall rules, WSL networking, host IP selection, browser permissions, and
+  server lifecycle issues.
+- **Curved-surface gameplay is fragile.** Pole crossings, tunnels, Mobius-like
+  surfaces, custom meshes, hit detection, camera smoothing, and render layering
+  all create edge cases that flat arena games avoid.
+- **Renderer behavior varies.** WebGPU, WebGL2, mobile browsers, headless test
+  browsers, and desktop GPUs do not always expose the same bugs.
+- **The project has history.** Some docs and old task files are historical
+  rather than current. The active game is in `src/`, `server/`, and the current
+  README/docs, not every old workflow note.
+- **Balance is not final.** DDA, enemy mixes, weapon power, mastery pacing, and
+  multiplayer pressure have all been actively tuned and may still feel uneven.
 
 ## Quick Start
+
+Requires Node 20+.
 
 ```bash
 npm install
 npm run dev
 ```
 
-Open http://localhost:3000
+Open:
 
-## Game Modes
-
-| Mode | URL | Notes |
-|------|-----|-------|
-| Single player | http://localhost:3000 | Default mode |
-| LAN multiplayer | Start menu > LAN > Host Game | Up to 4 players, same WiFi |
-
-### LAN Multiplayer
-
-1. Run `npm run dev`
-2. Click **LAN** in the start menu, then **HOST GAME**
-3. Share the displayed URL with friends on the same WiFi
-4. Click **ENTER GAME** to join your own server
+```text
+http://localhost:3000
+```
 
 ## Controls
 
-| Action | Key/Input |
-|--------|-----------|
+| Action | Input |
+| --- | --- |
 | Move | WASD |
 | Aim | Mouse |
-| Shoot | Click |
+| Shoot | Mouse click / hold where supported |
 | Bomb | Space |
-| Pause | ESC |
+| Pause | Esc |
 | Mute | M |
 | Debug overlay | F3 |
 
-## Surface Shapes (12)
+## LAN Multiplayer
 
-sphere, cube, pill, pipe, torus, peanut, capsule, icosahedron, mobius, sphere-tunnel, cube-ring, cube-tunnel
-
-## Features
-
-- **Surfaces**: 12 built-in surfaces + **custom map loading** (OBJ, GLB, GLTF — load your own 3D models!)
-- **Enemies**: 30 enemy types with 5-tier difficulty scaling (Normal to Nightmare)
-- **Weapons**: 10 weapon types (Standard, Spread, Piercing, ChainLightning, Homing, PlasmaMortar, GravityGun, LaserBeam, BlackHole, TeslaCoil)
-- **Super states**: 7 types (QuadFire, SplitFire, ReverseFire, Missile, Magnet, TrailBomb, Shield)
-- **Buffs**: 8 buff types with visual auras and pickup system
-- **Companions**: SurfaceAgent system with composable behaviors (Idle, MoveTo, Follow, Orbit, Patrol)
-- **Multiplayer**: LAN via Colyseus with interest management, kill attribution, and proximity aura buffs
-- **Effects**: GPU particle system (5000 pool), screen shake, trails, glow, chain lightning, score popups
-- **Audio**: SoundEngine (11 procedural synth sounds) + BackgroundMusic (4 presets, 128bpm procedural beat)
-- **UI**: Start menu, weapon wiki + playground, settings, kill log, minimap, pause menu with stats, debug overlay (F3)
-- **Performance**: Zero-allocation update loops, InstancedMesh batching, 3-level LOD, adaptive quality targeting 60fps
-
-## Architecture
-
-- **Core engine**: Game.ts loop, Entity base class, EntityManager, GameClock, DifficultyScaling
-- **Surface system**: 12 UV-parameterized surfaces + MeshSurface (BVH) for mesh-agnostic walking
-- **Movement**: Player and bullets use MeshWalker (geodesic face walking); enemies use UV bridge
-- **Enemies**: 30 types managed by EnemySpawner with 5-tier difficulty scaling
-- **Weapons**: 10 weapon types + WeaponManager + timed pickups + super states
-- **Multiplayer**: LAN + Colyseus network; kill attribution + proximity aura buffs + interest management
-- **Effects**: GPU particle system, screen shake, trails, glow, chain lightning, score popups, ally glow
-- **Audio**: SoundEngine (11 procedural synth sounds) + BackgroundMusic (128bpm procedural beat)
-- **Rendering**: InstancedMesh enemies + bullets, LOD system, adaptive quality, WebGPU with WebGL2 fallback, depth opacity
-
-## Directory Structure
-
-```
-src/           Source code (core/, entities/, surfaces/, weapons/, effects/, audio/, ui/, input/, etc.)
-server/        Colyseus multiplayer server + InterestManager + PriorityQueue
-decisions/     Architectural decision records
-research/      Game research data, surface movement analysis, market research
-docs/          Architecture docs, multiplayer docs, WebRTC migration plan
-tasks/         Task tracking files with full context
-reports/       Interactive HTML reports and presentations
-archive/       Archived files (old HTML test pages, session docs)
-experiments/   Experimental projects (distributed-compute, etc.)
-```
-
-## Tests
+For local development:
 
 ```bash
-npm test            # 1270+ vitest tests (26 files)
-npm run test:visual # Puppeteer visual regression tests
-npm run test:lan    # Programmatic LAN multiplayer tests
+npm run dev
 ```
 
-## Documentation
+Then use the in-game LAN menu to host a game. Players need to be on the same
+Wi-Fi/LAN as the host.
 
-- `docs/ARCHITECTURE.md` - System architecture overview
-- `docs/CUSTOM_MAPS.md` - **User guide: how to load custom 3D models**
-- `docs/DEV_CUSTOM_MESHES.md` - **Developer guide: custom mesh system architecture and extension**
-- `docs/MULTIPLAYER.md` - Multiplayer modes and controls
-- `docs/lan-multiplayer-architecture.md` - Detailed LAN/network architecture
-- `docs/webrtc-migration-plan.md` - WebRTC migration research
-- `decisions/` - All architectural decision records
+For server-only testing:
 
----
+```bash
+npm run server
+```
 
-*Last updated: 2026-03-16*
+The LAN host flow is meant for the downloadable/source version of the project.
+Static web hosting can run the browser game, but it cannot host the local
+Colyseus LAN server by itself.
+
+## Static Build
+
+Build a static package:
+
+```bash
+npm run build -- --base=./
+```
+
+The output goes to:
+
+```text
+dist/
+```
+
+That folder can be uploaded to a static host for browser play. LAN hosting still
+requires running the local source/dev server path.
+
+## Useful Scripts
+
+```bash
+npm test
+npm run test:visual
+npm run test:enemy-visibility
+npm run test:lan
+npm run test:mp
+npm run build -- --base=./
+```
+
+The full test surface is uneven: some focused harnesses are more reliable than
+others. For release packaging, the important gate is that the static build
+command passes from a clean checkout.
+
+## Project Layout
+
+```text
+src/       Browser game code: gameplay, surfaces, weapons, UI, rendering, tests
+server/    Colyseus LAN multiplayer server and authoritative room logic
+public/    Static assets, sample meshes, flags, screenshots
+docs/      Public-facing docs, architecture notes, troubleshooting, guides
+decisions/ Historical architecture notes and development records
+tests/     Visual, LAN, multiplayer, and surface verification harnesses
+```
+
+Private AI-agent orchestration/task files may exist in the development repo,
+but they are not required to play or build the game.
+
+## Development History
+
+The bulk of the original project work happened in February and March 2026.
+There was another major repair, balance, verification, and packaging wave in
+late July and August 2026. That history matters because the game accumulated a
+lot of systems quickly, then spent a lot of time paying down regressions across
+single-player, multiplayer, rendering, and mobile/LAN behavior.
+
+## Current Status
+
+Playable prototype. Interesting enough to try, large enough to learn from, and
+rough enough that you should expect bugs.
+
+The game is best judged by running it and playing a few surfaces rather than by
+assuming every documented feature is equally polished.
