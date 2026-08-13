@@ -22,12 +22,16 @@ import { MeshWalker } from '../movement/MeshWalker';
 import { MeshSurface } from '../surfaces/MeshSurface';
 import { SurfaceFactory } from '../surfaces/SurfaceFactory';
 
+type SurfaceWithTestPlayerLocalPosition = { playerLocalPosition?: THREE.Vector3 };
+
 function runGameLikeTest(surfaceType: string, stepsPerSample: number, numSamples: number) {
   const surf = SurfaceFactory.create(surfaceType as any, {});
   surf.mesh.updateMatrixWorld(true);
   const meshSurface = new MeshSurface(surf.mesh);
   // Use the game's playerLocalPosition (same as game)
-  const startPos = surf.playerLocalPosition || surf.getPoint(0.5, 0.5).position;
+  const startPos =
+    (surf as unknown as SurfaceWithTestPlayerLocalPosition).playerLocalPosition ||
+    surf.getPoint(0.5, 0.5).position;
   const walker = new MeshWalker(meshSurface, startPos, 5);
   const dt = 1/60;
 

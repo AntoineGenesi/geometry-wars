@@ -83,7 +83,7 @@ describe('PerformanceLogger', () => {
       logger.setFrameData(90, 0, 0);
       logger.recordFrame(0.016);
 
-      const summary = logger.getSessionSummary();
+      const summary = logger.getSessionSummary()!;
       expect(summary.minFps).toBe(30);
       expect(summary.maxFps).toBe(90);
     });
@@ -94,7 +94,7 @@ describe('PerformanceLogger', () => {
       logger.setFrameData(60, 200, 100);
       logger.recordFrame(0.016);
 
-      const summary = logger.getSessionSummary();
+      const summary = logger.getSessionSummary()!;
       expect(summary.peakEnemies).toBe(200);
       expect(summary.peakBullets).toBe(100);
     });
@@ -107,7 +107,7 @@ describe('PerformanceLogger', () => {
       logger.setFrameData(60, 50, 10);
       logger.recordFrame(0.016);
 
-      const summary = logger.getSessionSummary();
+      const summary = logger.getSessionSummary()!;
       // peakBullets must capture the 300-bullet burst even between samples
       expect(summary.peakBullets).toBe(300);
     });
