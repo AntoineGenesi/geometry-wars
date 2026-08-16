@@ -358,10 +358,8 @@ export class StartMenu {
 
     // Main menu button definitions for the oval layout
     const mainButtons = [
-      { mode: 'adventure', label: t('menu.buttons.adventure'), primary: true },
-      { mode: 'single', label: t('menu.buttons.quickGame'), primary: false },
+      { mode: 'single', label: t('menu.buttons.quickGame'), primary: true },
       { mode: 'lan', label: t('menu.buttons.lan'), primary: false },
-      { mode: 'network', label: t('menu.buttons.online'), primary: false },
     ];
 
     // Generate menu buttons (flex column, no absolute positioning)

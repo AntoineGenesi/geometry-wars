@@ -575,6 +575,23 @@ export function generateScaledEndlessWave(
     });
   }
 
+  // Deep-wave comeback pressure: once a player has already demonstrated a
+  // durable build (wave 50+), add more close-speed specialists rather than
+  // making early trackers outrun the player. Their BaseEnemy cap remains below
+  // player speed; the threat comes from coordinated arrivals and density.
+  if (waveNum >= 50 && difficultyLevel >= 5) {
+    enemies.push({
+      type: 'orbiter',
+      count: Math.min(6, 2 + Math.floor((waveNum - 50) / 15)),
+      tier: Math.min(maxTier, readableTierCap),
+    });
+    enemies.push({
+      type: 'swarm',
+      count: Math.min(10, 4 + Math.floor((waveNum - 50) / 10)),
+      tier: Math.min(maxTier, readableTierCap),
+    });
+  }
+
   // -- New geometric roster: make the three distinctive bodies regular wave citizens. --
   if (waveNum >= 6 && difficultyLevel >= 1.2) {
     enemies.push({

@@ -274,6 +274,32 @@ export class TestHarnessAPI {
     });
     // Expose profiler globally so GameLoop wrappers can call it
     (window as any).__PERF_PROFILER = this.performanceProfiler;
+
+    // Preserve player-contact evidence in test mode. This observes the real
+    // CollisionSystem callback only; it does not alter its threshold or response.
+    const existingCollisionCallback = ctx.collisionSystem.onCollisionEvent;
+    ctx.collisionSystem.onCollisionEvent = (event) => {
+      existingCollisionCallback?.(event);
+      if (event.type !== 'player-enemy') return;
+      const enemy = ctx.enemySpawner.getEnemies().find((candidate) => {
+        const position = candidate.mesh ? candidate.mesh.position : candidate.position;
+        return position.distanceToSquared(event.entityBPos) < 0.000001;
+      });
+      this.recordDamage(
+        'enemy-contact',
+        'player',
+        enemy ? ((enemy as any).__testId ?? enemy.baseTypeName) : event.entityBType,
+        this.toVec3(event.entityAPos),
+        {
+          enemyPos: enemy
+            ? { u: enemy.surfacePosition.u, v: enemy.surfacePosition.v }
+            : undefined,
+          distance: Math.sqrt(event.distanceSq),
+          collisionRadius: Math.sqrt(event.thresholdSq),
+          collisionSource: 'CollisionSystem.checkPlayerEnemyCollisions',
+        },
+      );
+    };
   }
 
   // -----------------------------------------------------------------------
@@ -912,6 +938,20 @@ export class TestHarnessAPI {
     this.blackHolePullLog = [];
   }
 
+  /**
+   * Reset player vulnerability between independent contact cases in a browser
+   * proof. Test-mode only: production never calls this method.
+   */
+  preparePlayerContactProof(): void {
+    const player = this.ctx.player as any;
+    (globalThis as any).__GOD_MODE = false;
+    player.alive = true;
+    player.lives = 3;
+    player.isInvincible = false;
+    player.invincibilityTimer = 0;
+    player.mesh.visible = true;
+  }
+
   // -----------------------------------------------------------------------
   // New API methods — s44r13-01
   // -----------------------------------------------------------------------
@@ -1331,6 +1371,13 @@ export class TestHarnessAPI {
           const closest = this.ctx.meshSurface.closestPointOnSurface(snapWorld);
           if (closest) enemy.walker.teleportTo(closest.point, closest.faceIndex, closest.normal);
         }
+        // Reapply production's normal-based visual elevation. A surface-level
+        // test mesh would make visual-collision evidence invalid.
+        enemy.applySurfaceTransform((u, v) => {
+          const point = surface.getPoint(u, v);
+          const frame = this.ctx.meshSurface.getTangentFrame(point.normal);
+          return { ...point, tangent: frame.tangent, bitangent: frame.bitangent };
+        });
         continue;
       }
 
@@ -1379,6 +1426,11 @@ export class TestHarnessAPI {
           enemy.walker.position.copy(worldPos);
         }
       }
+      enemy.applySurfaceTransform((u, v) => {
+        const point = surface.getPoint(u, v);
+        const frame = this.ctx.meshSurface.getTangentFrame(point.normal);
+        return { ...point, tangent: frame.tangent, bitangent: frame.bitangent };
+      });
     }
 
     // --- Death detection ---

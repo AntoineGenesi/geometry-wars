@@ -31,6 +31,36 @@ const DAMAGE_AGGRO_NATURAL_SPEED_TYPES = new Set([
   'stealth_stalker',
 ]);
 
+// These bodies continuously steer toward the player (rather than following a
+// fixed patrol, firing pattern, or the repulsor/magnet charge state).  Their
+// individual implementations intentionally vary, but they must share the
+// same readable closing-speed rule so a tier multiplier cannot turn a small
+// tracker into an unavoidable contact hit.
+const DIRECT_TRACKING_ENEMY_TYPES = new Set([
+  'grunt',
+  'mayfly',
+  'swarm',
+  'weaver',
+  'spinner',
+  'helix',
+  'approach_glow',
+  'stealth_stalker',
+  'phaser',
+  'orbiter',
+  'sentinel_orb',
+  'shatter_bloom',
+  'titan_spinner',
+  'titan_weaver',
+]);
+
+// Player walk speed is 3 world units/second on the reference surface. Direct
+// trackers stay below it even after difficulty scaling, then brake hard inside
+// melee range. This keeps a swarm threatening from afar without letting it
+// erase the player's reaction window after it has reached them.
+const TRACKING_FAR_SPEED_CAP = 2.1;
+const TRACKING_CLOSE_SPEED_CAP = 0.9;
+const TRACKING_BRAKE_START_DISTANCE = 5.0;
+
 export abstract class BaseEnemy extends Entity {
   static readonly DAMAGE_AGGRO_DURATION = 4;
 
@@ -649,6 +679,23 @@ export abstract class BaseEnemy extends Entity {
     return DAMAGE_AGGRO_NATURAL_SPEED_TYPES.has(type);
   }
 
+  private getTrackingSpeedCap(distanceToPlayer: number): number | null {
+    const type = this.baseTypeName || this.constructor.name.toLowerCase();
+    if (!DIRECT_TRACKING_ENEMY_TYPES.has(type)) return null;
+
+    // Linearly restore normal tracking speed over the final five world units.
+    // This deliberately excludes repulsors and other telegraphed special moves.
+    const rangeFactor = Math.max(0, Math.min(1, distanceToPlayer / TRACKING_BRAKE_START_DISTANCE));
+    return TRACKING_CLOSE_SPEED_CAP +
+      (TRACKING_FAR_SPEED_CAP - TRACKING_CLOSE_SPEED_CAP) * rangeFactor;
+  }
+
+  private capTrackingVelocity(velocity: THREE.Vector3, distanceToPlayer: number): THREE.Vector3 {
+    const speedCap = this.getTrackingSpeedCap(distanceToPlayer);
+    if (speedCap === null || velocity.lengthSq() <= speedCap * speedCap) return velocity;
+    return velocity.multiplyScalar(speedCap / velocity.length());
+  }
+
   update(dt: number): void {
     if (!this.alive) return;
     this._behaviorTime += dt;
@@ -698,7 +745,8 @@ export abstract class BaseEnemy extends Entity {
         })()
         : naturalVelocity;
       if (velocity && velocity.lengthSq() > 0.0001) {
-        const movementVelocity = this.applyOppositeWallSurfacePath(velocity);
+        const cappedVelocity = this.capTrackingVelocity(velocity, this.lastDistanceToPlayer);
+        const movementVelocity = this.applyOppositeWallSurfacePath(cappedVelocity);
         const speed = movementVelocity.length();
         this.lastCommandedWorldSpeed = speed;
         this.walker.speed = speed;
@@ -753,6 +801,11 @@ export abstract class BaseEnemy extends Entity {
         if (Math.abs(this._knockbackV) < 0.0001) this._knockbackV = 0;
       }
 
+      // Keep combat knockback intact; only clamp the voluntary/aggro movement
+      // that follows it below.
+      const behaviorStartU = this.surfacePosition.u;
+      const behaviorStartV = this.surfacePosition.v;
+
       profiler.begin('enemy_uv_behavior');
       if (this.isDamageAggroActive()) {
         const wrapsU = this.surfaceRef?.wrapsU ?? true;
@@ -768,6 +821,24 @@ export abstract class BaseEnemy extends Entity {
         this.updateBehavior(effectiveDt, this.playerU, this.playerV);
       }
       profiler.end('enemy_uv_behavior');
+
+      const trackingSpeedCap = this.getTrackingSpeedCap(
+        Math.hypot(
+          this.shortestAxisDelta(behaviorStartU, this.playerU, this.surfaceRef?.wrapsU ?? true),
+          this.shortestAxisDelta(behaviorStartV, this.playerV, this.surfaceRef?.wrapsV ?? false),
+        ) * this.walkerSpeedScale,
+      );
+      if (trackingSpeedCap !== null && effectiveDt > 0) {
+        const behaviorDeltaU = this.surfacePosition.u - behaviorStartU;
+        const behaviorDeltaV = this.surfacePosition.v - behaviorStartV;
+        const behaviorDistance = Math.hypot(behaviorDeltaU, behaviorDeltaV);
+        const behaviorCap = trackingSpeedCap / this.walkerSpeedScale * effectiveDt;
+        if (behaviorDistance > behaviorCap) {
+          const scale = behaviorCap / behaviorDistance;
+          this.surfacePosition.u = behaviorStartU + behaviorDeltaU * scale;
+          this.surfacePosition.v = behaviorStartV + behaviorDeltaV * scale;
+        }
+      }
 
       // Compute the raw UV delta the subclass produced
       let deltaU = this.surfacePosition.u - prevU;

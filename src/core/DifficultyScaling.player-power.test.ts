@@ -26,6 +26,12 @@ function waveCount(wave: number, difficulty: number): number {
 }
 
 describe('SP player-power pressure integration', () => {
+  it('adds coordinated Orbiter and Swarm pressure only in deep waves', () => {
+    const early = generateScaledEndlessWave(49, 5).filter((entry) => entry.type === 'orbiter' || entry.type === 'swarm');
+    const deep = generateScaledEndlessWave(70, 5).filter((entry) => entry.type === 'orbiter' || entry.type === 'swarm');
+    const count = (entries: typeof deep) => entries.reduce((total, entry) => total + entry.count, 0);
+    expect(count(deep)).toBeGreaterThan(count(early));
+  });
   it('bypasses overlapping legacy level, buff, combo, kill, and companion bonuses', () => {
     const playerPower = computePlayerPower({
       blaster: { damage: 1, shotsPerSecond: 6, projectilesPerShot: 1 },

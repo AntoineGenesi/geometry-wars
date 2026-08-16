@@ -134,6 +134,23 @@ class AggroCapEnemy extends BaseEnemy {
   }
 }
 
+class FastTrackingEnemy extends BaseEnemy {
+  constructor(type: string, u = 0.5, v = 0.5) {
+    super(u, v, 1, 10, 1, 0.3);
+    this.baseTypeName = type;
+  }
+
+  updateBehavior(dt: number, playerU: number, playerV: number): void {
+    const du = playerU - this.surfacePosition.u;
+    const dv = playerV - this.surfacePosition.v;
+    const distance = Math.hypot(du, dv);
+    if (distance > 0.0001) {
+      this.surfacePosition.u += du / distance * this.speed * dt;
+      this.surfacePosition.v += dv / distance * this.speed * dt;
+    }
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -295,6 +312,53 @@ describe('BaseEnemy damage aggro movement', () => {
     expect(enemy.lastActualWorldSpeed).toBeCloseTo(0.6);
     expect(walker.speed).toBeCloseTo(0.6);
     expect(walker.position.x).toBeCloseTo(0.6);
+  });
+});
+
+describe('BaseEnemy direct-tracker pacing', () => {
+  it('caps a fast direct tracker below player speed and brakes it near the player', () => {
+    const farEnemy = new FastTrackingEnemy('swarm');
+    farEnemy.setPlayerPosition(0.9, 0.5); // 12 world units away at the reference scale
+    farEnemy.update(1);
+
+    // Far cap: 2.1 world/s = 0.07 UV/s at walkerSpeedScale 30.
+    expect(farEnemy.surfacePosition.u - 0.5).toBeCloseTo(0.07, 5);
+
+    const closeEnemy = new FastTrackingEnemy('swarm', 0.5, 0.5);
+    closeEnemy.setPlayerPosition(0.55, 0.5); // 1.5 world units away
+    closeEnemy.update(0.1);
+
+    // Close cap interpolates to 1.26 world/s, or 0.0042 UV in 100 ms.
+    expect(closeEnemy.surfacePosition.u - 0.5).toBeCloseTo(0.0042, 5);
+  });
+
+  it('does not change non-tracking special movement such as the repulsor/magnet family', () => {
+    const enemy = new FastTrackingEnemy('repulsor');
+    enemy.setPlayerPosition(0.9, 0.5);
+    enemy.update(0.1);
+
+    expect(enemy.surfacePosition.u - 0.5).toBeCloseTo(0.03, 5);
+  });
+
+  it('applies the same cap on the MeshWalker single-player path', () => {
+    const enemy = new FastTrackingEnemy('orbiter');
+    const walker = {
+      position: new THREE.Vector3(0, 0, 0),
+      normal: new THREE.Vector3(0, 1, 0),
+      speed: 0,
+      move(direction: THREE.Vector3, dt: number) {
+        this.position.addScaledVector(direction, this.speed * dt);
+      },
+    };
+    (enemy as any).walker = walker;
+    enemy.computeMovementDirection = () => new THREE.Vector3(9, 0, 0);
+    enemy.setPlayerWorldPosition(new THREE.Vector3(12, 0, 0));
+
+    enemy.update(1);
+
+    expect(enemy.lastCommandedWorldSpeed).toBeCloseTo(2.1, 5);
+    expect(enemy.lastActualWorldSpeed).toBeCloseTo(2.1, 5);
+    expect(walker.position.x).toBeCloseTo(2.1, 5);
   });
 });
 

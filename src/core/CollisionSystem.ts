@@ -353,11 +353,30 @@ export class CollisionSystem {
       // s44r6c-02: cube-tunnel shares cube's corner visibility issue (enemies approach from
       // adjacent faces around beveled edges, invisible to the player)
       const isCubeFamily = this.surfaceType === 'cube' || this.surfaceType === 'cube-tunnel';
+      // Ring enemies render smaller than their movement/elevation radius. Using
+      // that larger radius here gave Orbiters and Sentinel Orbs a damage reach
+      // that extended visibly beyond their outer rings. Keep the curved-surface
+      // correction below, but start it from the actual rendered outer radius.
+      const enemyType = enemy.baseTypeName || enemy.constructor.name.toLowerCase();
+      const visualCollisionRadius = enemyType === 'orbiter'
+        ? 0.18
+        : enemyType === 'sentinel_orb'
+          ? 0.24
+          : enemy.radius;
+      // Single-player contact is deliberately player-favouring: an enemy must
+      // enter the ship's core, not merely brush its outer visual boundary.
+      // Keep the curved-surface elevation term below, but remove one core
+      // radius from the in-surface contact budget. This is SP-only; the
+      // server-authoritative multiplayer collision policy is separate.
+      // Extra 0.01 is required on flat maps too: without it an Orbiter still
+      // triggered just outside the ship core despite the curvature correction
+      // being unnecessary there.
+      const PLAYER_ENEMY_CORE_OVERLAP = playerRadius + 0.01;
       const contactRadius = isCubeFamily
-        ? Math.max(0, playerRadius + enemy.radius - 0.1)
-        : playerRadius + enemy.radius;
+        ? Math.max(0, playerRadius + visualCollisionRadius - 0.1)
+        : Math.max(0, playerRadius + visualCollisionRadius - PLAYER_ENEMY_CORE_OVERLAP);
       const baseHitRadiusSq = contactRadius * contactRadius;
-      const hitRadiusSq = baseHitRadiusSq + enemy.radius * enemy.radius;
+      const hitRadiusSq = baseHitRadiusSq + visualCollisionRadius * visualCollisionRadius;
       const visualPos = enemy.mesh ? enemy.mesh.position : enemy.position;
       const distSq = player.mesh.position.distanceToSquared(visualPos);
 
